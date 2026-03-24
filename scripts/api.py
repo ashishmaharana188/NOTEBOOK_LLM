@@ -123,12 +123,15 @@ def start_ollama_service():
 
 
 def warm_up_model():
-    logger.info("🔥 Warming up Reasoning Brain (Phi-3.5)...")
+    reasoning_profile = runtime_manager.get_runtime_snapshot()["config"].get(
+        "reasoning_profile", "qwen2.5:1.5b-instruct"
+    )
+    logger.info(f"🔥 Warming up reasoning model ({reasoning_profile})...")
     try:
         requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "phi3.5",
+                "model": reasoning_profile,
                 "prompt": "Hi",
                 "stream": False,
                 "options": {"num_ctx": 128},

@@ -5,7 +5,7 @@ from scripts.model_runtime import runtime_manager
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_MODEL = "bge-m3"
+DEFAULT_EMBEDDING_PROFILE = "all-minilm-l6-v2"
 
 
 def load_model():
@@ -17,7 +17,9 @@ def unload_model():
     runtime_manager.unload_roles(["embedding"])
 
 
-def get_embedding(text: str, model: str = OLLAMA_MODEL, max_retries: int = 5):
+def get_embedding(
+    text: str, model: str = DEFAULT_EMBEDDING_PROFILE, max_retries: int = 5
+):
     return runtime_manager.get_embedding(text)
 
 

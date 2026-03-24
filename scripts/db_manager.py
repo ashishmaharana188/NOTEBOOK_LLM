@@ -20,7 +20,9 @@ class DBManager:
         os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
         self.db = lancedb.connect(DB_PATH)
 
-        # --- SCHEMA FOR BGE-M3 (1024 DIMENSIONS) ---
+        # --- VECTOR STORAGE ---
+        # Keep the LanceDB schema at 1024 dims for backward compatibility.
+        # Smaller embedding models are zero-padded before persistence/search.
         self.schema = pa.schema(
             [
                 pa.field("vector", pa.list_(pa.float32(), 1024)),

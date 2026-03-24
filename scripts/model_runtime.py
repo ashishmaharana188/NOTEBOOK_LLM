@@ -21,62 +21,66 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 CONFIG_PATH = os.path.join(DATA_DIR, "system_runtime_config.json")
+EMBEDDING_STORAGE_DIM = 1024
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "ollama_endpoint": "http://localhost:11434",
-    "embedding_profile": "bge-m3",
-    "reasoning_profile": "phi3.5",
+    "embedding_profile": "all-minilm-l6-v2",
+    "reasoning_profile": "qwen2.5:1.5b-instruct",
     "embedding_timeout_minutes": 0,
     "reasoning_timeout_minutes": 0,
-    "embedding_placement": "vram",
-    "reasoning_placement": "vram",
+    "embedding_placement": "cpu",
+    "reasoning_placement": "cpu",
     "embedding_precision": "fp32",
-    "embedding_low_memory_profile": None,
-    "reasoning_low_memory_profile": None,
+    "embedding_low_memory_profile": "paraphrase-multilingual-minilm-l12-v2",
+    "reasoning_low_memory_profile": "qwen2.5:0.5b-instruct",
 }
 
 MODEL_CATALOG: Dict[str, Dict[str, Dict[str, Any]]] = {
     "embedding": {
-        "bge-m3": {
-            "label": "BGE-M3",
+        "all-minilm-l6-v2": {
+            "label": "All-MiniLM-L6-v2",
             "provider": "native",
-            "model_id": "BAAI/bge-m3",
-            "est_ram_gb": 3.4,
-            # The published safetensors artifact is ~2.27 GB. Keep a modest
-            # execution overhead rather than blocking on a doubled estimate.
-            "est_vram_gb_fp32": 2.9,
-            "est_vram_gb_bf16": 1.7,
-            "est_vram_gb_fp16": 1.5,
-            "supports_fp16": True,
-            "supports_bf16": True,
-            "dual_vram_profile": "bge-m3",
+            "model_id": "sentence-transformers/all-MiniLM-L6-v2",
+            "embedding_dim": 384,
+            "est_ram_gb": 0.35,
+            "est_vram_gb_fp32": 0.22,
+            "est_vram_gb_bf16": 0.16,
+            "est_vram_gb_fp16": 0.14,
+            "supports_fp16": False,
+            "supports_bf16": False,
+            "dual_vram_profile": "all-minilm-l6-v2",
+        },
+        "paraphrase-multilingual-minilm-l12-v2": {
+            "label": "Paraphrase Multilingual MiniLM-L12-v2",
+            "provider": "native",
+            "model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            "embedding_dim": 384,
+            "est_ram_gb": 0.55,
+            "est_vram_gb_fp32": 0.32,
+            "est_vram_gb_bf16": 0.24,
+            "est_vram_gb_fp16": 0.22,
+            "supports_fp16": False,
+            "supports_bf16": False,
+            "dual_vram_profile": "all-minilm-l6-v2",
         },
     },
     "reasoning": {
-        "phi3.5": {
-            "label": "Phi 3.5",
+        "qwen2.5:1.5b-instruct": {
+            "label": "Qwen 2.5 1.5B Instruct",
             "provider": "ollama",
-            "model_id": "phi3.5",
-            "est_ram_gb": 4.2,
-            # Ollama's default phi3.5 tag is a quantized 2.2 GB Q4_0 build.
-            "est_vram_gb": 2.6,
-            "dual_vram_profile": "phi3.5",
+            "model_id": "qwen2.5:1.5b-instruct",
+            "est_ram_gb": 2.4,
+            "est_vram_gb": 1.1,
+            "dual_vram_profile": "qwen2.5:0.5b-instruct",
         },
-        "llama3.2:3b": {
-            "label": "Llama 3.2 3B",
+        "qwen2.5:0.5b-instruct": {
+            "label": "Qwen 2.5 0.5B Instruct",
             "provider": "ollama",
-            "model_id": "llama3.2:3b",
-            "est_ram_gb": 3.8,
-            "est_vram_gb": 2.7,
-            "dual_vram_profile": "llama3.2:3b",
-        },
-        "qwen2.5:3b": {
-            "label": "Qwen 2.5 3B",
-            "provider": "ollama",
-            "model_id": "qwen2.5:3b",
-            "est_ram_gb": 3.6,
-            "est_vram_gb": 2.8,
-            "dual_vram_profile": "qwen2.5:3b",
+            "model_id": "qwen2.5:0.5b-instruct",
+            "est_ram_gb": 1.2,
+            "est_vram_gb": 0.45,
+            "dual_vram_profile": "qwen2.5:0.5b-instruct",
         },
     },
 }
@@ -187,12 +191,33 @@ class ModelRuntimeManager:
     def _normalize_config(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         normalized = {**DEFAULT_CONFIG, **payload}
 
-        # The runtime is intentionally single-GPU. CPU paths are not used for LLM work.
-        normalized["embedding_placement"] = "vram"
-        normalized["reasoning_placement"] = "vram"
+        for role in ("embedding", "reasoning"):
+            profile_key = f"{role}_profile"
+            low_memory_key = f"{role}_low_memory_profile"
+            if normalized.get(profile_key) not in MODEL_CATALOG[role]:
+                normalized[profile_key] = DEFAULT_CONFIG[profile_key]
+            if normalized.get(low_memory_key) not in MODEL_CATALOG[role]:
+                normalized[low_memory_key] = DEFAULT_CONFIG.get(low_memory_key)
+
+            placement_key = f"{role}_placement"
+            placement = str(normalized.get(placement_key) or "cpu").lower()
+            if placement in {"vram", "gpu"}:
+                placement = "cuda"
+            elif placement == "ram":
+                placement = "cpu"
+            elif placement == "auto":
+                placement = "cuda" if torch.cuda.is_available() else "cpu"
+            elif placement not in {"cpu", "cuda"}:
+                placement = "cpu"
+
+            if placement == "cuda" and not torch.cuda.is_available():
+                placement = "cpu"
+            normalized[placement_key] = placement
 
         precision = str(normalized.get("embedding_precision") or "fp32").lower()
         if precision not in {"fp32", "bf16", "fp16"}:
+            precision = "fp32"
+        if normalized.get("embedding_placement") != "cuda":
             precision = "fp32"
         normalized["embedding_precision"] = precision
         return normalized
@@ -202,11 +227,15 @@ class ModelRuntimeManager:
             next_config = self._normalize_config({**self._config, **updates})
             embedding_reconfigure = any(
                 next_config[key] != self._config.get(key)
-                for key in ("embedding_profile", "embedding_precision")
+                for key in (
+                    "embedding_profile",
+                    "embedding_placement",
+                    "embedding_precision",
+                )
             )
             reasoning_reconfigure = any(
                 next_config[key] != self._config.get(key)
-                for key in ("reasoning_profile",)
+                for key in ("reasoning_profile", "reasoning_placement")
             )
 
             self._config = next_config
@@ -257,15 +286,15 @@ class ModelRuntimeManager:
         return profile
 
     def _placement_to_device(self, role: str) -> str:
-        return "cuda"
+        placement = str(self._config.get(f"{role}_placement") or "cpu").lower()
+        if placement == "cuda" and torch.cuda.is_available():
+            return "cuda"
+        return "cpu"
 
     def _ensure_cuda_available(self, roles: Iterable[str]):
-        if (
-            any(role in {"embedding", "reasoning"} for role in roles)
-            and not torch.cuda.is_available()
-        ):
+        if any(self._placement_to_device(role) == "cuda" for role in roles) and not torch.cuda.is_available():
             raise RuntimeLoadError(
-                "CUDA is required for the current model runtime architecture, but no CUDA device is available."
+                "CUDA was requested for the active runtime profile, but no CUDA device is available."
             )
 
     def _memory_snapshot(self) -> Dict[str, Any]:
@@ -311,6 +340,13 @@ class ModelRuntimeManager:
     ) -> int:
         if requested_batch_size and int(requested_batch_size) > 0:
             return int(requested_batch_size)
+
+        device = self._role_state["embedding"].get("device") or self._placement_to_device(
+            "embedding"
+        )
+        if device != "cuda":
+            cpu_count = os.cpu_count() or 2
+            return 12 if cpu_count >= 4 else 8
 
         precision = str(self._config.get("embedding_precision") or "fp32").lower()
         available_vram = self._memory_snapshot().get("available_vram_gb") or 0
@@ -362,10 +398,7 @@ class ModelRuntimeManager:
         if not ram_ok or not vram_ok:
             available_vram = snapshot.get("available_vram_gb")
             available_ram = snapshot.get("available_ram_gb")
-            message = (
-                "The active GPU model must fit entirely in available memory. "
-                "Unload the other role or choose a lighter profile."
-            )
+            message = "The selected model profile does not fit in available memory. Choose a lighter profile."
             if not vram_ok:
                 message += (
                     f" Estimated VRAM need: {round(vram_need, 2)} GB."
@@ -384,7 +417,7 @@ class ModelRuntimeManager:
             "resolved_profiles": resolved_profiles,
             "memory": snapshot,
             "projected": {"ram_gb": round(ram_need, 2), "vram_gb": round(vram_need, 2)},
-            "single_gpu_mode": True,
+            "single_gpu_mode": any(device == "cuda" for device in devices.values()),
         }
 
     def _ollama_is_reachable(self) -> bool:
@@ -543,6 +576,13 @@ class ModelRuntimeManager:
             }
         )
 
+    def _normalize_embedding_vector(self, vector: Any) -> List[float]:
+        raw_values = vector.tolist() if hasattr(vector, "tolist") else list(vector)
+        normalized_values = [float(value) for value in raw_values]
+        if len(normalized_values) >= EMBEDDING_STORAGE_DIM:
+            return normalized_values[:EMBEDDING_STORAGE_DIM]
+        return normalized_values + [0.0] * (EMBEDDING_STORAGE_DIM - len(normalized_values))
+
     def load_embedding_model(
         self,
         profile: Optional[str] = None,
@@ -555,9 +595,7 @@ class ModelRuntimeManager:
             target_device = device or self._placement_to_device("embedding")
             target_precision = precision or self._config["embedding_precision"]
             if target_device != "cuda":
-                raise RuntimeLoadError(
-                    "Embeddings are configured for CUDA-only execution in the current runtime architecture."
-                )
+                target_precision = "fp32"
             if (
                 self._role_state["embedding"]["loaded"]
                 and self._embedding_model is not None
@@ -800,9 +838,23 @@ class ModelRuntimeManager:
             "catalog": MODEL_CATALOG,
             "preflight": preflight,
             "policy": {
-                "single_gpu_mode": True,
-                "embedding_requires_cuda": True,
-                "reasoning_requires_cuda": True,
+                "single_gpu_mode": any(
+                    self._placement_to_device(role) == "cuda"
+                    for role in ("embedding", "reasoning")
+                ),
+                "single_active_role": True,
+                "embedding_requires_cuda": self._placement_to_device("embedding")
+                == "cuda",
+                "reasoning_requires_cuda": self._placement_to_device("reasoning")
+                == "cuda",
+                "execution_target": (
+                    "cuda"
+                    if any(
+                        self._placement_to_device(role) == "cuda"
+                        for role in ("embedding", "reasoning")
+                    )
+                    else "cpu"
+                ),
             },
         }
 
@@ -817,7 +869,7 @@ class ModelRuntimeManager:
             ):
                 self.load_embedding_model(
                     profile=self._config["embedding_profile"],
-                    device="cuda",
+                    device=self._placement_to_device("embedding"),
                     precision=self._config["embedding_precision"],
                 )
             self._ensure_embedding_model_ready()
@@ -826,11 +878,7 @@ class ModelRuntimeManager:
                 vector = self._embedding_model.encode(
                     [str(text)], show_progress_bar=False
                 )
-                return (
-                    vector[0].tolist()
-                    if hasattr(vector[0], "tolist")
-                    else list(vector[0])
-                )
+                return self._normalize_embedding_vector(vector[0])
             finally:
                 self._end_use("embedding")
 
@@ -851,7 +899,7 @@ class ModelRuntimeManager:
             ):
                 self.load_embedding_model(
                     profile=self._config["embedding_profile"],
-                    device="cuda",
+                    device=self._placement_to_device("embedding"),
                     precision=self._config["embedding_precision"],
                 )
             self._ensure_embedding_model_ready()
@@ -884,7 +932,7 @@ class ModelRuntimeManager:
                 if progress_callback:
                     progress_callback(total, total)
 
-                return vectors
+                return [self._normalize_embedding_vector(vector) for vector in vectors]
             finally:
                 self._end_use("embedding")
 

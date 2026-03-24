@@ -211,8 +211,8 @@ export default function SystemConfigPanel() {
                           Runtime Policy
                         </p>
                         <p className="mt-2 font-semibold">
-                          Reasoning is GPU-managed and will unload the embedding
-                          runtime before activation.
+                          The runtime keeps one active model role at a time to
+                          stay inside small-memory deployments.
                         </p>
                       </div>
                     )}
@@ -268,7 +268,9 @@ export default function SystemConfigPanel() {
                       <p className="mt-1 font-semibold">
                         Policy:{" "}
                         <span className="font-black text-slate-900">
-                          CUDA only, single active GPU role
+                          {policy.single_active_role
+                            ? "single active role, memory-optimized"
+                            : "shared role loading"}
                         </span>
                       </p>
                     </div>
@@ -352,8 +354,8 @@ export default function SystemConfigPanel() {
                 </span>
               </p>
               <p className="mt-4 text-sm leading-6 text-slate-600">
-                {policy.single_gpu_mode
-                  ? "The runtime keeps only one GPU role active at a time. Loading embeddings unloads reasoning, and loading reasoning unloads embeddings."
+                {policy.single_active_role
+                  ? `The runtime keeps only one model role active at a time on ${policy.execution_target || "the configured device"}. Loading embeddings unloads reasoning, and loading reasoning unloads embeddings.`
                   : "Projected memory is based on the current runtime catalog."}
               </p>
             </div>

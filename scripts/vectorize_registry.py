@@ -12,7 +12,7 @@ STOP_SIGNAL_FILE = os.path.join(BASE_DIR, "data", "stop_vectorization.signal")
 REGISTRY_TABLE_NAME = "registry_vectors"
 
 # Registry rows stay in manageable outer chunks for DB work, but each chunk is
-# embedded in a single high-throughput GPU encode call.
+# embedded in a single high-throughput encode call.
 BATCH_SIZE = 64
 RUN_LOCK = threading.Lock()
 
