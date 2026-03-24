@@ -60,8 +60,7 @@ const NotesSectionUI: React.FC = () => {
                     wheel={{ step: 0.1, smoothStep: 0.0005 }}
                     panning={{ excluded: ["no-pan"] }}
                     onInit={(ref) => state.setCanvasScale(ref.state.scale)}
-                    onZoom={(ref) => state.setCanvasScale(ref.state.scale)}
-                    onPinching={(ref) => state.setCanvasScale(ref.state.scale)}
+                    onZoomStop={(ref) => state.setCanvasScale(ref.state.scale)}
                 >
                     {({ zoomIn, zoomOut, zoomToElement }) => (
                         <React.Fragment>

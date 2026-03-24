@@ -14,8 +14,7 @@ import type { DiscoverProps } from "../libraryManagerTypes";
 import axios from "axios";
 import { useModelRuntime } from "../../system/ModelRuntimeProvider";
 import CircularProgress from "../../system/CircularProgress";
-
-const WS_URL = "ws://127.0.0.1:8000/ws";
+import { API_BASE_URL, BACKEND_WS_URL } from "../../../lib/runtimeConfig";
 
 export default function Discover({ onStartDownload }: DiscoverProps) {
     const { ensureRolesThen } = useModelRuntime();
@@ -70,7 +69,7 @@ export default function Discover({ onStartDownload }: DiscoverProps) {
     }, [vectorizing]);
 
     useEffect(() => {
-        socketRef.current = new WebSocket(WS_URL);
+        socketRef.current = new WebSocket(BACKEND_WS_URL);
         socketRef.current.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
@@ -128,7 +127,7 @@ export default function Discover({ onStartDownload }: DiscoverProps) {
     const handleVectorize = async () => {
         console.log("🚀 handleVectorize fired! Sending request to backend...");
         const API = axios.create({
-            baseURL: "https://doomprompting123-space.hf.space",
+            baseURL: API_BASE_URL,
         });
 
         if (vectorizing) {

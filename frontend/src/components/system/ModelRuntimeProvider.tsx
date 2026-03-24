@@ -9,11 +9,11 @@ import React, {
 } from "react";
 import axios from "axios";
 import { confirmAction, notify } from "./AppNotifications";
+import { API_BASE_URL, BACKEND_WS_URL } from "../../lib/runtimeConfig";
 
 const API = axios.create({
-    baseURL: "https://doomprompting123-space.hf.space",
+    baseURL: API_BASE_URL,
 });
-const WS_URL = "ws://127.0.0.1:8000/ws";
 
 type RuntimeRole = "embedding" | "reasoning";
 
@@ -80,7 +80,7 @@ export function ModelRuntimeProvider({
 
     useEffect(() => {
         refreshRuntime();
-        socketRef.current = new WebSocket(WS_URL);
+        socketRef.current = new WebSocket(BACKEND_WS_URL);
         socketRef.current.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);

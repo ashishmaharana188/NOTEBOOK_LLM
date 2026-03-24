@@ -1,13 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import useCognition from "./hooks/useCognition";
 import MainReader from "./components/reader/mainReader";
 import Sidebar from "./components/sideBar/sidebarUI";
 import EchoTrigger from "./components/libraryManager/echoDashboard/echoTrigger";
 import LibraryManager from "./components/libraryManager/libraryManagerUI";
-import WorkspaceShellUI from "./components/libraryManager/workspaceShellUI";
 import type { DownloadingBook } from "./types/readerBackendTypes";
+import { BACKEND_WS_URL } from "./lib/runtimeConfig";
 
-const WS_URL = "ws://127.0.0.1:8000/ws";
+const WorkspaceShellUI = React.lazy(
+  () => import("./components/libraryManager/workspaceShellUI"),
+);
 
 interface WebSocketMessage {
   status?: string;
@@ -61,7 +63,7 @@ function App() {
 
   useEffect(() => {
     refreshAll();
-    socketRef.current = new WebSocket(WS_URL);
+    socketRef.current = new WebSocket(BACKEND_WS_URL);
     socketRef.current.onmessage = (event: MessageEvent) => {
       try {
         const data: WebSocketMessage = JSON.parse(event.data);
@@ -175,19 +177,21 @@ function App() {
       />
 
       {!isReaderActive ? (
-        <WorkspaceShellUI
-          isOpen={echoOpen}
-          onClose={() => setEchoOpen(false)}
-          onOpen={() => setEchoOpen(true)}
-          currentView={workspaceView}
-          results={results}
-          recommendations={recommendations}
-          query={query}
-          loading={loading}
-          activeBookTitle={currentBook?.title || "Current Focus"}
-          activeBookAuthor={currentBook?.author || "Active Selection"}
-          libraryId={currentBook?.lid || ""}
-        />
+        <Suspense fallback={null}>
+          <WorkspaceShellUI
+            isOpen={echoOpen}
+            onClose={() => setEchoOpen(false)}
+            onOpen={() => setEchoOpen(true)}
+            currentView={workspaceView}
+            results={results}
+            recommendations={recommendations}
+            query={query}
+            loading={loading}
+            activeBookTitle={currentBook?.title || "Current Focus"}
+            activeBookAuthor={currentBook?.author || "Active Selection"}
+            libraryId={currentBook?.lid || ""}
+          />
+        </Suspense>
       ) : null}
     </div>
   );

@@ -10,11 +10,11 @@ import type {
     ReaderSession,
 } from "../../types/readerBackendTypes";
 import { notify } from "../../components/system/AppNotifications";
+import { API_BASE_URL, BACKEND_WS_URL } from "../../lib/runtimeConfig";
 
 const API = axios.create({
-    baseURL: "https://doomprompting123-space.hf.space",
+    baseURL: API_BASE_URL,
 });
-const WS_URL = "ws://127.0.0.1:8000/ws";
 const LOCAL_CACHE_PREFIX = "reader_bootstrap_v2:";
 
 function toLocationValue(raw: unknown): string | number | null {
@@ -505,7 +505,7 @@ export function useReaderSession(book: ReaderBook | null) {
 
     useEffect(() => {
         if (!book?.filename) return;
-        wsRef.current = new WebSocket(WS_URL);
+        wsRef.current = new WebSocket(BACKEND_WS_URL);
         wsRef.current.onmessage = (event) => {
             try {
                 const payload = JSON.parse(event.data);

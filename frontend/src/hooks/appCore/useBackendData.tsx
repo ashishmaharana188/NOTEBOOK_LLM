@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import type { BrainBook } from "../../types/libraryBackendTypes";
 import { notify } from "../../components/system/AppNotifications";
+import { API_BASE_URL, BACKEND_WS_URL } from "../../lib/runtimeConfig";
 
 const API = axios.create({
-    baseURL: "https://doomprompting123-space.hf.space",
+    baseURL: API_BASE_URL,
 });
-const WS_URL = "ws://127.0.0.1:8000/ws";
 
 export function useBackendData() {
     const [libraryFiles, setLibraryFiles] = useState<string[]>([]);
@@ -31,7 +31,7 @@ export function useBackendData() {
     // 2. WebSocket Connection
     useEffect(() => {
         refreshAll();
-        socketRef.current = new WebSocket(WS_URL);
+        socketRef.current = new WebSocket(BACKEND_WS_URL);
 
         socketRef.current.onmessage = (event) => {
             const data = JSON.parse(event.data);

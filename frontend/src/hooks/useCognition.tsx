@@ -4,11 +4,15 @@ import type { ReaderBook } from "../types/readerBackendTypes";
 import type { IngestQueueState } from "../components/libraryManager/libraryManagerTypes";
 import { notify } from "../components/system/AppNotifications";
 import { useModelRuntime } from "../components/system/ModelRuntimeProvider";
+import {
+    API_BASE_URL,
+    BACKEND_WS_URL,
+    buildApiUrl,
+} from "../lib/runtimeConfig";
 
 const API = axios.create({
-    baseURL: "https://doomprompting123-space.hf.space",
+    baseURL: API_BASE_URL,
 });
-const WS_URL = "ws://127.0.0.1:8000/ws";
 
 const EMPTY_INGEST_QUEUE: IngestQueueState = {
     current: null,
@@ -81,7 +85,7 @@ export default function useCognition() {
 
     useEffect(() => {
         refreshAll();
-        socketRef.current = new WebSocket(WS_URL);
+        socketRef.current = new WebSocket(BACKEND_WS_URL);
 
         socketRef.current.onmessage = (event) => {
             try {
@@ -176,7 +180,9 @@ export default function useCognition() {
                 extension,
                 url:
                     bootstrapBook.url ||
-                    `https://doomprompting123-space.hf.space/reader/files/${encodeURIComponent(filename)}`,
+                    buildApiUrl(
+                        `/reader/files/${encodeURIComponent(filename)}`,
+                    ),
                 lid: bootstrapBook.lid || libraryId || "",
                 file_fingerprint: bootstrapBook.file_fingerprint || "",
                 initialReaderBootstrap: payload,

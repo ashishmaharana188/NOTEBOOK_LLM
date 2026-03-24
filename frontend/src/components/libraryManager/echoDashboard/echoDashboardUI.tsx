@@ -139,8 +139,7 @@ export default function EchoDashboardUI(props: any) {
                         }}
                         panning={{ excluded: ["no-pan"] }}
                         onInit={(ref) => state.setCanvasScale(ref.state.scale)}
-                        onZoom={(ref) => state.setCanvasScale(ref.state.scale)}
-                        onPinching={(ref) =>
+                        onZoomStop={(ref) =>
                             state.setCanvasScale(ref.state.scale)
                         }
                     >

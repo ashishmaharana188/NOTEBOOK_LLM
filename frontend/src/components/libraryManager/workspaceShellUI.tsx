@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   MinusIcon,
   XMarkIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
-import EchoDashboardUI from "./echoDashboard/echoDashboardUI";
-import NotesSectionUI from "./noteModule/notesSectionUI";
-import SpatialCanvasUI from "./spatialCanvas/spatialCanvasUI";
-import SystemConfigPanel from "./system/systemConfigPanel";
-import EchoContextModal from "./shared/EchoContextModal";
 import { useCanvasSnapshot } from "../system/CanvasSnapshotProvider";
+
+const EchoDashboardUI = React.lazy(() => import("./echoDashboard/echoDashboardUI"));
+const NotesSectionUI = React.lazy(() => import("./noteModule/notesSectionUI"));
+const SpatialCanvasUI = React.lazy(() => import("./spatialCanvas/spatialCanvasUI"));
+const SystemConfigPanel = React.lazy(() => import("./system/systemConfigPanel"));
+const EchoContextModal = React.lazy(() => import("./shared/EchoContextModal"));
 
 export default function WorkspaceShellUI(props: any) {
   const {
@@ -24,7 +25,7 @@ export default function WorkspaceShellUI(props: any) {
   const [activeTab, setActiveTab] = useState<
     "ECHOES" | "NOTES" | "SPATIAL" | "SYSTEM"
   >(
-    "ECHOES",
+    currentView || "ECHOES",
   );
   const [isMinimized, setIsMinimized] = useState(false);
 
@@ -74,6 +75,67 @@ export default function WorkspaceShellUI(props: any) {
     setFocusedEchoId(null);
     setActiveTab("NOTES");
   }, []);
+
+  const activePanel = useMemo(() => {
+    switch (activeTab) {
+      case "ECHOES":
+        return (
+          <EchoDashboardUI
+            {...props}
+            savedGlobalClusters={savedEchoes}
+            globalNotes={savedNotes}
+          />
+        );
+      case "SPATIAL":
+        return (
+          <SpatialCanvasUI
+            clusters={savedEchoes || []}
+            notes={savedNotes || []}
+            manualLinks={savedManualLinks || []}
+            fetchClusters={refreshCanvasSnapshot}
+            spatialMetadata={spatialMetadata}
+            onFocusNote={(node: any) => {
+              if (node?.note_id || node?.type === "note") {
+                openNoteEditor(node);
+                return;
+              }
+
+              const resolvedEchoId =
+                node?.echo_id || node?.chunk_id || node?.id || null;
+              if (resolvedEchoId) {
+                setFocusedEchoId(String(resolvedEchoId));
+              }
+            }}
+            onOpenMindMap={(nodeId: string) => {
+              sessionStorage.setItem(
+                "pendingMindMapAction",
+                JSON.stringify({ nodeId }),
+              );
+              window.dispatchEvent(
+                new CustomEvent("SWITCH_TAB", { detail: "MINDMAP" }),
+              );
+              onClose();
+            }}
+          />
+        );
+      case "NOTES":
+        return <NotesSectionUI />;
+      case "SYSTEM":
+        return <SystemConfigPanel />;
+      default:
+        return null;
+    }
+  }, [
+    activeTab,
+    onClose,
+    openNoteEditor,
+    props,
+    refreshCanvasSnapshot,
+    savedEchoes,
+    savedManualLinks,
+    savedNotes,
+    spatialMetadata,
+  ]);
 
   if (!isOpen || isMinimized) {
     const totalItems = (results?.length || 0) + (recommendations?.length || 0);
@@ -164,73 +226,26 @@ export default function WorkspaceShellUI(props: any) {
           </div>
         </div>
 
-        <div
-          className={`flex-1 w-full h-full relative ${
-            activeTab === "ECHOES" ? "block" : "hidden"
-          }`}
-        >
-          <EchoDashboardUI
-            {...props}
-            savedGlobalClusters={savedEchoes}
-            globalNotes={savedNotes}
-          />
-        </div>
-        <div
-          className={`flex-1 w-full h-full relative ${
-            activeTab === "SPATIAL" ? "block" : "hidden"
-          }`}
-        >
-          <SpatialCanvasUI
-            clusters={savedEchoes || []}
-            notes={savedNotes || []}
-            manualLinks={savedManualLinks || []}
-            fetchClusters={refreshCanvasSnapshot}
-            spatialMetadata={spatialMetadata}
-            onFocusNote={(node: any) => {
-              if (node?.note_id || node?.type === "note") {
-                openNoteEditor(node);
-                return;
-              }
-
-              const resolvedEchoId =
-                node?.echo_id || node?.chunk_id || node?.id || null;
-              if (resolvedEchoId) {
-                setFocusedEchoId(String(resolvedEchoId));
-              }
-            }}
-            onOpenMindMap={(nodeId: string) => {
-              sessionStorage.setItem(
-                "pendingMindMapAction",
-                JSON.stringify({ nodeId }),
-              );
-              window.dispatchEvent(
-                new CustomEvent("SWITCH_TAB", { detail: "MINDMAP" }),
-              );
-              onClose();
-            }}
-          />
-        </div>
-        <div
-          className={`flex-1 w-full h-full relative ${
-            activeTab === "NOTES" ? "block" : "hidden"
-          }`}
-        >
-          <NotesSectionUI />
-        </div>
-        <div
-          className={`flex-1 w-full h-full relative ${
-            activeTab === "SYSTEM" ? "block" : "hidden"
-          }`}
-        >
-          <SystemConfigPanel />
+        <div className="flex-1 w-full h-full relative">
+          <Suspense
+            fallback={
+              <div className="flex h-full w-full items-center justify-center bg-[#f8fafc] text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                Loading Workspace
+              </div>
+            }
+          >
+            {activePanel}
+          </Suspense>
         </div>
 
         {focusedEchoId && (
-          <EchoContextModal
-            echoId={focusedEchoId}
-            onClose={() => setFocusedEchoId(null)}
-            onOpenNote={openNoteEditor}
-          />
+          <Suspense fallback={null}>
+            <EchoContextModal
+              echoId={focusedEchoId}
+              onClose={() => setFocusedEchoId(null)}
+              onOpenNote={openNoteEditor}
+            />
+          </Suspense>
         )}
       </div>
     </div>
