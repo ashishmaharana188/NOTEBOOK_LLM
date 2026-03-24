@@ -52,7 +52,7 @@ function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
 
     setLoadingContext(true);
     try {
-      const API = axios.create({ baseURL: "http://127.0.0.1:8000" });
+      const API = axios.create({ baseURL: "https://doomprompting123-space.hf.space" });
       const res = await API.post("/echo/expand_context", {
         filename: filename,
         chunk_id: chunkId,
@@ -164,7 +164,7 @@ function InteractiveChunkCard({
     try {
       if (isSaved && echoId) {
         const res = await axios.put(
-          "http://127.0.0.1:8000/brain/echo/update_title",
+          "https://doomprompting123-space.hf.space/brain/echo/update_title",
           {
             echo_id: echoId,
             title: customTitle || "Untitled Snippet",
@@ -176,7 +176,7 @@ function InteractiveChunkCard({
           return echoId;
         }
       } else {
-        const res = await axios.post("http://127.0.0.1:8000/brain/echo/save", {
+        const res = await axios.post("https://doomprompting123-space.hf.space/brain/echo/save", {
           book_id: bookId || activeBookTitle,
           library_id: libraryId || "",
           highlight: chunk.text,
@@ -209,7 +209,7 @@ function InteractiveChunkCard({
     setIsProcessing(true);
     try {
       if (isSaved && echoId) {
-        await axios.post("http://127.0.0.1:8000/brain/echo/delete", {
+        await axios.post("https://doomprompting123-space.hf.space/brain/echo/delete", {
           echo_id: echoId,
         });
         setIsSaved(false);
@@ -355,7 +355,7 @@ export function FloatingNoteModal({
 
   useEffect(() => {
     axios
-      .get(`http://127.0.0.1:8000/notes/item/single/${noteId}`)
+      .get(`https://doomprompting123-space.hf.space/notes/item/single/${noteId}`)
       .then((res) => {
         if (res.data.status === "success") setNote(res.data.data);
       });
@@ -442,7 +442,7 @@ export function FloatingEchoModal({
 }) {
   const [echo, setEcho] = useState<any>(null);
   useEffect(() => {
-    axios.get(`http://127.0.0.1:8000/brain/echo/${echoId}`).then((res) => {
+    axios.get(`https://doomprompting123-space.hf.space/brain/echo/${echoId}`).then((res) => {
       if (res.data.status === "success") setEcho(res.data.data);
     });
   }, [echoId]);
@@ -908,7 +908,7 @@ export default function EchoDashboardUI({
     !isGlobalCanvas;
 
   const refreshGlobalCanvas = () => {
-    axios.get("http://127.0.0.1:8000/brain/echoes/saved").then((res) => {
+    axios.get("https://doomprompting123-space.hf.space/brain/echoes/saved").then((res) => {
       if (res.data.status === "success") {
         const fetchedNotes = res.data.notes || [];
         const fetchedClusters = res.data.data || [];
@@ -995,7 +995,7 @@ export default function EchoDashboardUI({
     libId: string
   ) => {
     try {
-      await axios.post("http://127.0.0.1:8000/brain/cluster/activate", {
+      await axios.post("https://doomprompting123-space.hf.space/brain/cluster/activate", {
         cluster_id: clusterId,
         book_id: bookId,
         library_id: libId || "", // <--- ADD THIS
@@ -1020,7 +1020,7 @@ export default function EchoDashboardUI({
   ) => {
     try {
       const res = await axios.post(
-        "http://127.0.0.1:8000/brain/cluster/spawn",
+        "https://doomprompting123-space.hf.space/brain/cluster/spawn",
         {
           book_id: bookId,
           parent_cluster_id: parentId,
@@ -1545,7 +1545,7 @@ export default function EchoDashboardUI({
                 echoNoteState.echoId || null
               );
               if (newNoteId && echoNoteState.echoId) {
-                await axios.post("http://127.0.0.1:8000/brain/echo/link_note", {
+                await axios.post("https://doomprompting123-space.hf.space/brain/echo/link_note", {
                   echo_id: echoNoteState.echoId,
                   note_id: newNoteId,
                 });

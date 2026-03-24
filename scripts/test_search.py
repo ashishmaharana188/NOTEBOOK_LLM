@@ -1,7 +1,8 @@
-import requests
 import json
 
-url = "http://127.0.0.1:8000/search"
+import requests
+
+url = "https://doomprompting123-space.hf.space/search"
 payload = {"query": "What is the nature of justice?", "top_k": 3}
 
 try:

@@ -1694,7 +1694,7 @@ const SpatialStack = React.memo(
     ) => {
       setActiveThoughts((prev) => ({ ...prev, [parentId]: newThoughts }));
       try {
-        await fetch("http://127.0.0.1:8000/brain/quick_thoughts/update", {
+        await fetch("https://doomprompting123-space.hf.space/brain/quick_thoughts/update", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1788,7 +1788,7 @@ const SpatialStack = React.memo(
     ) => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/brain/tags/update",
+          "https://doomprompting123-space.hf.space/brain/tags/update",
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -2133,7 +2133,7 @@ const SpatialStack = React.memo(
                           : cluster.id;
                         const endpoint = isNotesMode ? "stack" : "cluster";
                         await fetch(
-                          `http://127.0.0.1:8000/upload/media/${endpoint}/${targetId}`,
+                          `https://doomprompting123-space.hf.space/upload/media/${endpoint}/${targetId}`,
                           { method: "POST", body: formData },
                         );
                       }}
@@ -2753,7 +2753,7 @@ export default function SpatialCanvasUI({
                           try {
                             // 2. Call the API
                             const response = await fetch(
-                              "http://127.0.0.1:8000/brain/archive/ungroup",
+                              "https://doomprompting123-space.hf.space/brain/archive/ungroup",
                               {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
@@ -2970,7 +2970,7 @@ export default function SpatialCanvasUI({
 
           try {
             const response = await fetch(
-              "http://127.0.0.1:8000/brain/archive/group",
+              "https://doomprompting123-space.hf.space/brain/archive/group",
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import uuid
+
 import numpy as np
 
 # CRITICAL WINDOWS FIX: Kills the multiprocessing spawn bug (WinError 5)
@@ -18,10 +19,7 @@ import time
 from collections import Counter
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from typing import List, Optional
+
 import requests
 from fastapi import (
     BackgroundTasks,
@@ -35,14 +33,17 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import scripts.hydrator  # <--- ADD THIS
 from scripts.build_db import ingest_csvs
 
 # --- INTERNAL IMPORTS ---
 from scripts.db_manager import DBManager, graph_db
 from scripts.echo_engine import get_echo_context
+from scripts.graph_engine import add_custom_edge, add_custom_node, get_core_graph
 from scripts.ingest_queue import ingest_queue_manager
 from scripts.librarian import (
     build_catalog,
@@ -52,20 +53,19 @@ from scripts.librarian import (
     search_internet_archive_async,
 )
 from scripts.library_maintenance import refresh_library_files
+from scripts.model_runtime import (
+    RuntimeLoadError,
+    RuntimeNotReadyError,
+    runtime_manager,
+)
 from scripts.parsers import read_any_file_metadata
-import scripts.hydrator  # <--- ADD THIS
-
+from scripts.reader_service import ReaderManifestService, compute_file_fingerprint
 
 # Notice we completely removed the reasoning import from here!
-
 # --- NEW MAINTENANCE & RECOMMENDER IMPORTS ---
 from scripts.recommender import get_recommendations
 from scripts.vectorize import get_embedding, load_model, unload_model
 from scripts.vectorize_registry import stop_vectorization, vectorize_registry
-from scripts.graph_engine import get_core_graph, add_custom_edge, add_custom_node
-from scripts.model_runtime import runtime_manager, RuntimeLoadError, RuntimeNotReadyError
-from scripts.reader_service import ReaderManifestService, compute_file_fingerprint
-
 
 # --- CONFIGURATION ---
 BASE_DIR = os.getcwd()
@@ -176,7 +176,7 @@ app = FastAPI(lifespan=lifespan)
 UPLOAD_DIR = "stored_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# This allows the frontend to access files via http://localhost:8000/files/filename.jpg
+# This allows the frontend to access files via https://doomprompting123-space.hf.space/files/filename.jpg
 app.mount("/stored_files", StaticFiles(directory=UPLOAD_DIR), name="files")
 
 
@@ -654,7 +654,9 @@ def system_runtime_endpoint():
 @app.put("/system/runtime/config")
 def system_runtime_config_endpoint(request: RuntimeConfigRequest):
     try:
-        payload = request.model_dump() if hasattr(request, "model_dump") else request.dict()
+        payload = (
+            request.model_dump() if hasattr(request, "model_dump") else request.dict()
+        )
         updates = {k: v for k, v in payload.items() if v is not None}
         return {"status": "success", "data": runtime_manager.update_config(updates)}
     except RuntimeLoadError as error:
@@ -820,7 +822,7 @@ def reader_bootstrap_endpoint(filename: str, lid: Optional[str] = Query(default=
                 "title": identity["title"],
                 "author": identity["author"],
                 "extension": identity["format"],
-                "url": f"http://127.0.0.1:8000/reader/files/{identity['filename']}?v={identity['file_fingerprint']}",
+                "url": f"https://doomprompting123-space.hf.space/reader/files/{identity['filename']}?v={identity['file_fingerprint']}",
                 "file_fingerprint": identity["file_fingerprint"],
             },
             "session": session,
@@ -1549,16 +1551,18 @@ def save_echo_endpoint(request: EchoSaveRequest):
     """Phase 2: Semantic Clustering (Relational Graph Approach with Dual-Anchors)"""
     try:
         runtime_manager.require_roles_ready(["embedding"])
+        import uuid
+
         from scripts.db_manager import graph_db
         from scripts.vectorize import get_embedding
-        import uuid
 
         # --- THE FIX: Backend Auto-Resolver ---
         resolved_library_id = request.library_id
 
         if not resolved_library_id:
-            from scripts.db_manager import db, LIBRARY_DB_PATH
             import sqlite3
+
+            from scripts.db_manager import LIBRARY_DB_PATH, db
 
             # 1. Try to resolve the hard ID from LanceDB using the filename
             try:
@@ -1667,7 +1671,7 @@ def save_echo_endpoint(request: EchoSaveRequest):
                 source_id=new_echo_id,
                 target_id=best_match_id,
                 edge_type="compound_link",
-                context_text=f"Semantic Match: {int(best_score*100)}%",
+                context_text=f"Semantic Match: {int(best_score * 100)}%",
                 weight=float(best_score),
             )
             return {
@@ -1751,8 +1755,9 @@ def save_spatial_metadata_endpoint(request: SpatialMetadataBulkRequest):
 @app.post("/brain/cluster/spawn")
 def spawn_cluster_endpoint(request: ClusterSpawnRequest):
     try:
-        from scripts.db_manager import graph_db
         import uuid
+
+        from scripts.db_manager import graph_db
 
         new_id = f"cluster_{uuid.uuid4().hex[:8]}"
         graph_db.create_cluster(
@@ -1782,8 +1787,9 @@ def archive_items_group_endpoint(request: ArchiveGroupRequest):
     Groups selected root items into an archive folder OR scattered items into a sub-folder.
     """
     try:
-        from scripts.db_manager import graph_db
         import logging
+
+        from scripts.db_manager import graph_db
 
         if not request.items:
             return {"status": "error", "message": "No items provided for archiving."}
@@ -1820,8 +1826,9 @@ def archive_items_group_endpoint(request: ArchiveGroupRequest):
 @app.post("/brain/archive/scattered")
 def archive_scattered_items(req: SubArchiveRequest):
     try:
-        from scripts.db_manager import graph_db
         import logging
+
+        from scripts.db_manager import graph_db
 
         # Bridge legacy requests until Frontend Phase 3 is complete
         owner_id = req.owner_item_id or req.parent_stack_id
@@ -1863,8 +1870,9 @@ def append_items_to_archive_endpoint(request: ArchiveAppendRequest):
 def unarchive_items_group_endpoint(request: UnarchiveGroupRequest):
     """Dissolves an archive folder and returns items to the canvas/parent."""
     try:
-        from scripts.db_manager import graph_db
         import logging
+
+        from scripts.db_manager import graph_db
 
         # Add support for Inner Archives
         if request.type == "INNER_ARCHIVE":
@@ -2114,9 +2122,9 @@ def get_echo_by_id(echo_id: str):
         # Fetch the echo AND its parent cluster's column name
         c.execute(
             """
-            SELECT e.*, c.book_id as column_name 
-            FROM user_echoes e 
-            LEFT JOIN echo_clusters c ON e.cluster_id = c.cluster_id 
+            SELECT e.*, c.book_id as column_name
+            FROM user_echoes e
+            LEFT JOIN echo_clusters c ON e.cluster_id = c.cluster_id
             WHERE e.echo_id = ?
         """,
             (echo_id,),
@@ -2150,9 +2158,10 @@ print(">>> NEW MEDIA ENDPOINT SUCCESSFULLY REGISTERED <<<")
 @app.post("/upload/media/{item_type}/{item_id}")
 async def upload_media_file(item_type: str, item_id: str, file: UploadFile = File(...)):
     try:
+        import os
         import shutil
         import uuid
-        import os
+
         from fastapi import HTTPException
 
         file_extension = os.path.splitext(file.filename)[1].lower()
@@ -2187,9 +2196,7 @@ async def upload_media_file(item_type: str, item_id: str, file: UploadFile = Fil
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        file_url = (
-            f"http://localhost:8000/stored_files/notes/{item_id}/{unique_filename}"
-        )
+        file_url = f"https://doomprompting123-space.hf.space/stored_files/notes/{item_id}/{unique_filename}"
 
         if item_type == "stack":
             from scripts.db_manager import graph_db
@@ -2271,8 +2278,9 @@ def delete_cluster_endpoint(cluster_id: str):
 @app.put("/brain/cluster/layout")
 def update_cluster_layout_endpoint(request: ClusterLayoutUpdateRequest):
     try:
-        from scripts.db_manager import graph_db
         import json
+
+        from scripts.db_manager import graph_db
 
         layout_dicts = [
             {"type": item.type, "id": item.id} for item in request.orbit_layout

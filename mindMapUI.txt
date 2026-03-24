@@ -118,7 +118,7 @@ const InspectorPanel = ({
   const handleIngest = async () => {
     try {
       const targetFilename = selectedNode.filename || selectedNode.label;
-      const res = await axios.post("http://127.0.0.1:8000/brain/ingest", {
+      const res = await axios.post("https://doomprompting123-space.hf.space/brain/ingest", {
         filename: targetFilename,
       });
 
