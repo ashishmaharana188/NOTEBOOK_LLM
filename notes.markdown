@@ -1,0 +1,10 @@
+- Archive title
+- multi select dragging of the card
+- merge archives - multiple selected cards/single cards to a prsent archive
+- add manual card creation to notes mode
+- fix notes mode archive logic
+- merge logic fix
+- add web ai connection to offload local tasks when on mobile application
+- plan mobile application
+- redesign reader
+-

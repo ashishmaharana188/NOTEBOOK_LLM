@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler", // This allows extensionless imports
+    "target": "esnext",
+    /* Add "dom" and "dom.iterable" to support React/Browser environments */
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "types": [],
+
+    "sourceMap": true,
+    /* Usually 'false' for app projects where you don't publish types */
+    "declaration": false,
+    "declarationMap": false,
+
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    "strict": true,
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true
+  },
+  "include": ["src", "vite-env.d.ts"]
+}

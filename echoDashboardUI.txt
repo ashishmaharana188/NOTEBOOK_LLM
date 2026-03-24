@@ -1,0 +1,1613 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  TransformWrapper,
+  TransformComponent,
+  useControls,
+} from "react-zoom-pan-pinch";
+import axios from "axios";
+import {
+  SparklesIcon,
+  BookOpenIcon,
+  CheckIcon,
+  TrashIcon,
+  PencilSquareIcon,
+  LinkIcon,
+  ArrowsPointingOutIcon,
+  MagnifyingGlassPlusIcon,
+  MagnifyingGlassMinusIcon,
+  ViewfinderCircleIcon,
+  XMarkIcon,
+  MinusIcon,
+  PlusIcon,
+} from "@heroicons/react/24/outline";
+import type { EchoChunk, EchoRecommendation } from "./echoTypes";
+import NotesSectionUI from "../noteModule/notesSectionUI";
+import NotesFormUI from "../noteModule/notesFormUI";
+import useNotes from "../../../hooks/noteManager/useNotes";
+
+// --- EXPANDABLE CONTEXT CARD ---
+function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [fullText, setFullText] = useState(chunk.text);
+  const [loadingContext, setLoadingContext] = useState(false);
+
+  const handleExpand = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isExpanded) {
+      setIsExpanded(false);
+      return;
+    }
+    if (fullText !== chunk.text) {
+      setIsExpanded(true);
+      return;
+    }
+
+    const chunkId = (chunk as any).chunk_id;
+    const filename = (chunk as any).filename;
+
+    if (!filename || !chunkId) {
+      setIsExpanded(true);
+      return;
+    }
+
+    setLoadingContext(true);
+    try {
+      const API = axios.create({ baseURL: "http://127.0.0.1:8000" });
+      const res = await API.post("/echo/expand_context", {
+        filename: filename,
+        chunk_id: chunkId,
+        window: 4,
+      });
+      if (res.data.status === "success" && res.data.text) {
+        setFullText(res.data.text);
+      }
+    } catch (error) {
+      console.error("Failed to stitch context", error);
+    } finally {
+      setLoadingContext(false);
+      setIsExpanded(true);
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
+          <BookOpenIcon className="w-3 h-3" /> Context View
+        </span>
+        <span className="text-[9px] font-mono text-muted truncate max-w-[150px] text-right">
+          {chunk.chapter || "Unknown Chapter"}
+        </span>
+      </div>
+      <div
+        className={`bg-canvas border border-slate-100 rounded-sm p-3 transition-all duration-300 ${
+          isExpanded ? "max-h-[30vh] overflow-y-auto custom-scrollbar" : ""
+        }`}
+      >
+        {isExpanded ? (
+          <div className="text-sm text-primary leading-relaxed font-serif whitespace-pre-wrap">
+            {fullText}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-600 leading-relaxed italic line-clamp-4">
+            "{chunk.text}"
+          </p>
+        )}
+      </div>
+      <button
+        onClick={handleExpand}
+        className="mt-3 text-[9px] font-bold text-muted hover:text-primary uppercase tracking-widest flex items-center gap-1.5 transition-colors"
+      >
+        {loadingContext ? (
+          <span className="animate-pulse flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full border border-slate-500 border-t-transparent animate-spin"></div>
+            Stitching Pages...
+          </span>
+        ) : isExpanded ? (
+          "Collapse Context"
+        ) : (
+          "Read Full Context"
+        )}
+      </button>
+    </div>
+  );
+}
+
+// --- INTERACTIVE CHUNK CARD (Upgraded UI) ---
+function InteractiveChunkCard({
+  chunk,
+  chunkIndex,
+  libraryId,
+  query,
+  activeBookTitle,
+  onNoteClick,
+  bookId,
+  onViewNoteClick,
+  onSaveSuccess,
+  forceLinkedNoteId,
+}: {
+  chunk: EchoChunk;
+  chunkIndex: number;
+  query: string;
+  bookId?: string;
+  activeBookTitle: string;
+  onNoteClick: (data: {
+    markdown: string;
+    title: string;
+    echoId: string;
+  }) => void;
+  onViewNoteClick: (noteId: string) => void;
+  onSaveSuccess?: () => void;
+  forceLinkedNoteId?: string;
+  libraryId?: string;
+}) {
+  const isPreSaved =
+    chunk.relation === "Compound Echo" || chunk.relation === "Saved Insight";
+  const [isSaved, setIsSaved] = useState(isPreSaved);
+  const [isDeleted, setIsDeleted] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [echoId, setEchoId] = useState<string | null>(
+    isPreSaved ? String((chunk as any).echo_id || "") : null
+  );
+  const [customTitle, setCustomTitle] = useState(chunk.title || "");
+
+  const actualLinkedNoteId = forceLinkedNoteId || (chunk as any).linked_note_id;
+  const hasLink = Boolean(
+    actualLinkedNoteId &&
+      actualLinkedNoteId !== "null" &&
+      actualLinkedNoteId !== ""
+  );
+
+  // KEEP YOUR EXACT API LOGIC
+  const handleSaveAndReturnId = async () => {
+    setIsProcessing(true);
+    try {
+      if (isSaved && echoId) {
+        const res = await axios.put(
+          "http://127.0.0.1:8000/brain/echo/update_title",
+          {
+            echo_id: echoId,
+            title: customTitle || "Untitled Snippet",
+            chunk_id: String((chunk as any).chunk_id || ""),
+          }
+        );
+        if (res.data.status === "success") {
+          if (onSaveSuccess) onSaveSuccess();
+          return echoId;
+        }
+      } else {
+        const res = await axios.post("http://127.0.0.1:8000/brain/echo/save", {
+          book_id: bookId || activeBookTitle,
+          library_id: libraryId || "",
+          highlight: chunk.text,
+          context: chunk.chapter || "Unknown Context",
+          ai_insight:
+            chunk.bridge || chunk.relation || "Semantic Resonance Detected",
+          filename: (chunk as any).filename || activeBookTitle,
+          source_lid: (chunk as any).source_lid || "",
+          original_chunk_id: String((chunk as any).chunk_id || ""),
+          title: customTitle || "Untitled Snippet",
+        });
+        if (res.data.status === "success") {
+          setIsSaved(true);
+          setEchoId(res.data.echo_id);
+          chunk.relation = "Saved Insight";
+          (chunk as any).chunk_id = res.data.echo_id;
+          if (onSaveSuccess) onSaveSuccess();
+          return res.data.echo_id;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save/update echo:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+    return null;
+  };
+
+  const handleDelete = async () => {
+    setIsProcessing(true);
+    try {
+      if (isSaved && echoId) {
+        await axios.post("http://127.0.0.1:8000/brain/echo/delete", {
+          echo_id: echoId,
+        });
+        setIsSaved(false);
+        setEchoId(null);
+        chunk.relation = "AI Insight";
+        (chunk as any).chunk_id = undefined;
+      } else {
+        setIsDeleted(true);
+      }
+    } catch (e) {
+      console.error("Failed to delete echo:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleInitiateNote = async () => {
+    let currentEchoId = echoId;
+    if (!isSaved) currentEchoId = await handleSaveAndReturnId();
+    if (currentEchoId) {
+      const filename = (chunk as any).filename || activeBookTitle;
+      const chapter = chunk.chapter ? ` (${chunk.chapter})` : "";
+      const bridge = chunk.bridge || chunk.relation || "AI Insight";
+      const generatedTitle =
+        bridge.length > 40 ? `${bridge.substring(0, 40)}...` : bridge;
+      const markdown = `> **${bridge}**\n> ${chunk.text}\n>\n> *Source: ${filename}${chapter}*\n\n`;
+      onNoteClick({ markdown, title: generatedTitle, echoId: currentEchoId });
+    }
+  };
+
+  if (isDeleted) return null;
+
+  return (
+    <div className="bg-surface border border-slate-200 shadow-sm rounded-xl flex flex-col group hover:shadow-md hover:border-slate-300 transition-all duration-200 mb-4 overflow-hidden">
+      <div className="px-5 py-2.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate max-w-[200px]">
+          Source: {(chunk as any).filename || activeBookTitle}
+        </span>
+      </div>
+
+      <div className="p-5">
+        <div className="flex items-center justify-between gap-2 mb-3 group/title border-b border-transparent focus-within:border-slate-200 transition-colors pb-1">
+          <input
+            type="text"
+            value={customTitle}
+            onChange={(e) => setCustomTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && customTitle.trim() && !isProcessing) {
+                e.preventDefault();
+                handleSaveAndReturnId();
+              }
+            }}
+            placeholder="Name this snippet..."
+            className="w-full text-lg font-bold text-slate-800 border-none bg-transparent focus:outline-none focus:ring-0 p-0 placeholder-slate-300 transition-colors hover:text-blue-600 focus:text-blue-600"
+          />
+          {customTitle.trim() && (
+            <button
+              onClick={handleSaveAndReturnId}
+              disabled={isProcessing}
+              title="Save Snippet Title"
+              className="p-1.5 rounded-md text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 active:scale-90 transition-all opacity-0 group-hover/title:opacity-100 focus:opacity-100 disabled:opacity-50"
+            >
+              {isProcessing ? (
+                <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <CheckIcon className="w-5 h-5" />
+              )}
+            </button>
+          )}
+        </div>
+
+        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1.5">
+          {chunk.relation || "AI Bridge"}
+        </p>
+        <h5 className="font-semibold text-slate-700 text-sm leading-relaxed mb-4">
+          {chunk.bridge || "Semantic Resonance Detected"}
+        </h5>
+        {query && (
+          <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+              Your Highlight
+            </p>
+            <p className="text-xs text-slate-600 italic leading-relaxed border-l-2 border-slate-300 pl-2">
+              "{query}"
+            </p>
+          </div>
+        )}
+        <ExpandableChunkCard chunk={chunk} />
+      </div>
+
+      <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/80 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <div className="flex gap-3">
+          {!isSaved && (
+            <button
+              onClick={handleSaveAndReturnId}
+              disabled={isProcessing}
+              className="px-3 py-1.5 bg-white border border-slate-200 shadow-sm rounded-md text-[10px] uppercase font-bold text-slate-600 hover:text-black hover:border-slate-300 active:scale-95 flex items-center gap-1.5 transition-all"
+            >
+              <CheckIcon className="w-3.5 h-3.5" />{" "}
+              {isProcessing ? "Saving..." : "Save Link"}
+            </button>
+          )}
+          {hasLink ? (
+            <button
+              onClick={() => onViewNoteClick(actualLinkedNoteId)}
+              className="px-3 py-1.5 bg-blue-50 border border-blue-100 shadow-sm rounded-md text-[10px] uppercase font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-100 active:scale-95 flex items-center gap-1.5 transition-all"
+            >
+              <PencilSquareIcon className="w-3.5 h-3.5" /> View Linked Note
+            </button>
+          ) : (
+            <button
+              onClick={handleInitiateNote}
+              disabled={isProcessing}
+              className="px-3 py-1.5 bg-white border border-slate-200 shadow-sm rounded-md text-[10px] uppercase font-bold text-slate-600 hover:text-black hover:border-slate-300 active:scale-95 flex items-center gap-1.5 transition-all"
+            >
+              <PencilSquareIcon className="w-3.5 h-3.5" /> Note
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleDelete}
+          disabled={isProcessing}
+          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md active:scale-90 transition-all"
+        >
+          <TrashIcon className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- FLOATING NOTE PEEK MODAL ---
+export function FloatingNoteModal({
+  noteId,
+  onClose,
+  onEdit,
+}: {
+  noteId: string;
+  onClose: () => void;
+  onEdit: (note: any) => void;
+}) {
+  const [note, setNote] = useState<any>(null);
+
+  useEffect(() => {
+    axios
+      .get(`http://127.0.0.1:8000/notes/item/single/${noteId}`)
+      .then((res) => {
+        if (res.data.status === "success") setNote(res.data.data);
+      });
+  }, [noteId]);
+
+  if (!note) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm pointer-events-auto font-sans">
+      {/* 1:1 DRAGGABLE COLUMN WRAPPER DESIGN (RAW HTML - NO BUGS) */}
+      <div className="bg-surface/95   rounded-sm border border-border-subtle shadow-xl w-[400px] flex flex-col max-h-[750px] animate-in zoom-in-95 overflow-hidden">
+        {/* 1:1 COLUMN HEADER */}
+        <div className="p-4 border-b border-border-subtle flex items-center justify-between bg-canvas hover:bg-slate-100 transition-colors">
+          <div className="flex items-center gap-3 w-full pr-4">
+            <div className="p-2 bg-surface rounded-sm shadow-sm border border-border-subtle">
+              <PencilSquareIcon className="w-5 h-5 text-primary" />
+            </div>
+            <div className="overflow-hidden">
+              <h3 className="text-sm font-bold text-primary font-sans tracking-tight leading-none truncate max-w-[260px]">
+                {note.title || "Linked Note"}
+              </h3>
+              <p className="text-[9px] font-mono font-bold text-muted mt-1.5 uppercase tracking-widest truncate">
+                Notes Canvas
+              </p>
+            </div>
+          </div>
+          {/* Close Button is now safely embedded in the flex header */}
+          <button
+            onClick={onClose}
+            className="text-muted hover:text-red-500 transition-colors p-1"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* 1:1 COLUMN CONTENT AREA */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 bg-canvas/50">
+          {/* Note Card - Safe to reuse because it has no drag physics */}
+          <InteractiveNoteCard
+            note={note}
+            onViewEchoClick={() => {}} // Disabled in peek mode to prevent infinite modal nesting
+          />
+
+          {/* Edit Button styled to perfectly match the column aesthetic */}
+          <button
+            onClick={() => onEdit(note)}
+            className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-colors border border-blue-200 flex items-center justify-center gap-2 shadow-sm"
+          >
+            <PencilSquareIcon className="w-4 h-4" /> Edit Note
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- FIXED: AUTO ZOOM CONTROLS (No ForwardRef Errors) ---
+const AutoZoomTrigger = ({
+  targetId,
+  zoomToElement,
+  onZoomed,
+}: {
+  targetId: string | null;
+  zoomToElement: any;
+  onZoomed: () => void;
+}) => {
+  useEffect(() => {
+    if (targetId) {
+      setTimeout(() => {
+        zoomToElement(targetId, 1, 800, "easeOutExpo");
+        onZoomed();
+      }, 300);
+    }
+  }, [targetId, zoomToElement, onZoomed]);
+  return null;
+};
+// --- FLOATING ECHO PEEK MODAL ---
+export function FloatingEchoModal({
+  echoId,
+  onClose,
+}: {
+  echoId: string;
+  onClose: () => void;
+}) {
+  const [echo, setEcho] = useState<any>(null);
+  useEffect(() => {
+    axios.get(`http://127.0.0.1:8000/brain/echo/${echoId}`).then((res) => {
+      if (res.data.status === "success") setEcho(res.data.data);
+    });
+  }, [echoId]);
+
+  if (!echo) return null;
+
+  // We convert the DB echo back into the format expected by InteractiveChunkCard
+  const mockChunk: any = {
+    text: echo.sources?.[0]?.highlight || "",
+    filename: echo.sources?.[0]?.filename || "Unknown",
+    chapter: echo.sources?.[0]?.context || "Unknown Chapter",
+    bridge: echo.ai_insight,
+    relation: "Saved Insight",
+    similarity: 100,
+    echo_id: echo.echo_id,
+    linked_note_id: echo.linked_note_id,
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm pointer-events-auto font-sans">
+      {/* We reuse the EXACT DraggableColumn wrapper, but disable its dragging by forcing a static position */}
+      <div className="relative w-[400px] h-fit max-h-[80vh]">
+        <DraggableColumn
+          id="peek-modal"
+          title={echo.column_name || "Saved Cluster"}
+          author="Source Workspace"
+          initialPos={{ x: 0, y: 0 }}
+          onDragEnd={() => {}}
+          zIndex={100}
+          bringToFront={() => {}}
+          scale={1}
+        >
+          {/* We reuse the EXACT InteractiveChunkCard */}
+          <div className="p-4 space-y-4 bg-canvas/50 min-h-full">
+            <InteractiveChunkCard
+              chunk={mockChunk}
+              chunkIndex={0}
+              query=""
+              activeBookTitle={echo.column_name || "Saved Cluster"}
+              onNoteClick={() => {}} // Disabled in peek mode
+              onViewNoteClick={() => {}} // Disabled in peek mode\
+            />
+          </div>
+        </DraggableColumn>
+
+        {/* Close Button overlay */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-[110] p-1 bg-surface/50 hover:bg-red-50 text-muted hover:text-red-500 rounded-sm transition-colors"
+        >
+          <XMarkIcon className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- INTERACTIVE NOTE CARD ---
+function InteractiveNoteCard({
+  note,
+  onViewEchoClick,
+}: {
+  note: any;
+  onViewEchoClick: (id: string) => void;
+}) {
+  return (
+    <div className="bg-surface border border-border-subtle rounded-sm p-4 shadow-sm hover:border-slate-300 transition-colors mb-4">
+      <div className="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-bold text-primary uppercase tracking-widest flex items-center gap-1">
+            <PencilSquareIcon className="w-3 h-3 text-muted" /> User Note
+          </span>
+          {/* SAFE CHECK: Renders the Sparkles button if a valid link exists */}
+          {note.linked_echo_id &&
+            note.linked_echo_id !== "" &&
+            note.linked_echo_id !== "null" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewEchoClick(note.linked_echo_id);
+                }}
+                className="text-muted hover:text-purple-600 transition-colors bg-purple-50 p-1 rounded-sm border border-purple-100"
+                title="View Source Echo"
+              >
+                <SparklesIcon className="w-3 h-3" />
+              </button>
+            )}
+        </div>
+        <span className="text-[9px] font-mono text-muted">
+          {new Date(note.created_at).toLocaleDateString()}
+        </span>
+      </div>
+      <p className="text-xs text-primary leading-relaxed font-serif whitespace-pre-wrap">
+        {note.content}
+      </p>
+    </div>
+  );
+}
+
+// --- DRAGGABLE WRAPPER COMPONENT (Native UI Styling) ---
+const DraggableColumn = ({
+  id,
+  initialPos,
+  onDragEnd,
+  title,
+  author,
+  children,
+  zIndex,
+  bringToFront,
+  scale,
+  isHighlighted,
+  onMaximize, // <--- NEW PROP
+}: any) => {
+  const [localPos, setLocalPos] = useState(initialPos);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ startX: 0, startY: 0, x: 0, y: 0 });
+  const currentPos = useRef(initialPos);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    bringToFront(id);
+    setIsDragging(true);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      x: localPos.x,
+      y: localPos.y,
+    };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      const dx = (e.clientX - dragRef.current.startX) / scale;
+      const dy = (e.clientY - dragRef.current.startY) / scale;
+      const newPos = { x: dragRef.current.x + dx, y: dragRef.current.y + dy };
+      currentPos.current = newPos;
+      setLocalPos(newPos);
+    };
+    const handleMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        onDragEnd(id, currentPos.current);
+      }
+    };
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging, scale, id, onDragEnd]);
+
+  return (
+    <div
+      id={id}
+      className={`no-pan absolute w-[420px] flex flex-col max-h-[750px] bg-white/95 backdrop-blur-xl rounded-2xl border ${
+        !isDragging ? "transition-all duration-500" : "transition-none"
+      } ${
+        isHighlighted
+          ? "border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.5)] scale-[1.02] z-[9999]"
+          : "border-slate-200 shadow-xl"
+      } ${isDragging ? "shadow-2xl cursor-grabbing scale-[1.01]" : ""}`}
+      style={{
+        left: localPos.x,
+        top: localPos.y,
+        zIndex: isHighlighted ? 9999 : zIndex,
+      }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        bringToFront(id);
+      }}
+    >
+      <div
+        onMouseDown={handleMouseDown}
+        className="p-5 border-b border-slate-100 flex items-center justify-between cursor-grab active:cursor-grabbing bg-transparent hover:bg-slate-50 transition-colors rounded-t-2xl"
+      >
+        <div className="flex items-center gap-3 pointer-events-none w-full pr-4">
+          <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-100">
+            <BookOpenIcon className="w-5 h-5 text-blue-600" />
+          </div>
+          <div className="overflow-hidden">
+            <h3 className="text-base font-extrabold text-slate-800 font-sans tracking-tight leading-none truncate max-w-[240px]">
+              {title}
+            </h3>
+            <p className="text-[10px] font-mono font-bold text-slate-400 mt-1.5 uppercase tracking-widest truncate">
+              {author}
+            </p>
+          </div>
+        </div>
+        {/* --- MAXIMIZE BUTTON --- */}
+        {onMaximize ? (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onMaximize(id)}
+            className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg active:scale-90 transition-all pointer-events-auto shadow-sm border border-transparent hover:border-slate-200"
+            title="Expand Column"
+          >
+            <ArrowsPointingOutIcon className="w-4 h-4" />
+          </button>
+        ) : (
+          <ArrowsPointingOutIcon className="w-4 h-4 text-slate-300 pointer-events-none flex-shrink-0" />
+        )}
+      </div>
+      <div
+        className="flex-1 overflow-y-auto custom-scrollbar relative cursor-auto bg-slate-50/50 rounded-b-2xl p-2"
+        onMouseDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()} // <--- Added
+        onWheelCapture={(e) => e.stopPropagation()} // <--- Ensured
+        onTouchMove={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+//
+
+// --- NEW: MAXIMIZED COLUMN OVERLAY (The native UI approach) ---
+function MaximizedColumnView({
+  cluster,
+  onClose,
+  query,
+  activeBookTitle,
+  libraryId,
+  onNoteClick,
+  onViewNoteClick,
+  onSaveSuccess,
+  localLinkedNotes,
+}: any) {
+  if (!cluster) return null;
+
+  return (
+    <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-slate-900/60   p-6 md:p-12 animate-in fade-in duration-300 pointer-events-auto">
+      <div className="bg-slate-50 w-full max-w-5xl h-full rounded-[2rem] shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-12 duration-500 ease-out">
+        <div className="px-10 py-8 border-b border-slate-200 bg-white flex justify-between items-center shrink-0 shadow-sm z-10">
+          <div className="flex gap-6 items-center">
+            <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+              <BookOpenIcon className="w-8 h-8 text-indigo-600" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">
+                {cluster.title || activeBookTitle}
+              </h2>
+              <p className="text-xs font-mono font-bold text-slate-500 uppercase tracking-widest mt-2 flex items-center gap-2">
+                Focus View <span className="text-slate-300">•</span>{" "}
+                {cluster.chunks?.length || 0} Nodes
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-3 text-slate-400 bg-slate-100 hover:text-red-600 hover:bg-red-50 rounded-full transition-all active:scale-90 border border-transparent hover:border-red-200 shadow-sm"
+          >
+            <XMarkIcon className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-10 bg-slate-50/50">
+          <div className="max-w-3xl mx-auto space-y-6 pb-20">
+            {cluster.chunks?.map((chunk: any, chunkIndex: number) => (
+              <InteractiveChunkCard
+                key={chunkIndex}
+                chunk={chunk}
+                chunkIndex={chunkIndex}
+                query={query || ""}
+                libraryId={libraryId}
+                bookId={cluster.book_id}
+                activeBookTitle={activeBookTitle || cluster.title}
+                onNoteClick={onNoteClick}
+                onViewNoteClick={onViewNoteClick}
+                onSaveSuccess={onSaveSuccess}
+                forceLinkedNoteId={
+                  localLinkedNotes?.[chunk.echo_id || chunk.chunk_id]
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- LAZY LOADED SAVED CLUSTER COLUMN ---
+function SavedClusterColumn({
+  cluster,
+  positions,
+  updatePosition,
+  zIndexes,
+  bringToFront,
+  canvasScale,
+  handleToggleActive,
+  handleSpawnCluster,
+  setPendingEchoForNote,
+  setViewingNoteId,
+  refreshGlobalCanvas,
+  localLinkedNotes,
+}: any) {
+  // Manage lazy loading state locally for this specific column
+  const [visibleCount, setVisibleCount] = useState(3);
+  const chunks = cluster.chunks || [];
+
+  // 🚀 REVERSE THE ARRAY: Newest saves (end of DB array) now appear at the top!
+  const reversedChunks = [...chunks].reverse();
+  const visibleChunks = reversedChunks.slice(0, visibleCount);
+  const hasMore = reversedChunks.length > visibleCount;
+
+  return (
+    <DraggableColumn
+      id={cluster.id}
+      title={cluster.title}
+      author={cluster.is_active ? "Active Workspace" : "Passive Archive"}
+      initialPos={positions[cluster.id] || { x: 1000, y: 100 }}
+      onDragEnd={updatePosition}
+      zIndex={zIndexes[cluster.id] || 1}
+      bringToFront={bringToFront}
+      scale={canvasScale}
+    >
+      <div className="flex justify-between items-center p-4 border-b border-slate-200 bg-slate-50 sticky top-0 z-30">
+        <button
+          // FIX: Added cluster.library_id
+          onClick={() =>
+            handleToggleActive(cluster.id, cluster.book_id, cluster.library_id)
+          }
+          className={`px-3 py-1.5 text-[9px] font-bold tracking-widest uppercase rounded-sm border transition-colors shadow-sm flex items-center gap-1 ${
+            cluster.is_active
+              ? "bg-slate-800 text-white border-slate-800"
+              : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+          }`}
+        >
+          {cluster.is_active && <CheckIcon className="w-3 h-3" />}
+          {cluster.is_active ? "Active Target" : "Make Active"}
+        </button>
+        <button
+          // FIX: Pass library_id AND the clean cluster.title to the spawner!
+          onClick={() =>
+            handleSpawnCluster(
+              cluster.id,
+              cluster.book_id,
+              cluster.library_id,
+              cluster.title
+            )
+          }
+          className="px-3 py-1.5 text-[9px] font-bold tracking-widest uppercase bg-white text-slate-600 border border-slate-200 rounded-sm hover:bg-slate-50 transition-colors shadow-sm flex items-center gap-1"
+        >
+          <PlusIcon className="w-3 h-3" /> Branch
+        </button>
+      </div>
+      <div className="p-4 space-y-4 bg-slate-50/50 min-h-full">
+        {!chunks || chunks.length === 0 ? (
+          <p className="text-xs text-center text-slate-400 italic mt-4">
+            Empty cluster.
+          </p>
+        ) : (
+          <>
+            {visibleChunks.map((chunk: any, chunkIndex: number) => (
+              <InteractiveChunkCard
+                key={`${chunk.chunk_id || chunk.echo_id}-${chunkIndex}`}
+                chunk={chunk}
+                chunkIndex={chunkIndex}
+                query={""}
+                activeBookTitle={cluster.title}
+                bookId={cluster.book_id}
+                onNoteClick={(data) => setPendingEchoForNote(data as any)}
+                onViewNoteClick={(nId) => setViewingNoteId(nId)}
+                onSaveSuccess={refreshGlobalCanvas}
+                forceLinkedNoteId={
+                  localLinkedNotes[chunk.echo_id || chunk.chunk_id]
+                }
+              />
+            ))}
+            {hasMore && (
+              <button
+                onClick={() => setVisibleCount((prev) => prev + 3)}
+                className="w-full py-2.5 mt-2 bg-white border border-slate-200 hover:bg-slate-50 text-[10px] uppercase tracking-widest font-bold text-slate-600 rounded-sm transition-colors shadow-sm"
+              >
+                Load More Echoes ({chunks.length - visibleCount} hidden)
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </DraggableColumn>
+  );
+}
+
+//
+export default function EchoDashboardUI({
+  isOpen,
+  onClose,
+  onOpen,
+  results = [],
+  recommendations = [],
+  query = "",
+  loading = false,
+  activeBookTitle = "Current Focus",
+  activeBookAuthor = "Active Selection",
+  notes = [],
+  libraryId = "",
+}: any) {
+  // --- UNIFIED STATE ---
+  const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
+  const [topZIndex, setTopZIndex] = useState(10);
+  const [zIndexes, setZIndexes] = useState<Record<string, number>>({});
+  const [canvasScale, setCanvasScale] = useState(1);
+
+  const [maximizedClusterId, setMaximizedClusterId] = useState<string | null>(
+    null
+  );
+
+  const [viewMode, setViewMode] = useState<"ECHOES" | "RECS">("ECHOES");
+
+  // --- ECHO NOTE FORM STATE (Destructured STACKS now so the hierarchy works) ---
+  const { stacks, groups, fetchStacks, fetchGroups, createNote, updateNote } =
+    useNotes();
+  const [pendingEchoForNote, setPendingEchoForNote] = useState<{
+    markdown: string;
+    title: string;
+    echoId: string; // <--- ADDED
+  } | null>(null);
+
+  const [echoNoteState, setEchoNoteState] = useState<{
+    isOpen: boolean;
+    groupId: string | null;
+    prefill: string;
+    prefillTitle: string;
+    echoId: string | null;
+    initialNote?: any;
+  }>({
+    isOpen: false,
+    groupId: null,
+    prefill: "",
+    prefillTitle: "",
+    echoId: null,
+  });
+
+  const [localClusters, setLocalClusters] = useState<any[]>([]);
+  const activeColumnId = "active_focus";
+  const [positions, setPositions] = useState<
+    Record<string, { x: number; y: number }>
+  >({
+    [activeColumnId]: { x: 550, y: 100 },
+  });
+
+  const [globalNotes, setGlobalNotes] = useState<any[]>([]);
+  const [savedGlobalClusters, setSavedGlobalClusters] = useState<any[]>([]);
+  const [viewingNoteId, setViewingNoteId] = useState<string | null>(null);
+  const [viewingEchoId, setViewingEchoId] = useState<string | null>(null);
+  const [localLinkedNotes, setLocalLinkedNotes] = useState<
+    Record<string, string>
+  >({}); // <--- NEW MAP
+
+  // The LLM results are now strictly mapped to the Inbox!
+  const unsavedEchoes = results || [];
+  const isGlobalCanvas = activeBookTitle === "Global Cognitive Canvas";
+  const showInbox =
+    unsavedEchoes.length > 0 ||
+    recommendations?.length > 0 ||
+    loading ||
+    !isGlobalCanvas;
+
+  const refreshGlobalCanvas = () => {
+    axios.get("http://127.0.0.1:8000/brain/echoes/saved").then((res) => {
+      if (res.data.status === "success") {
+        const fetchedNotes = res.data.notes || [];
+        const fetchedClusters = res.data.data || [];
+
+        const linkMap: Record<string, string> = {};
+        fetchedNotes.forEach((n: any) => {
+          if (n.linked_echo_id && n.linked_echo_id !== "null") {
+            linkMap[n.linked_echo_id] = n.note_id;
+          }
+        });
+
+        fetchedClusters.forEach((cluster: any) => {
+          cluster.chunks?.forEach((chunk: any) => {
+            const resolvedLink = linkMap[chunk.echo_id] || chunk.linked_note_id;
+            if (resolvedLink && resolvedLink !== "null") {
+              chunk.linked_note_id = resolvedLink;
+            }
+          });
+        });
+
+        setGlobalNotes(fetchedNotes);
+        setSavedGlobalClusters(fetchedClusters);
+        setLocalLinkedNotes(linkMap);
+      }
+    });
+  };
+
+  const [zoomTarget, setZoomTarget] = useState<string | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const pendingStr = sessionStorage.getItem("pendingEchoAction");
+    if (pendingStr && isOpen) {
+      try {
+        const action = JSON.parse(pendingStr);
+        sessionStorage.removeItem("pendingEchoAction");
+        setTimeout(() => {
+          setZoomTarget(action.clusterId);
+          setHighlightId(action.clusterId);
+          setTimeout(() => setHighlightId(null), 1200);
+        }, 400);
+      } catch (e) {}
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshGlobalCanvas();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen || pendingEchoForNote) {
+      fetchStacks();
+      fetchGroups();
+    }
+  }, [isOpen, pendingEchoForNote, fetchStacks, fetchGroups]);
+
+  // Spatial Layout: Notes (Left) -> Inbox (Center) -> Saved Clusters (Right)
+  useEffect(() => {
+    setPositions((prev) => {
+      const newPos = { ...prev };
+
+      // Lock the permanent UI columns
+      if (!newPos["notes_canvas"]) newPos["notes_canvas"] = { x: 100, y: 100 };
+      if (!newPos[activeColumnId]) newPos[activeColumnId] = { x: 550, y: 100 };
+
+      let offsetX = 1000;
+
+      // Map the saved clusters off to the right
+      savedGlobalClusters.forEach((c: any) => {
+        if (!newPos[c.id]) {
+          newPos[c.id] = { x: offsetX, y: 100 + Math.random() * 50 };
+        }
+        offsetX += 450; // Spacing between saved columns
+      });
+      return newPos;
+    });
+  }, [savedGlobalClusters]);
+
+  const handleToggleActive = async (
+    clusterId: string,
+    bookId: string,
+    libId: string
+  ) => {
+    try {
+      await axios.post("http://127.0.0.1:8000/brain/cluster/activate", {
+        cluster_id: clusterId,
+        book_id: bookId,
+        library_id: libId || "", // <--- ADD THIS
+      });
+      setSavedGlobalClusters((prev) =>
+        prev.map((c) => {
+          if (c.book_id === bookId)
+            return { ...c, is_active: c.id === clusterId };
+          return c;
+        })
+      );
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSpawnCluster = async (
+    parentId: string,
+    bookId: string,
+    libId: string,
+    parentTitle: string // <--- 1. NEW PARAMETER
+  ) => {
+    try {
+      const res = await axios.post(
+        "http://127.0.0.1:8000/brain/cluster/spawn",
+        {
+          book_id: bookId,
+          parent_cluster_id: parentId,
+        }
+      );
+      const newCluster = {
+        id: res.data.cluster_id,
+        book_id: bookId,
+        title: parentTitle, // <--- 2. INHERIT THE PROPER TITLE
+        is_active: true,
+        parent_cluster_id: parentId,
+        chunks: [],
+        library_id: libId || "",
+      };
+      setSavedGlobalClusters((prev) => {
+        const updated = prev.map((c) =>
+          c.book_id === bookId ? { ...c, is_active: false } : c
+        );
+        return [...updated, newCluster];
+      });
+      setPositions((prev) => ({
+        ...prev,
+        [newCluster.id]: { x: prev[parentId].x, y: prev[parentId].y + 200 },
+      }));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const toggleStack = (stackId: string) =>
+    setExpandedStackId(expandedStackId === stackId ? null : stackId);
+
+  const bringToFront = (id: string) => {
+    setTopZIndex((prev) => prev + 1);
+    setZIndexes((prev) => ({ ...prev, [id]: topZIndex + 1 }));
+  };
+  const updatePosition = (id: string, newPos: { x: number; y: number }) =>
+    setPositions((prev) => ({ ...prev, [id]: newPos }));
+
+  // We no longer return the floating bubble or window frames here.
+  // WorkspaceShellUI handles the outer wrapper. We just return the fragments!
+  return (
+    <>
+      <TransformWrapper
+        initialScale={1}
+        initialPositionX={0}
+        initialPositionY={0}
+        minScale={0.1}
+        maxScale={3}
+        limitToBounds={false}
+        centerZoomedOut={false}
+        wheel={{ step: 0.1, smoothStep: 0.0005 }}
+        panning={{ excludedClasses: ["no-pan"] }}
+        onInit={(ref) => setCanvasScale(ref.state.scale)}
+        onZoom={(ref) => setCanvasScale(ref.state.scale)}
+        onPinching={(ref) => setCanvasScale(ref.state.scale)}
+      >
+        {({ zoomIn, zoomOut, zoomToElement }) => (
+          <>
+            <AutoZoomTrigger
+              targetId={zoomTarget}
+              zoomToElement={zoomToElement}
+              onZoomed={() => setZoomTarget(null)}
+            />
+            <div className="absolute bottom-6 left-6 z-[2000] flex flex-col gap-1 bg-surface/95   p-1.5 rounded-sm shadow-sm border border-border-subtle pointer-events-auto">
+              <button
+                onClick={() => zoomIn(0.2)}
+                className="p-2 text-slate-600 hover:text-primary hover:bg-slate-100 rounded-sm transition-colors"
+              >
+                <MagnifyingGlassPlusIcon className="w-4 h-4" />
+              </button>
+              <div className="text-[9px] font-mono font-bold text-center text-muted py-1 border-y border-slate-100 w-full">
+                {Math.round(canvasScale * 100)}%
+              </div>
+              <button
+                onClick={() => zoomOut(0.2)}
+                className="p-2 text-slate-600 hover:text-primary hover:bg-slate-100 rounded-sm transition-colors"
+              >
+                <MagnifyingGlassMinusIcon className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => zoomToElement("cards-bounding-box", 1, 600)}
+                className="p-2 text-slate-600 hover:text-primary hover:bg-slate-100 rounded-sm transition-colors mt-1 border-t border-slate-100 flex flex-col items-center justify-center"
+              >
+                <ViewfinderCircleIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            <TransformComponent
+              wrapperStyle={{ width: "100%", height: "100%" }}
+            >
+              <div className="relative w-0 h-0">
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: -15000,
+                    top: -15000,
+                    width: "30000px",
+                    height: "30000px",
+                    backgroundImage:
+                      "radial-gradient(#cbd5e1 1.5px, transparent 1.5px)",
+                    backgroundSize: "24px 24px",
+                    zIndex: 0,
+                  }}
+                />
+                <div
+                  id="cards-bounding-box"
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: positions[activeColumnId]?.x - 50 || 0,
+                    top: positions[activeColumnId]?.y - 50 || 0,
+                    width: 500,
+                    height: 800,
+                  }}
+                />
+
+                <svg
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: -15000,
+                    top: -15000,
+                    width: 30000,
+                    height: 30000,
+                    zIndex: 0,
+                  }}
+                >
+                  <g transform="translate(15000, 15000)">
+                    {savedGlobalClusters
+                      .filter((c) => c.parent_cluster_id)
+                      .map((c) => {
+                        const start = positions[c.parent_cluster_id];
+                        const end = positions[c.id];
+                        if (!start || !end) return null;
+                        const startX = start.x + 400;
+                        const startY = start.y + 80;
+                        const endX = end.x;
+                        const endY = end.y + 80;
+                        const cpOffset = Math.max(
+                          150,
+                          Math.abs(endX - startX) * 0.45
+                        );
+                        return (
+                          <path
+                            key={`edge-${c.id}`}
+                            d={`M ${startX} ${startY} C ${
+                              startX + cpOffset
+                            } ${startY}, ${
+                              endX - cpOffset
+                            } ${endY}, ${endX} ${endY}`}
+                            stroke="#64748b"
+                            strokeWidth="3.5"
+                            fill="none"
+                            opacity="0.8"
+                            strokeDasharray="6 6"
+                          />
+                        );
+                      })}
+                  </g>
+                </svg>
+
+                <DraggableColumn
+                  id="notes_canvas"
+                  title="Notes Canvas"
+                  author="Global Context"
+                  initialPos={positions["notes_canvas"] || { x: 100, y: 100 }}
+                  onDragEnd={updatePosition}
+                  zIndex={zIndexes["notes_canvas"] || 1}
+                  bringToFront={bringToFront}
+                  scale={canvasScale}
+                  isHighlighted={highlightId === "notes_canvas"}
+                >
+                  <div className="p-4 bg-canvas/50 min-h-full">
+                    <p className="text-[10px] text-muted uppercase tracking-widest mb-4">
+                      Dedicated workspace for connected concepts.
+                    </p>
+                    {!notes || notes.length === 0 ? (
+                      <p className="text-xs text-center text-muted italic mt-6 border border-dashed border-border-subtle p-4 rounded-sm bg-surface">
+                        No notes saved yet.
+                      </p>
+                    ) : (
+                      notes.map((note: any) => (
+                        <InteractiveNoteCard
+                          key={note.note_id}
+                          note={note}
+                          onViewEchoClick={(id) => setViewingEchoId(id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </DraggableColumn>
+
+                {showInbox && (
+                  <DraggableColumn
+                    id={activeColumnId}
+                    title={activeBookTitle}
+                    author="Incoming Signal"
+                    initialPos={positions[activeColumnId] || { x: 550, y: 100 }}
+                    onDragEnd={updatePosition}
+                    zIndex={zIndexes[activeColumnId] || 1}
+                    bringToFront={bringToFront}
+                    scale={canvasScale}
+                  >
+                    <div className="p-4 bg-canvas/50 min-h-full">
+                      <div className="sticky top-0 bg-canvas/95   z-30 pb-3 border-b border-border-subtle mb-4">
+                        <div className="flex bg-slate-200 p-0.5 rounded-sm">
+                          <button
+                            onClick={() => setViewMode("ECHOES")}
+                            className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-sm transition-all ${
+                              viewMode === "ECHOES"
+                                ? "bg-surface shadow-sm text-primary"
+                                : "text-muted hover:text-primary"
+                            }`}
+                          >
+                            Inbox ({unsavedEchoes.length || 0})
+                          </button>
+                          <button
+                            onClick={() => setViewMode("RECS")}
+                            className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-sm transition-all ${
+                              viewMode === "RECS"
+                                ? "bg-surface shadow-sm text-primary"
+                                : "text-muted hover:text-primary"
+                            }`}
+                          >
+                            Recs ({recommendations?.length || 0})
+                          </button>
+                        </div>
+                      </div>
+
+                      {loading ? (
+                        <div className="flex flex-col items-center justify-center py-16 opacity-70">
+                          <div className="w-6 h-6 border-2 border-slate-400 border-t-transparent rounded-full animate-spin mb-3"></div>
+                          <p className="text-[10px] font-bold font-mono text-muted uppercase tracking-widest">
+                            Resonating...
+                          </p>
+                        </div>
+                      ) : viewMode === "ECHOES" ? (
+                        <div className="relative">
+                          <div className="absolute left-[11px] top-2 bottom-0 w-[1px] bg-slate-200 z-0"></div>
+                          {unsavedEchoes.length === 0 && !loading && (
+                            <p className="text-xs text-center text-muted italic mt-6">
+                              No new incoming echoes.
+                            </p>
+                          )}
+                          <div className="space-y-6 relative z-10">
+                            {unsavedEchoes.map(
+                              (bookGroup: any, index: number) => {
+                                const stackId = `stack-${
+                                  bookGroup.id || index
+                                }`;
+                                const isExpanded = expandedStackId === stackId;
+                                const stackCount =
+                                  bookGroup.chunks?.length || 0;
+
+                                return (
+                                  <div key={stackId} className="relative pl-8">
+                                    <div
+                                      className={`absolute left-[7px] top-5 w-2.5 h-2.5 rounded-full border-2 transition-colors z-20 ${
+                                        isExpanded
+                                          ? "border-blue-500 bg-blue-500"
+                                          : "border-slate-400 bg-surface"
+                                      }`}
+                                    ></div>
+                                    {!isExpanded ? (
+                                      <div
+                                        onClick={() => toggleStack(stackId)}
+                                        className="relative cursor-pointer group mt-2"
+                                      >
+                                        {stackCount > 1 && (
+                                          <div className="absolute top-1.5 left-1.5 right-[-6px] bottom-[-6px] bg-surface border border-border-subtle rounded-sm shadow-sm z-0"></div>
+                                        )}
+                                        {stackCount > 2 && (
+                                          <div className="absolute top-3 left-3 right-[-12px] bottom-[-12px] bg-surface border border-border-subtle rounded-sm shadow-sm z-[-1]"></div>
+                                        )}
+
+                                        <div className="relative z-10 bg-surface border border-border-subtle group-hover:border-slate-400 rounded-sm shadow-sm p-4 transition-all">
+                                          <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
+                                              <LinkIcon className="w-3 h-3" />{" "}
+                                              Connects To
+                                            </span>
+                                            <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-sm">
+                                              {stackCount} Nodes
+                                            </span>
+                                          </div>
+                                          <h4 className="font-bold text-primary text-sm truncate">
+                                            {bookGroup.title}
+                                          </h4>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="bg-surface border border-slate-300 rounded-sm shadow-md overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div
+                                          onClick={() => toggleStack(stackId)}
+                                          className="bg-canvas border-b border-border-subtle p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors"
+                                        >
+                                          <div className="overflow-hidden pr-4">
+                                            <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1 mb-1">
+                                              <LinkIcon className="w-3 h-3" />{" "}
+                                              Connections With
+                                            </span>
+                                            <h4 className="font-bold text-primary text-sm truncate">
+                                              {bookGroup.title}
+                                            </h4>
+                                          </div>
+                                          <span className="text-[10px] font-bold uppercase tracking-widest text-muted hover:text-primary transition-colors">
+                                            Close
+                                          </span>
+                                        </div>
+                                        <div className="p-4 space-y-4 bg-canvas/50">
+                                          {bookGroup.chunks?.map(
+                                            (
+                                              chunk: EchoChunk,
+                                              chunkIndex: number
+                                            ) => (
+                                              <InteractiveChunkCard
+                                                key={chunkIndex}
+                                                chunk={chunk}
+                                                chunkIndex={chunkIndex}
+                                                query={query || ""}
+                                                libraryId={libraryId}
+                                                // STRICT ROUTING: Force all inbox saves into the current active reading session!
+                                                activeBookTitle={
+                                                  activeBookTitle
+                                                }
+                                                bookId={activeBookTitle}
+                                                onNoteClick={(data) =>
+                                                  setPendingEchoForNote(
+                                                    data as any
+                                                  )
+                                                }
+                                                onViewNoteClick={(nId) =>
+                                                  setViewingNoteId(nId)
+                                                }
+                                                onSaveSuccess={
+                                                  refreshGlobalCanvas
+                                                }
+                                                forceLinkedNoteId={
+                                                  localLinkedNotes[
+                                                    (chunk as any).echo_id ||
+                                                      (chunk as any).chunk_id
+                                                  ]
+                                                }
+                                              />
+                                            )
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4 relative z-10">
+                          {recommendations.length === 0 && !loading && (
+                            <p className="text-xs text-center text-muted italic mt-6">
+                              No recommendations found.
+                            </p>
+                          )}
+                          {recommendations.map(
+                            (rec: EchoRecommendation, index: number) => (
+                              <div
+                                key={index}
+                                className="bg-surface border border-border-subtle rounded-sm p-4 shadow-sm hover:border-slate-300 transition-all"
+                              >
+                                <h4 className="font-bold text-primary text-sm mb-1">
+                                  {rec.title}
+                                </h4>
+                                <p className="text-[9px] font-mono text-muted uppercase mb-3">
+                                  {rec.author || "Unknown Author"}
+                                </p>
+                                <div className="bg-canvas p-3 rounded-sm border border-slate-100">
+                                  <p className="text-xs text-slate-600 leading-relaxed italic border-l-2 border-slate-300 pl-2">
+                                    "{rec.description}"
+                                  </p>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </DraggableColumn>
+                )}
+
+                {/* --- COLUMNS 3...N: THE INDEPENDENT THOUGHT CLUSTERS --- */}
+                {savedGlobalClusters.map((cluster: any) => (
+                  <SavedClusterColumn
+                    key={cluster.id}
+                    cluster={cluster}
+                    positions={positions}
+                    updatePosition={updatePosition}
+                    zIndexes={zIndexes}
+                    bringToFront={bringToFront}
+                    canvasScale={canvasScale}
+                    handleToggleActive={handleToggleActive}
+                    handleSpawnCluster={handleSpawnCluster}
+                    setPendingEchoForNote={setPendingEchoForNote}
+                    setViewingNoteId={setViewingNoteId}
+                    refreshGlobalCanvas={refreshGlobalCanvas}
+                    localLinkedNotes={localLinkedNotes}
+                  />
+                ))}
+              </div>
+            </TransformComponent>
+          </>
+        )}
+      </TransformWrapper>
+
+      {/* --- MODAL: HIERARCHICAL FOLDER SELECTION --- */}
+      {pendingEchoForNote && (
+        <div className="absolute inset-0 z-[3000] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center pointer-events-auto">
+          <div className="bg-surface rounded-xl shadow-2xl border border-border-subtle w-[500px] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]">
+            <div className="px-5 py-4 border-b border-slate-100 bg-canvas flex justify-between items-center shrink-0">
+              <h3 className="text-sm font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                <PencilSquareIcon className="w-5 h-5 text-muted" /> Save Echo to
+                Notes
+              </h3>
+              <button
+                onClick={() => setPendingEchoForNote(null)}
+                className="text-muted hover:text-slate-700 transition-colors p-1"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-canvas">
+              {!stacks || stacks.length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted italic bg-surface rounded-lg border border-border-subtle shadow-sm">
+                  No Stacks found. Please create a Stack and Folder in the Notes
+                  Canvas first.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {stacks.map((stack) => {
+                    const stackGroups = groups.filter(
+                      (g) => g.stack_id === stack.stack_id
+                    );
+                    return (
+                      <div
+                        key={stack.stack_id}
+                        className="bg-surface border border-border-subtle rounded-lg overflow-hidden shadow-sm"
+                      >
+                        {/* Stack Header */}
+                        <div className="bg-slate-100/50 px-4 py-2 border-b border-border-subtle">
+                          <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                            {stack.title}
+                          </span>
+                        </div>
+
+                        {/* Folder Buttons */}
+                        <div className="flex flex-col">
+                          {stackGroups.length === 0 ? (
+                            <div className="px-4 py-3 text-xs text-muted italic">
+                              No folders in this stack.
+                            </div>
+                          ) : (
+                            stackGroups.map((g) => (
+                              <button
+                                key={g.group_id}
+                                onClick={() => {
+                                  setEchoNoteState({
+                                    isOpen: true,
+                                    groupId: g.group_id,
+                                    prefill: pendingEchoForNote.markdown,
+                                    prefillTitle: pendingEchoForNote.title,
+                                    echoId: pendingEchoForNote.echoId,
+                                  });
+                                  setPendingEchoForNote(null);
+                                }}
+                                className="w-full text-left px-4 py-3 text-sm font-bold text-slate-700 hover:bg-canvas hover:text-blue-600 border-b border-slate-100 last:border-0 transition-colors flex items-center gap-3 group"
+                              >
+                                <BookOpenIcon className="w-4 h-4 text-muted group-hover:text-blue-500 transition-colors" />
+                                {g.title}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {echoNoteState.isOpen && echoNoteState.groupId && (
+        <NotesFormUI
+          groupId={echoNoteState.groupId}
+          initialNote={echoNoteState.initialNote}
+          prefillContent={echoNoteState.prefill}
+          prefillTitle={echoNoteState.prefillTitle}
+          onClose={() =>
+            setEchoNoteState({
+              isOpen: false,
+              groupId: null,
+              prefill: "",
+              prefillTitle: "",
+              echoId: null,
+              initialNote: undefined,
+            })
+          }
+          onSave={async (title, content, tags, noteId) => {
+            if (noteId) {
+              await updateNote(
+                noteId,
+                echoNoteState.groupId!,
+                title,
+                content,
+                tags
+              );
+            } else {
+              const newNoteId = await createNote(
+                echoNoteState.groupId!,
+                title,
+                content,
+                tags,
+                echoNoteState.echoId || null
+              );
+              if (newNoteId && echoNoteState.echoId) {
+                await axios.post("http://127.0.0.1:8000/brain/echo/link_note", {
+                  echo_id: echoNoteState.echoId,
+                  note_id: newNoteId,
+                });
+                setLocalLinkedNotes((prev) => ({
+                  ...prev,
+                  [echoNoteState.echoId!]: newNoteId,
+                }));
+              }
+            }
+            refreshGlobalCanvas();
+            setEchoNoteState({
+              isOpen: false,
+              groupId: null,
+              prefill: "",
+              prefillTitle: "",
+              echoId: null,
+              initialNote: undefined,
+            });
+          }}
+        />
+      )}
+
+      {/* --- FLOATING PEEK MODALS --- */}
+      {viewingNoteId && (
+        <FloatingNoteModal
+          noteId={viewingNoteId}
+          onClose={() => setViewingNoteId(null)}
+          onEdit={(note) => {
+            setViewingNoteId(null);
+            setEchoNoteState({
+              isOpen: true,
+              groupId: note.group_id,
+              prefill: "",
+              prefillTitle: "",
+              echoId: null,
+              initialNote: note,
+            });
+          }}
+        />
+      )}
+      {viewingEchoId && (
+        <FloatingEchoModal
+          echoId={viewingEchoId}
+          onClose={() => setViewingEchoId(null)}
+        />
+      )}
+
+      {maximizedClusterId && (
+        <MaximizedColumnView
+          cluster={savedGlobalClusters.find(
+            (c: any) => c.id === maximizedClusterId
+          )}
+          onClose={() => setMaximizedClusterId(null)}
+          query={query}
+          libraryId={libraryId}
+          activeBookTitle={activeBookTitle}
+          localLinkedNotes={localLinkedNotes}
+          onNoteClick={(data: any) => setPendingEchoForNote(data)}
+          onViewNoteClick={(nId: string) => setViewingNoteId(nId)}
+          onSaveSuccess={refreshGlobalCanvas}
+        />
+      )}
+    </>
+  );
+}

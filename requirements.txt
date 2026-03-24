@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+requests
+pydantic
+python-multipart
+lancedb
+pyarrow
+sentence-transformers
+pandas
+beautifulsoup4
+EbookLib
+pymupdf
+gutenbergpy

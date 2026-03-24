@@ -1,0 +1,136 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@import "highlight.js/styles/github-dark.css";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* --- SEMANTIC COLOR MAPPINGS FOR TAILWIND V4 --- */
+  --color-canvas: var(--bg-canvas);
+  --color-surface: var(--bg-surface);
+  --color-primary: var(--text-primary);
+  --color-muted: var(--text-muted);
+  --color-border-subtle: var(--border-subtle);
+
+  --color-accent: var(--accent-main);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
+}
+
+/* 1. Default (Light/Crisp) Theme */
+:root {
+  --bg-canvas: #f8f9fa; /* slate-50 / gray-50 */
+  --bg-surface: #ffffff; /* white */
+  --text-primary: #0f172a; /* slate-900 */
+  --text-muted: #64748b; /* slate-500 */
+  --border-subtle: #e2e8f0; /* slate-200 */
+
+  --accent-main: #0f172a; /* gray-900 */
+  --accent-hover: #1e293b; /* gray-800 */
+  --accent-text: #ffffff; /* white */
+}
+
+/* 2. Dark (Midnight) Theme */
+.theme-dark {
+  --bg-canvas: #0f172a;
+  --bg-surface: #1e293b;
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-subtle: #334155;
+
+  --accent-main: #38bdf8;
+  --accent-hover: #7dd3fc;
+  --accent-text: #0f172a;
+}
+
+/* 3. Warm (Library/Sepia) Theme */
+.theme-warm {
+  --bg-canvas: #fdf6e3;
+  --bg-surface: #fffbf0;
+  --text-primary: #433422;
+  --text-muted: #8b7355;
+  --border-subtle: #e6dfcc;
+
+  --accent-main: #d97706;
+  --accent-hover: #b45309;
+  --accent-text: #ffffff;
+}
+
+/* 4. Cool (Terminal/Ice) Theme */
+.theme-cool {
+  --bg-canvas: #ecfeff;
+  --bg-surface: #ffffff;
+  --text-primary: #164e63;
+  --text-muted: #0891b2;
+  --border-subtle: #cffafe;
+
+  --accent-main: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-text: #ffffff;
+}
+
+/* Smooth transitions globally */
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+/* --- KEEP YOUR EXISTING SCROLLBAR CSS BELOW THIS LINE --- */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+/* ... rest of your custom scrollbar css ... */
+/* Custom Scrollbar */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.note-editor-shell {
+  overflow: visible;
+}
+
+.note-editor-frame {
+  overflow: hidden;
+}
+
+.note-editor-scroll {
+  overflow-x: visible;
+}
+
+.note-editor-blocknote,
+.note-editor-blocknote .bn-container,
+.note-editor-blocknote .bn-editor,
+.note-editor-blocknote .ProseMirror {
+  overflow: visible;
+}
+
+.note-editor-shell .bn-mantine .mantine-Menu-dropdown,
+.note-editor-shell .bn-mantine .bn-menu-dropdown,
+.note-editor-shell .bn-mantine .bn-panel-popover,
+.note-editor-shell .bn-mantine .bn-form-popover,
+.note-editor-shell .bn-mantine .bn-suggestion-menu,
+.note-editor-shell .bn-mantine .bn-grid-suggestion-menu {
+  max-height: min(360px, calc(100vh - 140px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.note-editor-shell .bn-mantine .bn-suggestion-menu,
+.note-editor-shell .bn-mantine .bn-grid-suggestion-menu {
+  overflow-x: hidden;
+}

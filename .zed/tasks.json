@@ -1,0 +1,14 @@
+[
+    {
+        "label": "Open Firefox Dev",
+        "command": "& \"C:\\Program Files\\Mozilla Firefox\\firefox.exe\"",
+        "args": ["-P", "zed-dev", "http://localhost:5173"],
+    },
+    {
+        "label": "Debug Full Stack (Vite + Firefox)",
+        "command": "node",
+        "args": ["--inspect-brk", "node_modules/vite/bin/vite.js"],
+        "use_new_terminal": true,
+        "post_start": "& \"C:\\Program Files\\Mozilla Firefox\\firefox.exe\" -P zed-dev http://localhost:5173",
+    },
+]

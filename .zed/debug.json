@@ -1,0 +1,21 @@
+[
+    {
+        "label": "Debug Vite Dev Server",
+        "adapter": "node",
+        "request": "launch",
+        "program": "${workspaceRoot}/node_modules/vite/bin/vite.js",
+        "cwd": "${workspaceRoot}",
+        "env": {
+            "NODE_ENV": "development",
+        },
+        "skipFiles": ["<node_internals>/**"],
+    },
+    {
+        "label": "Debug Node Backend",
+        "adapter": "node",
+        "request": "launch",
+        "program": "${workspaceRoot}/server/index.js",
+        "cwd": "${workspaceRoot}",
+        "skipFiles": ["<node_internals>/**"],
+    },
+]

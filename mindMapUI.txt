@@ -1,0 +1,1017 @@
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
+import useMindMap from "../../../hooks/libraryManager/useMindMap";
+import axios from "axios";
+import useNotes from "../../../hooks/noteManager/useNotes";
+import {
+  XMarkIcon,
+  CpuChipIcon,
+  DocumentTextIcon,
+  ArrowPathIcon,
+} from "@heroicons/react/24/outline";
+import { animate, stagger } from "animejs";
+import {
+  TransformWrapper,
+  TransformComponent,
+  useControls,
+} from "react-zoom-pan-pinch";
+
+//// --- HOVER TOOLTIP COMPONENT --- disbled the hover card that appears when hoveringover nodes, will be used later for other uses if required
+//const HoverTooltip = ({
+//  hoveredNode,
+//  coords,
+//}: {
+//  hoveredNode: any;
+//  coords: { x: number; y: number };
+//}) => {
+//  if (!hoveredNode || !coords) return null;
+
+//  // SMART PLACEMENT: If in the 15-30mins area (bottom half), flip the tooltip UP so it doesn't clip
+//  const isBottomHalf = coords.y > window.innerHeight / 2;
+
+//  return (
+//    <div
+//      className="fixed z-[100] pointer-events-none bg-surface/95 backdrop-blur-sm border border-gray-300 p-3 shadow-xl transition-all duration-100 rounded-none"
+//      style={{
+//        [isBottomHalf ? "bottom" : "top"]: isBottomHalf
+//          ? window.innerHeight - coords.y + 15
+//          : coords.y + 15,
+//        left: coords.x + 15,
+//        width: "220px",
+//      }}
+//    >
+//      <div className="flex items-center gap-2 mb-1">
+//        <div
+//          className={`w-2 h-2 rounded-full ${
+//            hoveredNode.hasFile ? "bg-emerald-500" : "bg-gray-400"
+//          }`}
+//        ></div>
+//        <p className="text-[9px] font-bold text-muted uppercase tracking-[0.2em]">
+//          {hoveredNode.group}
+//        </p>
+//      </div>
+//      <h3 className="text-sm font-bold text-primary leading-tight mb-1">
+//        {hoveredNode.label || hoveredNode.title}
+//      </h3>
+//      {hoveredNode.author && hoveredNode.author !== "Unknown" && (
+//        <p className="text-xs text-muted font-medium line-clamp-1">
+//          {hoveredNode.author}
+//        </p>
+//      )}
+//    </div>
+//  );
+//};
+
+// --- CLICK INSPECTOR PANEL ---
+// --- CLICK INSPECTOR PANEL ---
+const InspectorPanel = ({
+  selectedNode,
+  onClose,
+}: {
+  selectedNode: any;
+  onClose: () => void;
+}) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const { renameStack, renameGroup } = useNotes();
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [editName, setEditName] = useState("");
+
+  useEffect(() => {
+    // Reset state whenever a new node is clicked
+    setIsRenaming(false);
+    setEditName(selectedNode?.label || selectedNode?.title || "");
+
+    if (panelRef.current) {
+      animate(panelRef.current, {
+        x: [50, 0],
+        opacity: [0, 1],
+        duration: 600,
+        ease: "outExpo",
+      });
+    }
+  }, [selectedNode]);
+
+  const navigateToEcho = (clusterId: string) => {
+    sessionStorage.setItem("pendingEchoAction", JSON.stringify({ clusterId }));
+    window.dispatchEvent(
+      new CustomEvent("SWITCH_TAB", { detail: "COGNITIVE_ECHO" })
+    );
+  };
+
+  const handleRename = async () => {
+    if (selectedNode.group === "stacks") {
+      await renameStack(selectedNode.id, editName);
+    } else if (selectedNode.group === "notes" && !selectedNode.isSubnode) {
+      await renameGroup(selectedNode.id, editName);
+    }
+    selectedNode.label = editName; // Optimistic visual update
+    setIsRenaming(false);
+  };
+
+  // --- FIX: Proper Ingestion Handler ---
+  const handleIngest = async () => {
+    try {
+      const targetFilename = selectedNode.filename || selectedNode.label;
+      const res = await axios.post("http://127.0.0.1:8000/brain/ingest", {
+        filename: targetFilename,
+      });
+
+      if (res.data.error) {
+        alert(`Ingestion Failed: ${res.data.error}`);
+      } else {
+        alert(
+          `Ingestion triggered for: ${res.data.filename || targetFilename}`
+        );
+      }
+    } catch (e) {
+      console.error("Ingest failed", e);
+      alert("Failed to connect to ingestion service.");
+    }
+  };
+
+  const navigateToNotes = (action: string, payload: any) => {
+    sessionStorage.setItem(
+      "pendingNoteAction",
+      JSON.stringify({ type: action, payload })
+    );
+    window.dispatchEvent(new CustomEvent("SWITCH_TAB", { detail: "NOTES" }));
+  };
+
+  if (!selectedNode) return null;
+
+  const isSubnode = selectedNode.isSubnode;
+
+  return (
+    <div
+      ref={panelRef}
+      className="absolute top-6 right-6 w-80 bg-surface/95 backdrop-blur-sm border border-gray-300 shadow-2xl z-40 rounded-none flex flex-col max-h-[90%] overflow-y-auto"
+    >
+      <div className="p-5 pb-4 relative border-b border-border-subtle">
+        <div className="flex justify-between items-start mb-2">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em]">
+            {selectedNode.group} Inspector
+          </span>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-primary transition-colors"
+          >
+            <XMarkIcon className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Dynamic Title / Renaming Input */}
+        {isRenaming ? (
+          <div className="flex gap-2 mb-3">
+            <input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleRename()}
+              className="flex-1 p-1 text-sm font-bold border border-gray-400 rounded bg-white text-primary"
+            />
+            <button
+              onClick={handleRename}
+              className="px-2 bg-accent text-accent-text text-[10px] font-bold uppercase rounded hover:bg-accent-hover"
+            >
+              Save
+            </button>
+          </div>
+        ) : (
+          <h2 className="text-lg font-bold text-primary leading-tight mb-3">
+            {selectedNode.label || selectedNode.title}
+          </h2>
+        )}
+
+        {selectedNode.author && selectedNode.author !== "Unknown" && (
+          <p className="text-[11px] text-gray-600 mb-1 font-medium tracking-wide">
+            SOURCE : {selectedNode.author}{" "}
+            {selectedNode.year ? `- ${selectedNode.year}` : ""}
+          </p>
+        )}
+
+        {selectedNode.description && (
+          <p className="text-sm text-gray-700 italic border-l-2 border-gray-300 pl-3 my-4">
+            "{selectedNode.description}"
+          </p>
+        )}
+
+        {/* --- LAYER SPECIFIC ACTIONS --- */}
+
+        {/* LAYER 1: LIBRARY (Ingest Only) */}
+        {selectedNode.group === "library" && (
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={handleIngest}
+              className="flex-1 flex items-center justify-center gap-2 py-2 bg-gray-900 hover:bg-accent-hover text-white text-[10px] font-bold tracking-[0.2em] uppercase transition-colors rounded-none shadow-sm"
+            >
+              <CpuChipIcon className="w-4 h-4" /> Ingest
+            </button>
+          </div>
+        )}
+
+        {/* LAYER 3: ECHOES (Parent vs Subnode) */}
+        {selectedNode.group === "echo" && !isSubnode && (
+          <div className="flex flex-col gap-2 mt-4">
+            <div className="p-3 bg-canvas border border-border-subtle text-xs font-bold text-muted uppercase flex items-center justify-between">
+              <span>Status:</span>
+              <span className="text-emerald-500 font-bold">Active Column</span>
+            </div>
+            {/* NEW: View Workspace Button */}
+            <button
+              onClick={() => navigateToEcho(selectedNode.id)}
+              className="w-full py-2 bg-gray-900 hover:bg-accent-hover text-white text-[10px] font-bold uppercase tracking-widest transition-colors shadow-sm"
+            >
+              View Workspace
+            </button>
+          </div>
+        )}
+        {selectedNode.group === "echo" && isSubnode && (
+          <div className="flex gap-2 mt-4">
+            <button className="flex-1 py-2 border border-gray-900 text-primary hover:bg-gray-100 text-[10px] font-bold tracking-[0.2em] uppercase transition-colors rounded-none flex items-center justify-center gap-2">
+              <DocumentTextIcon className="w-4 h-4" /> Edit Node
+            </button>
+          </div>
+        )}
+
+        {/* LAYER 4: NOTES (Folder vs Note) */}
+        {selectedNode.group === "notes" && !isSubnode && (
+          <div className="flex flex-col gap-2 mt-4">
+            {!isRenaming && (
+              <button
+                onClick={() => setIsRenaming(true)}
+                className="w-full py-2 border border-gray-300 hover:border-gray-900 text-[10px] font-bold uppercase tracking-widest text-primary transition-colors"
+              >
+                Rename Folder
+              </button>
+            )}
+            <button
+              onClick={() =>
+                navigateToNotes("VIEW_FOLDER", { groupId: selectedNode.id })
+              }
+              className="w-full py-2 bg-gray-900 hover:bg-accent-hover text-white text-[10px] font-bold uppercase tracking-widest transition-colors shadow-sm"
+            >
+              View Folder Notes
+            </button>
+          </div>
+        )}
+        {selectedNode.group === "notes" && isSubnode && (
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() =>
+                navigateToNotes("EDIT_NOTE", {
+                  noteId: selectedNode.id,
+                  groupId: selectedNode.groupId,
+                })
+              }
+              className="flex-1 py-2 border border-gray-900 text-primary hover:bg-gray-100 text-[10px] font-bold tracking-[0.2em] uppercase transition-colors rounded-none flex items-center justify-center gap-2"
+            >
+              <DocumentTextIcon className="w-4 h-4" /> Edit Note
+            </button>
+          </div>
+        )}
+
+        {/* LAYER 5: STACKS */}
+        {selectedNode.group === "stacks" && (
+          <div className="flex flex-col gap-2 mt-4">
+            {!isRenaming && (
+              <button
+                onClick={() => setIsRenaming(true)}
+                className="w-full py-2 border border-gray-300 hover:border-gray-900 text-[10px] font-bold uppercase tracking-widest text-primary transition-colors"
+              >
+                Rename Stack
+              </button>
+            )}
+            <button
+              onClick={() =>
+                navigateToNotes("VIEW_STACK", { stackId: selectedNode.id })
+              }
+              className="w-full py-2 bg-gray-900 hover:bg-accent-hover text-white text-[10px] font-bold uppercase tracking-widest transition-colors shadow-sm"
+            >
+              View Stack
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// --- CONTROLS COMPONENT (Handles Snap-to-Ring Zoom) ---
+const MindMapControls = ({ activeLayer }: any) => {
+  const { zoomToElement, resetTransform } = useControls();
+
+  useEffect(() => {
+    if (activeLayer) {
+      zoomToElement(`zoom-anchor-${activeLayer}`, 2.5, 800, "easeOutExpo");
+    } else {
+      resetTransform(800, "easeOutExpo");
+    }
+  }, [activeLayer, resetTransform, zoomToElement]);
+
+  return null;
+};
+
+export default function MindMapUI() {
+  const { graphData, loading } = useMindMap();
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [hoveredNode, setHoveredNode] = useState<any>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Interaction State
+  const [activeLayer, setActiveLayer] = useState<string | null>(null);
+  const [rotationOffsets, setRotationOffsets] = useState<
+    Record<string, number>
+  >({
+    library: 0,
+    brain: 0,
+    echoes: 0,
+    notes: 0,
+  });
+
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const CENTER_X = 550;
+  const CENTER_Y = 500;
+  const ORBITS = {
+    library: 110,
+    brain: 190,
+    echoes: 270,
+    notes: 400,
+    stacks: 430,
+  };
+
+  // --- DATA PROCESSING WITH VIRTUAL LAZY LOADING & SUB-NODE BRANCHING ---
+  const processedGraph = useMemo(() => {
+    if (!graphData || !graphData.nodes) return { nodes: [], links: [] };
+
+    // 1. Deep copy the raw data so we can mutate and build a tree structure safely
+    const rawNodes = JSON.parse(JSON.stringify(graphData.nodes));
+    const rawLinks = JSON.parse(JSON.stringify(graphData.links || []));
+
+    const rawGroups: Record<
+      "center" | "library" | "brain" | "echoes" | "notes" | "stacks",
+      any[]
+    > = {
+      center: [],
+      library: [],
+      brain: [],
+      echoes: [],
+      notes: [],
+      stacks: [],
+    };
+
+    // 2. Map nodes by ID and initialize their children arrays
+    const nodeMapById = new Map();
+    rawNodes.forEach((n: any) => {
+      n.children = [];
+      nodeMapById.set(n.id, n);
+    });
+    console.log("RAW LINKS RECEIVED FROM BACKEND:", rawLinks);
+    // 3. Build the Hierarchy (Flat to Tree)
+    rawLinks.forEach((link: any) => {
+      // 🛑 CRITICAL FIX: Add cross_pollination to the ignore list!
+      if (
+        link.type === "cross_link" ||
+        link.type === "compound_link" ||
+        link.type === "cross_pollination"
+      ) {
+        if (link.type === "cross_pollination") {
+          console.log("✅ FOUND POLLINATION LINK:", link);
+        }
+        return;
+      }
+
+      const source = nodeMapById.get(link.source);
+      const target = nodeMapById.get(link.target);
+
+      if (source && target) {
+        if (target.group === "stacks") return;
+
+        if (
+          target.group === "echo" ||
+          target.group === "notes" ||
+          target.group === source.group
+        ) {
+          target.children.push(source);
+          source.isNestedChild = true;
+        }
+      }
+    });
+
+    // 4. Sort Top-Level Nodes (Excluding Nested Children) into their respective Rings
+    rawNodes.forEach((n: any) => {
+      if (!n.isNestedChild) {
+        const group = n.group?.toLowerCase() || "";
+        if (n.id === "center" || n.isCenter) {
+          rawGroups.center.push(n);
+        } else if (group === "library") {
+          if (n.hasFile) rawGroups.library.push(n);
+          else rawGroups.brain.push(n);
+        } else if (group === "brain") {
+          rawGroups.brain.push(n);
+        } else if (group === "echo") {
+          rawGroups.echoes.push(n);
+        } else if (group === "stacks") {
+          rawGroups.stacks.push(n); // <--- Add Stacks logic
+        } else {
+          rawGroups.notes.push(n);
+        }
+      }
+    });
+
+    const positionedNodes: any[] = [];
+    const syntheticLinks: any[] = [];
+    const nodeMap = new Map();
+
+    const addCenter = (n: any) => {
+      const c = {
+        ...n,
+        x: CENTER_X,
+        y: CENTER_Y,
+        radius: 0,
+        angle: 0,
+        rotation: 0,
+      };
+      positionedNodes.push(c);
+      nodeMap.set(c.id || "center", c);
+    };
+
+    if (rawGroups.center.length > 0) addCenter(rawGroups.center[0]);
+    else addCenter({ id: "center", label: "MY LIBRARY", isCenter: true });
+
+    // Recursive function to project subnodes radially
+    const placeSubnodes = (
+      parentNode: any,
+      children: any[],
+      depth: number,
+      direction: number
+    ) => {
+      if (!children || children.length === 0) return;
+
+      const spreadAngle = Math.PI / (6 + depth * 2); // Fanning out narrows as depth increases
+
+      children.forEach((child, j) => {
+        const angleOffset =
+          children.length > 1
+            ? -spreadAngle / 2 + (spreadAngle / (children.length - 1)) * j
+            : 0;
+
+        const childAngle = parentNode.angle + angleOffset;
+        // Direction determines if it projects outwards (+1) or inwards (-1)
+        // We step 25px per depth level to populate the space between R270 and R350
+        const childRadius = parentNode.radius + direction * depth * 25;
+
+        const x = CENTER_X + childRadius * Math.cos(childAngle);
+        const y = CENTER_Y + childRadius * Math.sin(childAngle);
+
+        let rotation = (childAngle * 180) / Math.PI;
+        const safeRot = ((rotation % 360) + 360) % 360;
+        const isFlipped = safeRot > 90 && safeRot < 270;
+        if (isFlipped) rotation += 180;
+
+        const positionedChild = {
+          ...child,
+          uniqueId: child.id || `${parentNode.uniqueId}-sub-${depth}-${j}`,
+          x,
+          y,
+          radius: childRadius,
+          angle: childAngle,
+          rotation,
+          isFlipped,
+          layer: parentNode.layer,
+          isSubnode: true,
+          depth,
+          group: parentNode.group || child.group, // Inherit color group if missing
+        };
+
+        positionedNodes.push(positionedChild);
+        nodeMap.set(positionedChild.uniqueId, positionedChild);
+
+        syntheticLinks.push({
+          source: parentNode.uniqueId,
+          target: positionedChild.uniqueId,
+          sourceNode: parentNode,
+          targetNode: positionedChild,
+          isSynthetic: true,
+        });
+
+        const grandChildren = child.children || child.subnodes || [];
+        if (grandChildren.length > 0) {
+          placeSubnodes(positionedChild, grandChildren, depth + 1, direction);
+        }
+      });
+    };
+
+    // --- FIX 3: LAZY LOAD FREEZING ---
+    const placeNodes = (layerKey: keyof typeof rawGroups, radius: number) => {
+      const nodes = rawGroups[layerKey];
+      if (!nodes || nodes.length === 0) return;
+
+      const currentRotation = rotationOffsets[layerKey] || 0;
+      const projectionDirection = layerKey === "notes" ? -1 : 1;
+
+      // Unify the Active and Inactive math.
+      // The inactive ring will now permanently "freeze" at the exact rotation you left it!
+      const useEvenSpacing = nodes.length <= 15;
+      const activeAngleStep = useEvenSpacing
+        ? (2 * Math.PI) / Math.max(nodes.length, 1)
+        : Math.PI / 12;
+
+      const baseIndex = useEvenSpacing
+        ? 0
+        : Math.floor(-currentRotation / activeAngleStep);
+
+      const startIdx = useEvenSpacing ? 0 : baseIndex - 8;
+      const endIdx = useEvenSpacing ? nodes.length - 1 : baseIndex + 16;
+
+      for (let i = startIdx; i <= endIdx; i++) {
+        if (i >= 0 && i < nodes.length) {
+          const n = nodes[i];
+          const totalAngle = useEvenSpacing
+            ? i * activeAngleStep - Math.PI / 2 + currentRotation
+            : i * activeAngleStep + currentRotation - Math.PI / 8;
+
+          let normalizedAngle = totalAngle % (2 * Math.PI);
+          if (normalizedAngle > Math.PI) normalizedAngle -= 2 * Math.PI;
+          if (normalizedAngle < -Math.PI) normalizedAngle += 2 * Math.PI;
+
+          if (
+            normalizedAngle > -Math.PI / 1.6 &&
+            normalizedAngle < Math.PI / 1.6
+          ) {
+            const x = CENTER_X + radius * Math.cos(totalAngle);
+            const y = CENTER_Y + radius * Math.sin(totalAngle);
+
+            let rotation = (totalAngle * 180) / Math.PI;
+            const safeRot = ((rotation % 360) + 360) % 360;
+            const isFlipped = safeRot > 90 && safeRot < 270;
+            if (isFlipped) rotation += 180;
+
+            const positioned = {
+              ...n,
+              uniqueId: n.id,
+              x,
+              y,
+              radius,
+              angle: totalAngle,
+              rotation,
+              isFlipped,
+              layer: layerKey,
+            };
+
+            positionedNodes.push(positioned);
+            nodeMap.set(n.id, positioned);
+
+            if (n.children && n.children.length > 0) {
+              placeSubnodes(positioned, n.children, 1, projectionDirection);
+            }
+          }
+        }
+      }
+    };
+
+    placeNodes("library", ORBITS.library);
+    placeNodes("brain", ORBITS.brain);
+    placeNodes("echoes", ORBITS.echoes);
+    placeNodes("notes", ORBITS.notes);
+    placeNodes("stacks", ORBITS.stacks);
+
+    const positionedLinks = rawLinks
+      .map((l: any) => {
+        const source = nodeMap.get(l.source);
+        const target = nodeMap.get(l.target);
+        if (source && target)
+          return { ...l, sourceNode: source, targetNode: target };
+        return null;
+      })
+      .filter(Boolean);
+
+    // Merge standard links with the structural subnode links
+    return {
+      nodes: positionedNodes,
+      links: [...positionedLinks, ...syntheticLinks],
+    };
+  }, [graphData, activeLayer, rotationOffsets]);
+
+  // --- FIX 2: DEEP CASCADING HOVER (BFS) ---
+  const { connectedNodes, connectedLinks } = useMemo(() => {
+    if (!hoveredNode || !processedGraph.links) {
+      return { connectedNodes: new Set(), connectedLinks: new Set() };
+    }
+
+    const startId = hoveredNode.uniqueId || hoveredNode.id;
+    const cNodes = new Set([startId]);
+    const cLinks = new Set();
+    const queue = [startId];
+
+    // Build quick adjacency list for instantaneous traversal
+    const adj = new Map();
+    processedGraph.links.forEach((l: any) => {
+      const s = l.sourceNode?.uniqueId || l.source;
+      const t = l.targetNode?.uniqueId || l.target;
+      if (!adj.has(s)) adj.set(s, []);
+      if (!adj.has(t)) adj.set(t, []);
+      adj.get(s).push({ target: t, link: l });
+      adj.get(t).push({ target: s, link: l });
+    });
+
+    // Traverse the entire 5-ring family tree
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      const neighbors = adj.get(curr) || [];
+      neighbors.forEach((n: any) => {
+        cLinks.add(n.link);
+        if (!cNodes.has(n.target)) {
+          cNodes.add(n.target);
+          queue.push(n.target);
+        }
+      });
+    }
+    return { connectedNodes: cNodes, connectedLinks: cLinks };
+  }, [hoveredNode, processedGraph.links]);
+
+  // --- WHEEL HANDLER FOR CHUNKED ROTATION ---
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (activeLayer) {
+        // Chunked scrolling logic: standard scroll hides ~5 items and reveals ~5
+        const delta = e.deltaY * -0.035;
+        setRotationOffsets((prev) => ({
+          ...prev,
+          [activeLayer]: (prev[activeLayer] || 0) + delta,
+        }));
+      }
+    },
+    [activeLayer]
+  );
+
+  useEffect(() => {
+    if (!loading && processedGraph.nodes.length > 0) {
+      animate(".graph-node", {
+        opacity: [0, 1],
+        scale: [0.8, 1],
+        duration: 800,
+        delay: stagger(20),
+        ease: "outBack",
+      });
+    }
+  }, [loading]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[800px] bg-surface border border-border-subtle">
+        <div className="w-10 h-10 border-4 border-gray-800 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-muted font-bold tracking-[0.2em] text-sm uppercase">
+          Mapping Spatial Architecture...
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="w-full h-[800px] overflow-hidden relative font-sans select-none bg-[#fdfdfd] border border-border-subtle"
+      onMouseMove={(e) => setMousePos({ x: e.clientX, y: e.clientY })}
+    >
+      <div
+        className="absolute inset-0 z-0 pointer-events-none opacity-40"
+        style={{
+          backgroundImage: "radial-gradient(#9ca3af 1px, transparent 1px)",
+          backgroundSize: "24px 24px",
+        }}
+      ></div>
+
+      <div
+        className={`absolute top-6 left-8 z-10 pointer-events-none transition-opacity duration-500 ${
+          activeLayer ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        <h1 className="text-xl font-bold text-primary tracking-[0.1em] uppercase">
+          Cognitive Echo Canvas
+        </h1>
+        <p className="text-[10px] text-muted tracking-[0.2em] uppercase mt-1">
+          Spatial Knowledge Architecture
+        </p>
+      </div>
+
+      {activeLayer && (
+        <button
+          onClick={() => setActiveLayer(null)}
+          className="absolute top-6 left-8 z-50 bg-surface border border-gray-300 shadow-md px-4 py-2 flex items-center gap-2 hover:bg-canvas transition-all animate-in fade-in slide-in-from-top-4"
+        >
+          <ArrowPathIcon className="w-4 h-4 text-gray-600" />
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-800">
+            Reset View
+          </span>
+        </button>
+      )}
+
+      <div
+        className={`absolute top-6 right-8 bg-surface/90 backdrop-blur-sm border border-gray-300 p-5 shadow-sm z-10 w-64 rounded-none transition-transform duration-500 ${
+          activeLayer ? "translate-x-[150%]" : "translate-x-0"
+        }`}
+      >
+        <h3 className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.2em] mb-4 border-b border-border-subtle pb-2">
+          Orbit Layers
+        </h3>
+        <ul className="space-y-3 text-[11px] font-bold text-gray-700 tracking-wider uppercase">
+          <li className="flex items-center gap-3">
+            <span className="w-4 h-4 bg-surface flex items-center justify-center border border-gray-300">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+            </span>{" "}
+            Library (Available){" "}
+            <span className="text-gray-400 ml-auto">R 110</span>
+          </li>
+          <li className="flex items-center gap-3">
+            <span className="w-4 h-4 bg-surface flex items-center justify-center border border-gray-300">
+              <span className="w-2 h-2 bg-black rounded-full"></span>
+            </span>{" "}
+            Brain (Registry){" "}
+            <span className="text-gray-400 ml-auto">R 190</span>
+          </li>
+          <li className="flex items-center gap-3">
+            <span className="w-4 h-4 bg-surface flex items-center justify-center border border-gray-300">
+              <span className="w-2 h-2 bg-rose-700 rounded-full"></span>
+            </span>{" "}
+            Echoes <span className="text-gray-400 ml-auto">R 270</span>
+          </li>
+          <li className="flex items-center gap-3">
+            <span className="w-4 h-4 bg-surface flex items-center justify-center border border-gray-300">
+              <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+            </span>{" "}
+            Notes <span className="text-gray-400 ml-auto">R 400</span>
+          </li>
+          <li className="flex items-center gap-3">
+            <span className="w-4 h-4 bg-surface flex items-center justify-center border border-gray-300">
+              <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+            </span>{" "}
+            Stacks <span className="text-gray-400 ml-auto">R 410</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="absolute inset-0 z-0">
+        <TransformWrapper
+          initialScale={1}
+          minScale={0.2}
+          maxScale={4}
+          centerOnInit={true}
+          wheel={{ disabled: !!activeLayer }}
+          panning={{ disabled: !!activeLayer }}
+          limitToBounds={false}
+        >
+          {() => (
+            <>
+              <MindMapControls activeLayer={activeLayer} />
+
+              <TransformComponent
+                wrapperStyle={{ width: "100%", height: "100%" }}
+              >
+                <div
+                  className="relative"
+                  style={{ width: CENTER_X * 2, height: CENTER_Y * 2 }}
+                  onWheel={handleWheel}
+                >
+                  {Object.entries(ORBITS).map(([key, radius]) => (
+                    <div
+                      key={`anchor-${key}`}
+                      id={`zoom-anchor-${key}`}
+                      className="absolute w-1 h-1 pointer-events-none"
+                      style={{ left: CENTER_X + radius, top: CENTER_Y }}
+                    />
+                  ))}
+
+                  <svg
+                    ref={svgRef}
+                    className="absolute inset-0 pointer-events-none"
+                    width="100%"
+                    height="100%"
+                  >
+                    {Object.entries(ORBITS).map(([key, radius]) => {
+                      const isActive = activeLayer === key;
+                      const isAnotherLayerActive =
+                        activeLayer && activeLayer !== key;
+                      return (
+                        <g key={key}>
+                          <circle
+                            className={`transition-all duration-700 ${
+                              isActive
+                                ? "stroke-amber-500 stroke-[3px] opacity-100"
+                                : isAnotherLayerActive
+                                ? "stroke-slate-300 stroke-[1px] opacity-20"
+                                : "stroke-slate-300 stroke-[1.5px] opacity-40"
+                            }`}
+                            cx={CENTER_X}
+                            cy={CENTER_Y}
+                            r={radius}
+                            fill="none"
+                            strokeDasharray={isActive ? "0" : "6 6"}
+                          />
+                          <circle
+                            className="cursor-pointer pointer-events-auto"
+                            cx={CENTER_X}
+                            cy={CENTER_Y}
+                            r={radius}
+                            fill="none"
+                            stroke="transparent"
+                            strokeWidth={24}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveLayer(isActive ? null : key);
+                            }}
+                          />
+                        </g>
+                      );
+                    })}
+
+                    {processedGraph.links.map((link: any, idx: number) => {
+                      const isHoveredPath =
+                        hoveredNode && connectedLinks.has(link);
+                      const isNotActiveLayer =
+                        activeLayer &&
+                        link.sourceNode.layer !== activeLayer &&
+                        link.targetNode.layer !== activeLayer;
+
+                      // Identify our relational synapse links
+                      const isCrossLink = link.type === "cross_link";
+                      const isCompoundLink = link.type === "compound_link";
+                      const isPollination = link.type === "cross_pollination"; // <--- RESTORED THIS!
+                      const isRelational =
+                        isCrossLink || isCompoundLink || isPollination; // <--- ADDED TO RELATIONAL!
+
+                      // Dynamic Theme Colors
+                      let strokeColor = "var(--color-border-subtle, #cbd5e1)";
+                      if (isHoveredPath) {
+                        strokeColor = isRelational
+                          ? "var(--color-accent, #8b5cf6)"
+                          : "var(--color-primary, #64748b)";
+                      } else if (isCrossLink) {
+                        strokeColor = "var(--color-accent, #a78bfa)";
+                      } else if (isCompoundLink) {
+                        strokeColor = "var(--color-accent, #f43f5e)";
+                      } else if (isPollination) {
+                        strokeColor = "var(--color-accent, #10b981)"; // <--- RESTORED EMERALD GREEN!
+                      } else if (link.isSynthetic) {
+                        strokeColor = "var(--color-border-subtle, #e2e8f0)";
+                      }
+
+                      return (
+                        <line
+                          key={`link-${idx}`}
+                          className="transition-all duration-300"
+                          x1={link.sourceNode.x}
+                          y1={link.sourceNode.y}
+                          x2={link.targetNode.x}
+                          y2={link.targetNode.y}
+                          stroke={strokeColor}
+                          strokeWidth={
+                            isHoveredPath
+                              ? isRelational
+                                ? 3
+                                : 2
+                              : isRelational
+                              ? 2
+                              : link.isSynthetic
+                              ? 1
+                              : 1.5
+                          }
+                          // Cross Links = Dashed | Compound Links = Dotted | Structural = Solid
+                          strokeDasharray={
+                            isCrossLink
+                              ? "4 4"
+                              : isCompoundLink
+                              ? "2 2"
+                              : link.isSynthetic
+                              ? "3 3"
+                              : "0"
+                          }
+                          opacity={
+                            isNotActiveLayer
+                              ? 0.05
+                              : activeLayer
+                              ? isRelational
+                                ? 0.8
+                                : 0.4
+                              : isRelational
+                              ? 0.7
+                              : 1
+                          }
+                          // Bump z-index equivalent for SVG paths so synapses hover above structure
+                          style={isRelational ? { zIndex: 10 } : {}}
+                        />
+                      );
+                    })}
+                  </svg>
+
+                  <div className="absolute inset-0 pointer-events-none">
+                    {processedGraph.nodes.map((node: any) => {
+                      const isCenter = node.radius === 0;
+                      const isNotActiveLayer =
+                        activeLayer && node.layer !== activeLayer;
+
+                      let dotColor = "bg-rose-500";
+                      if (node.group === "library") dotColor = "bg-emerald-500";
+                      else if (node.group === "brain") dotColor = "bg-black";
+                      else if (node.group === "echo") dotColor = "bg-rose-700";
+                      else if (node.group === "notes") dotColor = "bg-blue-500";
+                      else if (node.group === "stacks")
+                        dotColor = "bg-amber-500";
+
+                      if (isCenter) {
+                        return (
+                          <div
+                            key={node.uniqueId}
+                            className={`graph-node absolute flex items-center justify-center w-24 h-24 bg-gray-900 rounded-full border-4 border-gray-100 shadow-[0_0_20px_rgba(0,0,0,0.2)] z-30 cursor-pointer pointer-events-auto transition-all duration-500 ${
+                              activeLayer
+                                ? "scale-50 opacity-50"
+                                : "scale-100 opacity-100"
+                            }`}
+                            style={{ left: node.x - 48, top: node.y - 48 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (node.group !== "brain") {
+                                setSelectedNode(node);
+                              }
+                            }}
+                          >
+                            <span className="text-white text-[8px] font-bold tracking-[0.2em] uppercase text-center">
+                              MY LIBRARY
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={node.uniqueId}
+                          className={`group graph-node absolute z-20 hover:z-[100] transition-opacity duration-300 ${
+                            isNotActiveLayer
+                              ? "opacity-20 pointer-events-none grayscale"
+                              : "pointer-events-auto opacity-100"
+                          }`}
+                          style={{
+                            left: node.x,
+                            top: node.y,
+                            transform: `rotate(${node.rotation}deg)`,
+                          }}
+                          onMouseEnter={() => setHoveredNode(node)}
+                          onMouseLeave={() => setHoveredNode(null)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedNode(node);
+                          }}
+                        >
+                          <div
+                            className={`absolute top-0 left-0 -translate-x-1/2 -translate-y-1/2 bg-surface border border-gray-300 flex items-center justify-center shadow-sm group-hover:scale-125 transition-all duration-300 cursor-pointer ${
+                              node.isSubnode ? "w-3 h-3 rounded-sm" : "w-5 h-5"
+                            }`}
+                          >
+                            <div
+                              className={`${
+                                node.isSubnode ? "w-1.5 h-1.5" : "w-2.5 h-2.5"
+                              } rounded-full ${dotColor}`}
+                            ></div>
+                          </div>
+
+                          <span
+                            className={`absolute top-0 -translate-y-1/2 font-bold uppercase tracking-[0.2em] opacity-0 group-hover:opacity-100 group-hover:bg-surface/95 group-hover:shadow-lg group-hover:px-2 group-hover:py-0.5 group-hover:rounded transition-all duration-300 whitespace-nowrap pointer-events-none ${
+                              node.isSubnode
+                                ? "text-[8px] text-muted"
+                                : "text-[10px] text-gray-800"
+                            } ${
+                              node.isFlipped
+                                ? "right-6 text-right"
+                                : "left-6 text-left"
+                            }`}
+                          >
+                            {node.label || node.title}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </TransformComponent>
+            </>
+          )}
+        </TransformWrapper>
+      </div>
+
+      {/*{hoveredNode && !selectedNode && (
+        <HoverTooltip hoveredNode={hoveredNode} coords={mousePos} /> disbled hover card
+      )}*/}
+      {selectedNode && (
+        <InspectorPanel
+          selectedNode={selectedNode}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
+    </div>
+  );
+}

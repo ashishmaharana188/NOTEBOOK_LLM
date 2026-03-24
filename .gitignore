@@ -1,0 +1,14 @@
+data
+models
+scripts/__pycache__
+cache
+gutenbergindex.db
+texts
+.vscode
+cognition_env
+stored_files
+schema_templates
+cognitivegraph-mobile
+cognition.index
+models/cognition.index
+models/*.index

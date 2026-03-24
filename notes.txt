@@ -1,0 +1,3010 @@
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
+import {
+  XMarkIcon,
+  LinkIcon,
+  DocumentTextIcon,
+  CheckIcon,
+  ArrowsRightLeftIcon,
+  PlusIcon,
+  LockClosedIcon,
+  LockOpenIcon,
+  PlayIcon,
+} from "@heroicons/react/24/outline";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import useNotes from "../../../hooks/noteManager/useNotes";
+
+import MarqueeSelector from "../../appTools/marqueeSelector/marqueeSelector";
+import useShiftKey from "../../../hooks/appTools/useMarquee";
+import SelectionToolbar from "../../appTools/toolbar/selectionToolbar"; // <-- ADD THIS
+import ArchiveFolderCard from "../../appTools/cardComponent/archiveFolderCard";
+import BinderCoverPreview from "../../appTools/cardComponent/binderCoverPreview";
+import useGridLayout, {
+  getGridAnimationProps,
+} from "../../../hooks/appTools/useGridLayout";
+
+const PATTERN_A = [
+  // --- ORBIT 1 (Inner 8) ---
+  { x: -490, y: -70 }, // 0. Side: Top Left
+  { x: -560, y: 370 }, // 1. Side: Mid Left
+  { x: -500, y: 800 }, // 2. Corner: Bottom Left
+  { x: -130, y: 960 }, // 3. Bottom: Center
+  { x: 220, y: 1050 }, // 4. Bottom: Far Right
+  { x: -130, y: -290 }, // 5. Overlap: Top Left
+
+  // --- ORBIT 2 (Outer 8) ---
+  { x: -820, y: -250 }, // 8. Outer Side: Top Left (Pushed Left & Up)
+  { x: -890, y: 180 }, // 9. Outer Side: Mid Left (Pushed Left)
+  { x: -940, y: 750 }, // 10. Outer Corner: Bottom Left (Pushed Left & Down)
+  { x: -500, y: 1250 }, // 11. Outer Bottom: Center (Pushed Down)
+  { x: -100, y: 1420 }, // 12. Outer Bottom: Far Right (Pushed Right & Down)
+  { x: -480, y: -500 }, // 13. Outer Overlap: Top Left
+];
+
+// PATTERN B: Right L-Shape (Perfectly inverted X values)
+const PATTERN_B = [
+  // --- ORBIT 1 (Inner 6) ---
+  { x: 490, y: -70 }, // 0. Side: Top Right
+  { x: 560, y: 370 }, // 1. Side: Mid Right
+  { x: 500, y: 800 }, // 2. Corner: Bottom Right
+  { x: 130, y: 960 }, // 3. Bottom: Center
+  { x: -220, y: 1050 }, // 4. Bottom: Far Left
+  { x: 130, y: -290 }, // 5. Overlap: Top Right
+
+  // --- ORBIT 2 (Outer 6) ---
+  { x: 820, y: -250 }, // 6. Outer Side: Top Right (Pushed Right & Up)
+  { x: 890, y: 180 }, // 7. Outer Side: Mid Right (Pushed Right)
+  { x: 940, y: 750 }, // 8. Outer Corner: Bottom Right (Pushed Right & Down)
+  { x: 500, y: 1250 }, // 9. Outer Bottom: Center (Pushed Down)
+  { x: 100, y: 1420 }, // 10. Outer Bottom: Far Left (Pushed Left & Down)
+  { x: 480, y: -500 }, // 11. Outer Overlap: Top Right
+];
+
+const QUICK_THOUGHT_PATTERN = [
+  { x: -200, y: -690 },
+  { x: -120, y: -600 },
+  { x: 60, y: -550 },
+  { x: 180, y: -640 },
+  { x: 140, y: -660 },
+  { x: -160, y: -680 },
+  { x: 150, y: -280 },
+];
+
+// THE FIX: Wrapped in React.memo so the browser doesn't re-paint the text during drags
+const BlockPreview = React.memo(
+  ({
+    htmlContent,
+    textClass,
+    isNote,
+    title,
+  }: {
+    htmlContent: string;
+    textClass: string;
+    isNote: boolean;
+    title: string;
+  }) => {
+    // THE FIX: The Heavy DOMParser runs EXACTLY ONCE per card, and caches the result!
+    const parsed = React.useMemo(() => {
+      if (!htmlContent) return { type: "empty" };
+      if (!htmlContent.includes("<")) return { type: "plain" };
+
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, "text/html");
+
+      const mediaNodes = Array.from(
+        doc.querySelectorAll("img, video, iframe, audio, pre"),
+      );
+      const lastNode =
+        mediaNodes.length > 0 ? mediaNodes[mediaNodes.length - 1] : null;
+
+      const lastAudioIndex = Math.max(
+        htmlContent.lastIndexOf(".mp3"),
+        htmlContent.lastIndexOf(".wav"),
+      );
+      let lastNodeIndex = -1;
+      if (lastNode) {
+        const nodeStrSnippet = lastNode.outerHTML.substring(0, 15);
+        lastNodeIndex = htmlContent.lastIndexOf(nodeStrSnippet);
+      }
+
+      const isRawAudio =
+        lastAudioIndex > lastNodeIndex && lastAudioIndex !== -1;
+
+      let tagName = null;
+      let src = null;
+      let outerHTML = null;
+
+      if (lastNode) {
+        tagName = lastNode.tagName.toLowerCase();
+        src = (lastNode as any).src || null;
+        outerHTML = lastNode.outerHTML;
+      }
+
+      let truncatedHTML = "";
+      let textBlocks = 0;
+      Array.from(doc.body.children).forEach((child) => {
+        if (
+          textBlocks < 3 &&
+          !["img", "video", "audio", "iframe", "pre"].includes(
+            child.tagName.toLowerCase(),
+          )
+        ) {
+          truncatedHTML += child.outerHTML;
+          textBlocks++;
+        }
+      });
+
+      if (!truncatedHTML)
+        truncatedHTML = `<p>${htmlContent.substring(0, 150)}...</p>`;
+
+      return {
+        type: "html",
+        isRawAudio,
+        tagName,
+        src,
+        outerHTML,
+        truncatedHTML,
+      };
+    }, [htmlContent]);
+
+    // --- RENDERING BASED ON THE CACHED PARSER ---
+    if (parsed.type === "empty") {
+      return (
+        <div
+          className={`absolute inset-0 p-8 leading-relaxed font-sans text-sm ${textClass} overflow-hidden`}
+        >
+          No content available.
+        </div>
+      );
+    }
+
+    if (parsed.type === "plain") {
+      return (
+        <div
+          className={`absolute inset-0 p-8 flex flex-col overflow-hidden ${textClass}`}
+        >
+          {!isNote && title && (
+            <h3 className="font-bold tracking-tight leading-snug shrink-0 text-lg mb-3 text-slate-900">
+              {title}
+            </h3>
+          )}
+          <p className="leading-relaxed font-sans text-sm">{htmlContent}</p>
+        </div>
+      );
+    }
+
+    if (parsed.isRawAudio || parsed.tagName === "audio") {
+      return (
+        <div className="absolute inset-0 bg-slate-900 flex items-center justify-center z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]" />
+            <span className="text-white font-black tracking-[0.2em] text-3xl uppercase">
+              .REC
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    if (parsed.tagName === "video" || parsed.tagName === "iframe") {
+      return (
+        <div className="absolute inset-0 bg-black z-10 overflow-hidden">
+          {parsed.tagName === "video" ? (
+            <video
+              src={parsed.src}
+              className="w-full h-full object-cover opacity-90 pointer-events-none"
+              muted
+              loop
+              playsInline
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-slate-900">
+              <span className="text-white/30 font-bold tracking-[0.2em] text-2xl uppercase">
+                .VIDEO
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (parsed.tagName === "img") {
+      return (
+        <div className="absolute inset-0 z-10 bg-slate-100 overflow-hidden">
+          <img
+            src={parsed.src}
+            alt="Preview"
+            className="w-full h-full object-cover"
+          />
+        </div>
+      );
+    }
+
+    if (parsed.tagName === "pre") {
+      return (
+        <div className="absolute inset-0 bg-[#0d1117] text-slate-100 p-8 z-10 overflow-hidden flex flex-col">
+          <div className="absolute top-4 right-5 text-[10px] font-bold tracking-widest text-slate-500 uppercase z-20">
+            Code
+          </div>
+          <div
+            className="flex-1 w-full h-full overflow-hidden text-[11px] font-mono leading-relaxed [&>pre]:!m-0 [&>pre]:!bg-transparent [&>pre]:!p-0"
+            dangerouslySetInnerHTML={{ __html: parsed.outerHTML }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`absolute inset-0 p-8 flex flex-col overflow-hidden ${textClass}`}
+      >
+        {!isNote && title && (
+          <h3 className="font-bold tracking-tight leading-snug shrink-0 text-xl mb-3 text-slate-900 border-b border-slate-200/50 pb-3">
+            {title}
+          </h3>
+        )}
+        <div
+          className="flex-1 overflow-hidden prose prose-sm prose-slate prose-headings:font-bold prose-p:leading-relaxed prose-a:text-blue-600 max-w-none mask-image-b"
+          style={{
+            WebkitMaskImage:
+              "linear-gradient(to bottom, black 70%, transparent 100%)",
+          }}
+          dangerouslySetInnerHTML={{ __html: parsed.truncatedHTML }}
+        />
+      </div>
+    );
+  },
+);
+
+const getCardRole = (
+  index: number,
+  chunk: any,
+  canvasMode: "ECHO" | "NOTES",
+) => {
+  if (chunk?.is_quick_thought) return "QUICK_THOUGHT"; // Free-floating A6/A7 thoughts
+
+  if (canvasMode === "ECHO") {
+    if (chunk?.type === "note" || chunk?.relation === "User Note")
+      return "A5_NOTE";
+    return "A4_ECHO";
+  } else {
+    if (chunk?.type === "echo" || chunk?.relation === "AI Echo")
+      return "A5_ECHO";
+    return "A4_NOTE";
+  }
+};
+
+// --- SCRUBBABLE RULER SLIDER (PAGINATION) ---
+const ScrubRuler = ({
+  direction,
+  totalItems,
+  pageIndex,
+  setPageIndex,
+}: any) => {
+  const maxPage = Math.max(0, Math.ceil(totalItems / 12) - 1);
+  const [rulerBase, setRulerBase] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handlePointerEvent = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (e.type === "pointerdown") {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setIsDragging(true);
+    }
+
+    if (!isDragging && e.type !== "pointerdown") return;
+
+    // Calculate which notch the mouse is hovering over
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const percentage = Math.max(0, Math.min(1, y / rect.height));
+    const notchIndex = Math.round(percentage * 4); // 0 to 4
+    let targetPage = rulerBase + notchIndex;
+
+    // Stop jumping if we reached the maximum available cards
+    if (targetPage > maxPage) targetPage = maxPage;
+
+    // Live Scrubbing
+    if (pageIndex !== targetPage) {
+      setPageIndex(targetPage);
+    }
+
+    // Shift the ruler when releasing the mouse on the edges
+    if (e.type === "pointerup" || e.type === "pointercancel") {
+      setIsDragging(false);
+      e.currentTarget.releasePointerCapture(e.pointerId);
+
+      if (notchIndex === 4 && targetPage < maxPage) {
+        setRulerBase(targetPage); // Jump the 5th line to the top
+      } else if (notchIndex === 0 && targetPage > 0) {
+        setRulerBase(Math.max(0, targetPage - 4)); // Jump the 1st line to the bottom
+      }
+    }
+  };
+
+  // If cards scatter left, A3 is on the right -> Slider goes on the Right edge.
+  const isRight = direction === "LEFT";
+
+  return (
+    <div
+      className={`no-pan absolute top-1/2 -translate-y-1/2 ${
+        isRight ? "-right-16" : "-left-16"
+      } h-64 w-10 flex justify-center z-[6000] cursor-ns-resize touch-none group`}
+      onPointerDown={handlePointerEvent}
+      onPointerMove={handlePointerEvent}
+      onPointerUp={handlePointerEvent}
+      onPointerCancel={handlePointerEvent}
+    >
+      <div className="absolute top-0 bottom-0 w-1 bg-slate-200 rounded-full pointer-events-none transition-colors group-hover:bg-slate-300" />
+      {[0, 1, 2, 3, 4].map((notch) => {
+        const pageValue = rulerBase + notch;
+        const isActive = pageValue === pageIndex;
+        const isAvailable = pageValue <= maxPage;
+
+        return (
+          <div
+            key={notch}
+            className="absolute w-4 h-1 transition-all duration-150 pointer-events-none rounded-full"
+            style={{
+              top: `${(notch / 4) * 100}%`,
+              width: isActive ? "24px" : "12px",
+              backgroundColor: isActive
+                ? "#ec4899"
+                : isAvailable
+                  ? "#94a3b8"
+                  : "#e2e8f0",
+              transform: "translateY(-50%)",
+            }}
+          >
+            <span
+              className={`absolute ${
+                isRight ? "left-6" : "right-8"
+              } top-1/2 -translate-y-1/2 text-[10px] font-bold font-mono transition-colors ${
+                isActive
+                  ? "text-pink-500"
+                  : isAvailable
+                    ? "text-slate-400"
+                    : "text-slate-300/50"
+              }`}
+            >
+              {pageValue + 1}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// --- NEW: A3 SLIDE PARSER ENGINE (MEMORY LIMITED) ---
+const parseToSlides = (htmlString: string) => {
+  if (!htmlString) return [];
+  if (!htmlString.includes("<")) return [{ type: "text", content: htmlString }];
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlString, "text/html");
+  const slides: any[] = [];
+
+  let currentTextGroup: string[] = [];
+  let textSlideCount = 0;
+  const MAX_TEXT_SLIDES = 3; // Hard limit to prevent A3 memory bloat
+
+  const pushTextGroup = () => {
+    if (currentTextGroup.length > 0) {
+      if (textSlideCount < MAX_TEXT_SLIDES) {
+        const truncatedGroup = currentTextGroup.slice(0, 3);
+
+        // If this is the absolute final allowed text slide, append a UI button to open the reader
+        if (textSlideCount === MAX_TEXT_SLIDES - 1) {
+          truncatedGroup.push(`
+             <div class="mt-8 pt-8 border-t border-slate-200/50 flex flex-col items-center justify-center">
+               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Document Truncated</span>
+               <button class="bg-blue-50 text-blue-600 border border-blue-200 px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-sm">
+                 Open Reader for Full Note
+               </button>
+             </div>
+           `);
+        }
+
+        slides.push({ type: "text", html: truncatedGroup.join("") });
+        textSlideCount++;
+      }
+      currentTextGroup = [];
+    }
+  };
+
+  Array.from(doc.body.children).forEach((child) => {
+    const tagName = child.tagName.toLowerCase();
+    const img = tagName === "img" ? child : child.querySelector("img");
+    const video =
+      tagName === "video" || tagName === "iframe"
+        ? child
+        : child.querySelector("video") || child.querySelector("iframe");
+    const audio = tagName === "audio" ? child : child.querySelector("audio");
+    const pre = tagName === "pre" ? child : child.querySelector("pre");
+    const hasRawAudio =
+      child.innerHTML.includes(".mp3") || child.innerHTML.includes(".wav");
+
+    // Media ignores the hard limit so you can always see all images/videos
+    if (img && (img as HTMLImageElement).src) {
+      pushTextGroup();
+      slides.push({ type: "image", src: (img as HTMLImageElement).src });
+    } else if (video && (video as any).src) {
+      pushTextGroup();
+      slides.push({
+        type: "video",
+        src: (video as any).src,
+        isVideo: video.tagName.toLowerCase() === "video",
+      });
+    } else if (audio && (audio as any).src) {
+      pushTextGroup();
+      slides.push({ type: "audio", src: (audio as any).src });
+    } else if (hasRawAudio) {
+      pushTextGroup();
+      const match = child.innerHTML.match(/https?:\/\/[^\s"'<>]+?\.(mp3|wav)/i);
+      slides.push({ type: "audio", src: match ? match[0] : "" });
+    } else if (pre) {
+      pushTextGroup();
+      slides.push({ type: "code", html: pre.outerHTML });
+    } else if (child.textContent?.trim()) {
+      currentTextGroup.push(child.outerHTML);
+    }
+  });
+
+  pushTextGroup();
+
+  return slides.length > 0 ? slides : [{ type: "text", html: htmlString }];
+};
+
+// --- NEW: CUSTOM VIDEO PLAYER (PREVENTS SWIPE HIJACKING) ---
+const VideoSlidePlayer = ({
+  src,
+  isVideo,
+}: {
+  src: string;
+  isVideo: boolean;
+}) => {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Framer Motion smartly cancels the onClick event if the user was dragging!
+  const handleTap = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }
+  };
+
+  if (!isVideo) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-slate-900 rounded-[inherit]">
+        <span className="text-white/30 font-bold tracking-[0.2em] text-2xl uppercase">
+          .VIDEO
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 bg-black rounded-[inherit] overflow-hidden">
+      <video
+        ref={videoRef}
+        src={src}
+        className="w-full h-full object-cover"
+        playsInline
+        onEnded={() => setIsPlaying(false)}
+      />
+      {/* Interactive Overlay: catches taps for play/pause, but passes drags to Framer Motion */}
+      <div
+        className="absolute inset-0 z-10 cursor-pointer flex items-center justify-center pointer-events-auto"
+        onClick={handleTap}
+      >
+        {!isPlaying && (
+          <div className="w-16 h-16 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center text-white border border-white/20 shadow-xl transition-transform hover:scale-110">
+            <PlayIcon className="w-8 h-8 ml-1" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const UniversalCoverMedia = ({ url }: { url: string }) => {
+  if (!url) return null;
+  const ext = url.split(".").pop()?.toLowerCase();
+
+  if (["mp4", "webm", "mov"].includes(ext || "")) {
+    return (
+      <video
+        src={url}
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+      />
+    );
+  }
+  if (["mp3", "wav", "ogg"].includes(ext || "")) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
+        <div className="w-16 h-16 rounded-full bg-red-500 shadow-[0_0_30px_rgba(239,68,68,0.6)] mb-8" />
+        <audio src={url} controls className="z-50 pointer-events-auto" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+    />
+  );
+};
+
+const PrimaryViewerCard = ({
+  activeNode,
+  isExpanded,
+  canvasScale,
+  sizeOffset,
+  setSizeOffset,
+  onAddSticky,
+  totalItems,
+  pageIndex,
+  setPageIndex,
+  direction,
+  onAddQuickThought,
+  globalNotes,
+}: any) => {
+  const [radiusOffset, setRadiusOffset] = useState(0);
+  const dragRef = React.useRef<{
+    type: "size" | "radius" | null;
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+    startR: number;
+  }>({
+    type: null,
+    startX: 0,
+    startY: 0,
+    startW: 0,
+    startH: 0,
+    startR: 0,
+  });
+
+  const cardRef = React.useRef<HTMLDivElement>(null);
+
+  const rawContent = activeNode?.text || activeNode?.content || "";
+  const slides = React.useMemo(() => parseToSlides(rawContent), [rawContent]);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [isReadLocked, setIsReadLocked] = useState(false);
+
+  // --- DRAG TO SCROLL ENGINE ---
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const scrollState = React.useRef({
+    isDragging: false,
+    startY: 0,
+    scrollTop: 0,
+  });
+
+  const onScrollPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isReadLocked) return;
+    e.stopPropagation();
+    scrollState.current.isDragging = true;
+    scrollState.current.startY = e.pageY - e.currentTarget.offsetTop;
+    scrollState.current.scrollTop = e.currentTarget.scrollTop;
+  };
+
+  const onScrollPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isReadLocked || !scrollState.current.isDragging) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const y = e.pageY - e.currentTarget.offsetTop;
+    const walk = (y - scrollState.current.startY) * 1.5;
+    e.currentTarget.scrollTop = scrollState.current.scrollTop - walk;
+  };
+
+  const onScrollPointerUpOrLeave = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isReadLocked) return;
+    e.stopPropagation();
+    scrollState.current.isDragging = false;
+  };
+
+  React.useEffect(() => {
+    setSlideIndex(0);
+    setIsReadLocked(false);
+  }, [activeNode]);
+
+  React.useEffect(() => {
+    setIsReadLocked(false);
+  }, [slideIndex]);
+
+  const handleDragEnd = (event: any, info: any) => {
+    const threshold = 50;
+    if (info.offset.x < -threshold && slideIndex < slides.length - 1) {
+      setSlideIndex((s) => s + 1);
+    } else if (info.offset.x > threshold && slideIndex > 0) {
+      setSlideIndex((s) => s - 1);
+    }
+  };
+
+  React.useEffect(() => {
+    let latestW = sizeOffset.w;
+    let latestH = sizeOffset.h;
+    let latestR = radiusOffset;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current.type || !cardRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const deltaX = (e.clientX - dragRef.current.startX) / canvasScale;
+      const deltaY = (e.clientY - dragRef.current.startY) / canvasScale;
+
+      if (dragRef.current.type === "size") {
+        latestW = dragRef.current.startW + deltaX;
+        latestH = dragRef.current.startH + deltaY;
+        latestW = Math.max(-20, Math.min(100, latestW));
+        latestH = Math.max(-20, Math.min(100, latestH));
+
+        // DIRECT DOM MUTATION (Zero React Renders!)
+        cardRef.current.style.width = `${500 + latestW}px`;
+        cardRef.current.style.height = `${700 + latestH}px`;
+      } else if (dragRef.current.type === "radius") {
+        latestR = dragRef.current.startR + deltaX;
+        latestR = Math.max(-28, Math.min(28, latestR));
+
+        // DIRECT DOM MUTATION
+        cardRef.current.style.borderRadius = `${32 + latestR}px`;
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (dragRef.current.type) {
+        // Sync to React State ONLY when dragging stops
+        if (dragRef.current.type === "size")
+          setSizeOffset({ w: latestW, h: latestH });
+        if (dragRef.current.type === "radius") setRadiusOffset(latestR);
+        dragRef.current.type = null;
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [canvasScale, sizeOffset, radiusOffset]);
+
+  const startDrag = (e: React.MouseEvent, type: "size" | "radius") => {
+    e.stopPropagation();
+    dragRef.current = {
+      type,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: sizeOffset.w,
+      startH: sizeOffset.h,
+      startR: radiusOffset,
+    };
+  };
+
+  if (!isExpanded) return null;
+
+  const baseW = 500;
+  const baseH = 700;
+  const finalWidth = baseW + sizeOffset.w;
+  const finalHeight = baseH + sizeOffset.h;
+  const finalRadius = 32 + radiusOffset;
+  const currentSlide = slides[slideIndex] || null;
+
+  return (
+    <motion.div
+      ref={cardRef}
+      initial={{ opacity: 0, scale: 0.9, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9, y: 20 }}
+      className="absolute top-0 left-0 bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col z-[4000] group no-pan"
+      style={{
+        transformOrigin: "center center",
+        x: -finalWidth / 2,
+        y: -finalHeight / 2,
+        width: finalWidth,
+        height: finalHeight,
+        borderRadius: `${finalRadius}px`,
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {/* THE FIX: THE INNER CLIPPING MASK */}
+      {/* This perfectly rounds the corners of the content, but lets the Ruler sit outside! */}
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+        {!activeNode ? (
+          <div className="absolute inset-0 bg-slate-900 rounded-[inherit] flex items-center justify-center">
+            <span className="text-slate-500 animate-pulse text-xs font-bold uppercase tracking-widest">
+              Loading...
+            </span>
+          </div>
+        ) : activeNode.relation === "Stack" ||
+          activeNode.relation === "Cluster" ? (
+          <div
+            className="absolute inset-0 bg-slate-900 pointer-events-auto rounded-[inherit] overflow-hidden flex flex-col items-center justify-center no-pan"
+            onWheelCapture={(e) => e.stopPropagation()}
+            onTouchStartCapture={(e) => e.stopPropagation()}
+            onPointerDownCapture={(e) => e.stopPropagation()}
+          >
+            {activeNode.cover_image || activeNode.cover_media ? (
+              <UniversalCoverMedia
+                url={activeNode.cover_image || activeNode.cover_media}
+              />
+            ) : (
+              <div className="absolute inset-0 border-[4px] border-slate-700 m-8 rounded-3xl flex items-center justify-center border-dashed">
+                <span className="text-white/20 font-bold tracking-[0.3em] text-3xl uppercase text-center px-4">
+                  Cover
+                  <br />
+                  Not Set
+                </span>
+              </div>
+            )}
+            <div className="relative z-10 mt-auto pb-24 flex flex-col items-center w-full"></div>
+          </div>
+        ) : activeNode.relation === "Folder" ? (
+          <div
+            className="absolute inset-0 bg-white pointer-events-auto rounded-[inherit] p-10 pt-28 flex flex-col no-pan"
+            onWheelCapture={(e) => e.stopPropagation()}
+            onTouchStartCapture={(e) => e.stopPropagation()}
+            onPointerDownCapture={(e) => e.stopPropagation()}
+          >
+            <h1 className="text-3xl font-black text-slate-800 mb-6 pb-4 border-b border-slate-200 shrink-0">
+              {activeNode.title}
+            </h1>
+            <ul className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-6 pr-4">
+              {globalNotes
+                ?.filter(
+                  (n: any) =>
+                    String(n.group_id) === String(activeNode.group_id),
+                )
+                .slice(0, 5)
+                .map((note: any, idx: number) => (
+                  <li
+                    key={idx}
+                    className="pb-6 border-b border-slate-100 flex items-start gap-4"
+                  >
+                    <span className="text-pink-500 font-black font-mono text-lg mt-0.5 opacity-40">
+                      0{idx + 1}
+                    </span>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-slate-700 text-lg leading-snug">
+                        {note.title || "Untitled Note"}
+                      </h4>
+                      <p className="text-sm text-slate-500 mt-2 line-clamp-2 leading-relaxed">
+                        {note.content?.replace(/<[^>]*>?/gm, "") ||
+                          "No content available."}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              {(!globalNotes ||
+                globalNotes.filter(
+                  (n: any) =>
+                    String(n.group_id) === String(activeNode.group_id),
+                ).length === 0) && (
+                <li className="text-slate-400 italic text-center py-10">
+                  This folder is empty.
+                </li>
+              )}
+              {globalNotes?.filter(
+                (n: any) => String(n.group_id) === String(activeNode.group_id),
+              ).length > 5 && (
+                <li className="py-4 text-center text-xs font-bold text-blue-500 bg-blue-50 rounded-xl uppercase tracking-widest mt-auto shrink-0 shadow-sm">
+                  +{" "}
+                  {globalNotes.filter(
+                    (n: any) =>
+                      String(n.group_id) === String(activeNode.group_id),
+                  ).length - 5}{" "}
+                  More Notes inside
+                </li>
+              )}
+            </ul>
+          </div>
+        ) : (
+          <>
+            {/* THE FLOATING HEADER */}
+            <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start shrink-0 z-[5000] pointer-events-none">
+              <span className="text-xs font-bold text-blue-600 bg-white/90   px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 pointer-events-auto">
+                <DocumentTextIcon className="w-4 h-4" /> Focus View
+              </span>
+              <div className="flex flex-col items-end gap-2 pointer-events-auto">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onAddQuickThought) onAddQuickThought();
+                  }}
+                  className="px-3 py-1.5 bg-pink-100/90   text-pink-700 hover:bg-pink-200 border border-pink-200 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-1 shadow-sm"
+                >
+                  <PlusIcon className="w-3 h-3" /> Quick Thought
+                </button>
+              </div>
+            </div>
+
+            {/* THE SWIPEABLE INNER CANVAS FOR NOTES/ECHOES */}
+            <motion.div
+              drag={!isReadLocked ? "x" : false}
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={handleDragEnd}
+              className={`absolute inset-0 z-10 ${!isReadLocked ? "cursor-grab active:cursor-grabbing" : ""} no-pan`}
+            >
+              {currentSlide ? (
+                <>
+                  {(currentSlide.type === "text" ||
+                    currentSlide.type === "code") && (
+                    <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[6000]">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsReadLocked(!isReadLocked);
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center gap-2 border pointer-events-auto ${
+                          isReadLocked
+                            ? "bg-yellow-300 text-black border-green-400"
+                            : "bg-slate-800/80 text-white border-slate-700 hover:bg-slate-900"
+                        }`}
+                      >
+                        {isReadLocked ? (
+                          <>
+                            <LockClosedIcon className="w-3 h-3" /> Scroll Locked
+                          </>
+                        ) : (
+                          <>
+                            <LockOpenIcon className="w-3 h-3" /> Lock to Scroll
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {currentSlide.type === "image" && (
+                    <img
+                      src={currentSlide.src}
+                      className="w-full h-full object-cover pointer-events-none"
+                    />
+                  )}
+                  {currentSlide.type === "video" && (
+                    <VideoSlidePlayer
+                      src={currentSlide.src}
+                      isVideo={currentSlide.isVideo}
+                    />
+                  )}
+                  {currentSlide.type === "audio" && (
+                    <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center pointer-events-auto gap-6 rounded-[inherit]">
+                      <div className="flex items-center gap-3">
+                        <div className="w-4 h-4 rounded-full bg-red-500 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.8)] pointer-events-none" />
+                        <span className="text-white font-black tracking-[0.2em] text-3xl uppercase pointer-events-none">
+                          .REC
+                        </span>
+                      </div>
+                      {currentSlide.src && (
+                        <audio
+                          src={currentSlide.src}
+                          controls
+                          className="w-64 z-50 pointer-events-auto"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {currentSlide.type === "code" && (
+                    <div
+                      ref={scrollContainerRef}
+                      className={`no-pan w-full h-full bg-[#0d1117] text-slate-100 p-8 pt-40 transition-all duration-300 rounded-[inherit] [&::-webkit-scrollbar]:hidden flex flex-col ${
+                        isReadLocked
+                          ? "overflow-y-auto pointer-events-auto cursor-grab active:cursor-grabbing"
+                          : "overflow-hidden pointer-events-none"
+                      }`}
+                      style={{
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                        touchAction: isReadLocked ? "pan-y" : "none",
+                        WebkitOverflowScrolling: "touch",
+                      }}
+                      onPointerDown={onScrollPointerDown}
+                      onPointerMove={onScrollPointerMove}
+                      onPointerUp={onScrollPointerUpOrLeave}
+                      onPointerLeave={onScrollPointerUpOrLeave}
+                      onWheelCapture={(e) => e.stopPropagation()}
+                      onTouchStartCapture={(e) => e.stopPropagation()}
+                    >
+                      <div
+                        className="flex-1 w-full text-sm font-mono leading-relaxed pb-20 [&>pre]:!m-0 [&>pre]:!bg-transparent [&>pre]:!p-0 pointer-events-none"
+                        dangerouslySetInnerHTML={{ __html: currentSlide.html }}
+                      />
+                    </div>
+                  )}
+
+                  {currentSlide.type === "text" && (
+                    <div
+                      ref={scrollContainerRef}
+                      className={`no-pan w-full h-full p-10 pt-40 bg-white transition-all duration-300 rounded-[inherit] [&::-webkit-scrollbar]:hidden ${
+                        isReadLocked
+                          ? "overflow-y-auto pointer-events-auto cursor-grab active:cursor-grabbing"
+                          : "overflow-hidden pointer-events-none"
+                      }`}
+                      style={{
+                        scrollbarWidth: "none",
+                        msOverflowStyle: "none",
+                        touchAction: isReadLocked ? "pan-y" : "none",
+                        WebkitOverflowScrolling: "touch",
+                      }}
+                      onPointerDown={onScrollPointerDown}
+                      onPointerMove={onScrollPointerMove}
+                      onPointerUp={onScrollPointerUpOrLeave}
+                      onPointerLeave={onScrollPointerUpOrLeave}
+                      onWheelCapture={(e) => e.stopPropagation()}
+                      onTouchStartCapture={(e) => e.stopPropagation()}
+                    >
+                      {currentSlide.html ? (
+                        <div
+                          className="prose prose-base prose-slate prose-headings:font-bold prose-p:leading-relaxed prose-a:text-blue-600 max-w-none pb-20 pointer-events-none"
+                          dangerouslySetInnerHTML={{
+                            __html: currentSlide.html,
+                          }}
+                        />
+                      ) : (
+                        <p className="text-base text-slate-700 leading-loose font-sans whitespace-pre-wrap pb-20 pointer-events-none">
+                          {currentSlide.content}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex-1 w-full h-full flex flex-col items-center justify-center text-slate-400 opacity-60 pointer-events-none z-10">
+                  <DocumentTextIcon className="w-16 h-16 mb-4" />
+                  <p className="font-bold uppercase tracking-widest text-sm">
+                    Select a card to view
+                  </p>
+                </div>
+              )}
+            </motion.div>
+
+            {slides.length > 1 && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 z-[5000] pointer-events-none">
+                {slides.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2 h-2 rounded-full transition-all duration-300 ${i === slideIndex ? "bg-blue-500 w-4" : "bg-slate-300/80   shadow-sm"}`}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {/* --- END OF CLIPPING MASK --- */}
+
+      {/* Drag Handles (Sitting safely outside the mask) */}
+      <div
+        className="no-pan-resize absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize z-[6000] flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity"
+        onMouseDown={(e) => startDrag(e, "size")}
+      >
+        <div className="w-4 h-4 border-r-4 border-b-4 border-slate-300/50   rounded-br-sm pointer-events-none" />
+      </div>
+
+      <div
+        className="no-pan-resize absolute top-0 right-0 w-10 h-10 cursor-nesw-resize z-[6000] flex items-start justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity"
+        onMouseDown={(e) => startDrag(e, "radius")}
+      >
+        <div className="w-3.5 h-3.5 rounded-full bg-slate-300/50   pointer-events-none" />
+      </div>
+
+      {isExpanded && (
+        <ScrubRuler
+          direction={direction}
+          totalItems={totalItems}
+          pageIndex={pageIndex}
+          setPageIndex={setPageIndex}
+        />
+      )}
+    </motion.div>
+  );
+};
+
+const SpatialCard = React.memo(
+  ({
+    chunk,
+    index,
+    total,
+    isExpanded,
+    direction,
+    onExpand,
+    isActive,
+    onSetActive,
+    pattern,
+    canvasScale,
+    primarySizeOffset,
+    canvasMode,
+    onUpdateStickies,
+    onModifyQuickThought,
+  }: any) => {
+    const [isLandscape, setIsLandscape] = useState(false);
+    const role = getCardRole(index, chunk, canvasMode);
+    const [qtText, setQtText] = useState(chunk.text || "");
+    useEffect(() => {
+      if (role === "QUICK_THOUGHT") {
+        setQtText(chunk.text || "");
+      }
+    }, [chunk.text, role]);
+
+    // --- PERSISTENT LOCAL STICKIES STATE ---
+    // 1. Try to parse existing stickies hidden inside the chunk.tags string
+    const [localStickies, setLocalStickies] = useState<any[]>(() => {
+      try {
+        if (chunk.tags && chunk.tags.includes("sticky_data:")) {
+          const jsonStr = chunk.tags.split("sticky_data:")[1];
+          return JSON.parse(jsonStr);
+        }
+      } catch (e) {
+        console.error("Failed to parse stickies from tags", e);
+      }
+      return [];
+    });
+
+    // 2. Save helper: Updates state AND triggers parent DB save
+    const saveStickiesToDB = (newStickies: any[]) => {
+      setLocalStickies(newStickies);
+      if (onUpdateStickies) {
+        const baseTags = (chunk.tags || "").split("sticky_data:")[0].trim();
+        const tagString =
+          newStickies.length > 0
+            ? `${baseTags} sticky_data:${JSON.stringify(newStickies)}`
+            : baseTags;
+
+        const actualId =
+          chunk.group_id ||
+          chunk.stack_id ||
+          chunk.note_id ||
+          chunk.echo_id ||
+          chunk.id;
+        let actualType =
+          chunk.type || (role.includes("NOTE") ? "note" : "echo");
+        if (chunk.relation === "Folder") actualType = "group";
+        if (chunk.relation === "Stack") actualType = "stack";
+
+        onUpdateStickies(actualId, tagString, actualType);
+      }
+    };
+
+    const handleAddLocalSticky = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const corners = [
+        "top-[-20px] left-[-20px] -rotate-6 bg-pink-100 border-pink-200 text-pink-900",
+        "top-[-20px] right-[-20px] rotate-6 bg-yellow-100 border-yellow-200 text-yellow-900",
+        "bottom-[-20px] left-[-20px] -rotate-12 bg-sky-100 border-sky-200 text-sky-900",
+        "bottom-[-20px] right-[-20px] rotate-12 bg-emerald-100 border-emerald-200 text-emerald-900",
+      ];
+      const randomCorner = corners[Math.floor(Math.random() * corners.length)];
+      const newSticky = { id: Date.now(), styleClass: randomCorner, text: "" };
+      saveStickiesToDB([...localStickies, newSticky]);
+    };
+
+    const handleRemoveSticky = (e: React.MouseEvent, idToRemove: number) => {
+      e.stopPropagation();
+      saveStickiesToDB(localStickies.filter((s) => s.id !== idToRemove));
+    };
+
+    // Updates text locally while typing, but DOES NOT save to DB yet
+    const handleStickyTextChange = (idToUpdate: number, newText: string) => {
+      setLocalStickies(
+        localStickies.map((s) =>
+          s.id === idToUpdate ? { ...s, text: newText } : s,
+        ),
+      );
+    };
+
+    // --- TACTILE RESIZING STATE ---
+    // --- TACTILE RESIZING STATE ---
+    const [sizeOffset, setSizeOffset] = useState({ w: 0, h: 0 });
+    const [radiusOffset, setRadiusOffset] = useState(0);
+    const dragRef = React.useRef<{
+      type: "size" | "radius" | null;
+      startX: number;
+      startY: number;
+      startW: number;
+      startH: number;
+      startR: number;
+    }>({ type: null, startX: 0, startY: 0, startW: 0, startH: 0, startR: 0 });
+
+    // NEW: The Direct DOM Reference
+    const cardRef = React.useRef<HTMLDivElement>(null);
+
+    // 1. Move base dimensions ABOVE the useEffect so the DOM mutation can read them
+    let baseW = 0,
+      baseH = 0,
+      bgClass = "",
+      gradientClass = "",
+      textClass = "";
+    if (role === "QUICK_THOUGHT") {
+      baseW = isLandscape ? 180 : 140;
+      baseH = isLandscape ? 140 : 180;
+      const stickyColors = [
+        {
+          bg: "bg-pink-100 border-pink-200 text-pink-950",
+          grad: "from-pink-100",
+        },
+        {
+          bg: "bg-emerald-100 border-emerald-200 text-emerald-950",
+          grad: "from-emerald-100",
+        },
+        { bg: "bg-sky-100 border-sky-200 text-sky-950", grad: "from-sky-100" },
+        {
+          bg: "bg-amber-100 border-amber-200 text-amber-950",
+          grad: "from-amber-100",
+        },
+        {
+          bg: "bg-violet-100 border-violet-200 text-violet-950",
+          grad: "from-violet-100",
+        },
+      ];
+      const color = stickyColors[index % stickyColors.length];
+      bgClass = color.bg;
+      gradientClass = color.grad;
+      textClass = "text-inherit opacity-80";
+    } else if (role === "A5_NOTE" || role === "A5_ECHO") {
+      baseW = isLandscape ? 280 : 200;
+      baseH = isLandscape ? 200 : 280;
+      bgClass =
+        role === "A5_NOTE"
+          ? "bg-yellow-50 border-yellow-200 text-slate-900"
+          : "bg-purple-50 border-purple-200 text-slate-900";
+      gradientClass = role === "A5_NOTE" ? "from-yellow-50" : "from-purple-50";
+      textClass = "text-slate-600";
+    } else {
+      baseW = isLandscape ? 400 : 300;
+      baseH = isLandscape ? 300 : 400;
+      bgClass = "bg-white border-slate-200 text-slate-900";
+      gradientClass = "from-white";
+      textClass = "text-slate-600";
+    }
+
+    // 2. The Mutating Mouse Effect
+    useEffect(() => {
+      let latestW = sizeOffset.w;
+      let latestH = sizeOffset.h;
+      let latestR = radiusOffset;
+
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!dragRef.current.type || !cardRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const deltaX = (e.clientX - dragRef.current.startX) / canvasScale;
+        const deltaY = (e.clientY - dragRef.current.startY) / canvasScale;
+
+        if (dragRef.current.type === "size") {
+          latestW = dragRef.current.startW + deltaX;
+          latestH = dragRef.current.startH + deltaY;
+          latestW = Math.max(-10, Math.min(50, latestW));
+          latestH = Math.max(-10, Math.min(50, latestH));
+
+          // DIRECT DOM MUTATION
+          cardRef.current.style.width = `${baseW + latestW}px`;
+          cardRef.current.style.height = `${baseH + latestH}px`;
+        } else if (dragRef.current.type === "radius") {
+          latestR = dragRef.current.startR + deltaX;
+          latestR = Math.max(-20, Math.min(24, latestR));
+
+          // DIRECT DOM MUTATION
+          cardRef.current.style.borderRadius = `${24 + latestR}px`;
+        }
+      };
+
+      const handleMouseUp = () => {
+        if (dragRef.current.type) {
+          // Sync to React State ONLY when dragging stops
+          if (dragRef.current.type === "size")
+            setSizeOffset({ w: latestW, h: latestH });
+          if (dragRef.current.type === "radius") setRadiusOffset(latestR);
+          dragRef.current.type = null;
+        }
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }, [canvasScale, baseW, baseH, sizeOffset, radiusOffset]);
+
+    const startDrag = (e: React.MouseEvent, type: "size" | "radius") => {
+      e.stopPropagation();
+      dragRef.current = {
+        type,
+        startX: e.clientX,
+        startY: e.clientY,
+        startW: sizeOffset.w,
+        startH: sizeOffset.h,
+        startR: radiusOffset,
+      };
+    };
+
+    const finalWidth = baseW + sizeOffset.w;
+    const finalHeight = baseH + sizeOffset.h;
+    const finalRadius = 24 + radiusOffset;
+    const stackOffsetX = (index % 2 === 0 ? 3 : -3) * (index % 3);
+    const stackOffsetY = index * -4;
+    const collapsedX = stackOffsetX - finalWidth / 2;
+    const collapsedY = stackOffsetY - finalHeight / 2;
+    const collapsedScale = 1 - index * 0.015;
+
+    const targetPos =
+      role === "QUICK_THOUGHT"
+        ? QUICK_THOUGHT_PATTERN[index % QUICK_THOUGHT_PATTERN.length]
+        : direction === "LEFT"
+          ? PATTERN_A[index]
+          : PATTERN_B[index];
+    const safePos = targetPos || { x: 0, y: 0 };
+
+    const isLeftStack = direction === "RIGHT";
+    const dirX = Math.sign(safePos.x);
+    const dirY = Math.sign(safePos.y);
+    const pushX = dirX * (primarySizeOffset?.w || 0) * 0.3;
+    const pushY = dirY * (primarySizeOffset?.h || 0) * 1.0;
+    const expandedX = safePos.x + pushX - finalWidth / 2;
+    const expandedY = safePos.y + pushY - finalHeight / 2;
+    const zIndex = isExpanded ? total - index : total - index;
+
+    return (
+      <motion.div
+        ref={cardRef}
+        initial={false}
+        animate={{
+          x: isExpanded ? expandedX : collapsedX,
+          y: isExpanded ? expandedY : collapsedY,
+          scale: isExpanded ? 1 : collapsedScale,
+          opacity: 1,
+        }}
+        transition={{ type: "spring", stiffness: 220, damping: 25 }}
+        style={{
+          zIndex: isActive && isExpanded ? 999 : zIndex,
+          transformOrigin: "center center",
+          borderRadius: `${finalRadius}px`,
+          width: finalWidth,
+          height: finalHeight,
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!isExpanded) onExpand();
+          else onSetActive(chunk);
+        }}
+        className={`absolute top-0 left-0 ${bgClass} shadow-xl border cursor-pointer hover:-translate-y-2 transition-transform duration-10 group ${
+          isActive && isExpanded
+            ? "border-blue-400 shadow-[0_0_25px_rgba(59,130,246,0.4)]"
+            : "border-transparent"
+        }`}
+      >
+        {/* --- CONDITIONAL INTERNAL LAYOUT --- */}
+        {role === "QUICK_THOUGHT" ? (
+          <div className="relative w-full h-full p-4 flex flex-col rounded-[inherit]">
+            {/* Delete Button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onModifyQuickThought(
+                  "delete",
+                  chunk.id,
+                  chunk.parent_id,
+                  chunk.parent_type,
+                );
+              }}
+              className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 transition-opacity opacity-0 group-hover:opacity-100 z-50"
+            >
+              <XMarkIcon className="w-3 h-3" />
+            </button>
+
+            <div className="flex justify-between items-start shrink-0 mb-2">
+              <span className="text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5 text-inherit opacity-60">
+                <DocumentTextIcon className="w-3 h-3" /> Quick Thought
+              </span>
+            </div>
+
+            {/* Editable Text Area */}
+            <textarea
+              className="no-pan w-full flex-1 bg-transparent resize-none text-xs font-serif placeholder-black/30 outline-none custom-scrollbar"
+              placeholder="Jot a thought..."
+              value={qtText}
+              onChange={(e) => setQtText(e.target.value)}
+              onBlur={() =>
+                onModifyQuickThought(
+                  "update",
+                  chunk.id,
+                  chunk.parent_id,
+                  chunk.parent_type,
+                  qtText,
+                )
+              }
+              autoFocus={!chunk.text}
+              // THE FIX: Aggressively block all pointer events from bubbling to the Pan Engine
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </div>
+        ) : (
+          /* --- UPGRADED TRULY FULL BLEED CARD LAYOUT --- */
+          <>
+            {/* THE NEW ARCHITECTURAL L-SPINE TITLE (CONDITIONAL: ONLY FOR NOTES) */}
+            {isExpanded && role.includes("NOTE") && (
+              <div
+                className={`absolute top-0 bottom-0 ${isLeftStack ? "-right-8 justify-start" : "-left-8 justify-end"} w-6 flex flex-col items-center pointer-events-none z-50 py-6`}
+              >
+                {isLeftStack ? (
+                  <h4
+                    className="text-[20px] font-black text-slate-500/80 uppercase tracking-[0.3em] whitespace-nowrap"
+                    style={{ writingMode: "vertical-rl" }}
+                  >
+                    {chunk.title || chunk.bridge || "TITLE"}
+                  </h4>
+                ) : (
+                  <h4
+                    className="text-[20px] font-black text-slate-500/80 uppercase tracking-[0.3em] whitespace-nowrap"
+                    style={{
+                      writingMode: "vertical-rl",
+                      transform: "rotate(180deg)",
+                    }}
+                  >
+                    {chunk.title || chunk.bridge || "TITLE"}
+                  </h4>
+                )}
+              </div>
+            )}
+
+            {/* CARD CONTAINER - NAKED AND ABSOLUTE */}
+            <div className="absolute inset-0 overflow-hidden rounded-[inherit] z-10 pointer-events-none">
+              {/* THE FIX: Pass isNote and title down to the Preview component */}
+              <BlockPreview
+                htmlContent={chunk.text}
+                textClass={textClass}
+                isNote={role.includes("NOTE")}
+                title={chunk.title || chunk.bridge || "Title"}
+              />
+
+              {/* Floating Orientation Toggle */}
+              {isExpanded && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsLandscape(!isLandscape);
+                  }}
+                  className="absolute top-4 right-4 p-2 bg-black/20   hover:bg-black/40 text-white rounded-full transition-colors active:scale-90 shadow-md z-[60] pointer-events-auto"
+                  title="Toggle Orientation"
+                >
+                  <ArrowsRightLeftIcon className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* --- ATTACHED LOCAL STICKIES WITH REMOVE BUTTON --- */}
+        {localStickies.map((sticky) => (
+          <div
+            key={sticky.id}
+            className={`absolute w-28 h-28 p-3 shadow-md border z-[60] transition-transform hover:scale-105 hover:z-[70] group/sticky ${sticky.styleClass}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={(e) => handleRemoveSticky(e, sticky.id)}
+              className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:border-red-300 opacity-0 group-hover/sticky:opacity-100 transition-opacity z-[80]"
+            >
+              <XMarkIcon className="w-3 h-3" />
+            </button>
+
+            <textarea
+              className="w-full h-full bg-transparent resize-none text-[10px] font-serif placeholder-black/30 outline-none"
+              placeholder="Jot a note..."
+              value={sticky.text || ""}
+              onChange={(e) =>
+                handleStickyTextChange(sticky.id, e.target.value)
+              }
+              onBlur={() => saveStickiesToDB(localStickies)} // <-- SAVES TO DB WHEN YOU CLICK AWAY
+              autoFocus={!sticky.text}
+            />
+          </div>
+        ))}
+
+        {/* --- MINI ADD STICKY BUTTON --- */}
+        {isExpanded && role !== "QUICK_THOUGHT" && (
+          <button
+            onClick={handleAddLocalSticky}
+            className="absolute -top-3 -right-3 w-8 h-8 bg-white border border-slate-200 rounded-full shadow-md flex items-center justify-center text-slate-400 hover:text-pink-500 hover:border-pink-300 z-[80] opacity-0 group-hover:opacity-100 transition-all active:scale-90"
+            title="Attach Sticky Note"
+          >
+            <PlusIcon className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Drag Handles */}
+        {isExpanded && isActive && (
+          <>
+            <div
+              className="no-pan-resize absolute bottom-0 right-0 w-8 h-8 cursor-nwse-resize z-50 flex items-end justify-end p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              onMouseDown={(e) => startDrag(e, "size")}
+            >
+              <div
+                className={`w-3 h-3 border-r-2 border-b-2 rounded-br-sm pointer-events-none ${
+                  role === "QUICK_THOUGHT"
+                    ? "border-black/20"
+                    : "border-slate-300"
+                }`}
+              />
+            </div>
+            <div
+              className="no-pan-resize absolute top-0 right-0 w-8 h-8 cursor-nesw-resize z-50 flex items-start justify-end p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              onMouseDown={(e) => startDrag(e, "radius")}
+            >
+              <div
+                className={`w-2.5 h-2.5 rounded-full pointer-events-none ${
+                  role === "QUICK_THOUGHT" ? "bg-black/20" : "bg-slate-300"
+                }`}
+              />
+            </div>
+          </>
+        )}
+      </motion.div>
+    );
+  },
+);
+
+const SpatialStack = React.memo(
+  ({
+    itemId,
+    cullingRect,
+    cluster,
+    noteStack,
+    allGroups,
+    clusterIndex,
+    initialX,
+    initialY,
+    gridOffsetX,
+    gridOffsetY,
+    isExpanded,
+    canvasScale,
+    canvasMode,
+    onToggleStack,
+    fetchNotesForGroup,
+    currentNotes,
+    globalNotes,
+    allClusters,
+    isBeingArchived,
+    animatingArchive,
+    isBeingUnarchived,
+    unarchivingSource,
+    bringToFrontGrid,
+    updateGridPosition,
+    isBeingGridded,
+    gridAnimationTargets,
+  }: any) => {
+    const isNotesMode = canvasMode === "NOTES";
+
+    const [localPosState, setLocalPosState] = useState({
+      x: initialX,
+      y: initialY,
+    });
+    const [prevInitial, setPrevInitial] = useState({
+      x: initialX,
+      y: initialY,
+    });
+
+    // THE FIX: Instant Inline Override guarantees a 0-frame lag!
+    let localPos = localPosState;
+    if (initialX !== prevInitial.x || initialY !== prevInitial.y) {
+      localPos = { x: initialX, y: initialY };
+      setLocalPosState({ x: initialX, y: initialY });
+      setPrevInitial({ x: initialX, y: initialY });
+    }
+
+    const [activeFolder, setActiveFolder] = useState<any>(null);
+    const [activeNode, setActiveNode] = useState<any>(null);
+    const [pageIndex, setPageIndex] = useState(0);
+
+    const [primarySizeOffset, setPrimarySizeOffset] = useState({ w: 0, h: 0 });
+    const stackTitle = isNotesMode ? noteStack.title : cluster.title;
+    const [stackRotation, setStackRotation] = useState(0);
+
+    // --- 1. ADD THIS REF TO TRACK DRAG STATE ---
+    const isDraggingRef = React.useRef(false);
+
+    // --- 2. WRAP THE TOGGLE TO IGNORE CLICKS IF DRAGGING ---
+    const handleStackToggle = () => {
+      if (isDraggingRef.current) return;
+      onToggleStack(itemId); // THE FIX: Use stable trigger
+    };
+
+    // --- THE FIX: MEMOIZE DERIVED DATA SO IT DOESN'T ALLOCATE IN THE PARENT ---
+    const noteGroups = React.useMemo(() => {
+      return isNotesMode && allGroups
+        ? allGroups.filter((g: any) => g.stack_id === itemId)
+        : [];
+    }, [isNotesMode, allGroups, itemId]);
+
+    const archiveTarget =
+      isBeingArchived && animatingArchive
+        ? { x: animatingArchive.targetX, y: animatingArchive.targetY }
+        : null;
+
+    const unarchiveOrigin =
+      isBeingUnarchived && unarchivingSource
+        ? { x: unarchivingSource.x, y: unarchivingSource.y }
+        : null;
+
+    // --- CROSS-LINKING & NORMALIZATION ENGINE (OPTIMIZED) ---
+    // Memoized: Stops O(N^2) data calculations from firing 60x a sec during drags!
+    const orbitingItems = React.useMemo(() => {
+      const items: any[] = [];
+
+      if (!isNotesMode) {
+        const echoes = cluster?.chunks || [];
+        const echoIds = echoes.map((e: any) => String(e.echo_id));
+
+        const linkedNotes = (globalNotes || [])
+          .filter(
+            (n: any) =>
+              n.linked_echo_id && echoIds.includes(String(n.linked_echo_id)),
+          )
+          .map((n: any) => ({
+            ...n,
+            chunk_id: String(n.note_id),
+            relation: "User Note",
+            type: "note",
+            bridge: n.title,
+            text: n.content,
+          }));
+
+        const pushedNoteIds = new Set();
+        echoes.forEach((echo: any) => {
+          items.push(echo);
+          const childNotes = linkedNotes.filter(
+            (n: any) =>
+              String(n.linked_echo_id) === String(echo.echo_id) &&
+              !pushedNoteIds.has(n.chunk_id),
+          );
+          childNotes.forEach((n: any) => pushedNoteIds.add(n.chunk_id));
+          items.push(...childNotes);
+        });
+      } else if (isNotesMode && !activeFolder) {
+        const folders = (noteGroups || []).map((g: any) => {
+          const folderNotes = (globalNotes || [])
+            .filter((n: any) => String(n.group_id) === String(g.group_id))
+            .slice(0, 5);
+
+          let previewHTML = "";
+          if (folderNotes.length > 0) {
+            previewHTML = folderNotes
+              .map(
+                (n: any) =>
+                  `<div class="border-b border-slate-200/60 pb-2 mb-2"><strong class="text-slate-700 text-sm tracking-tight">${n.title || "Untitled Note"}</strong></div>`,
+              )
+              .join("");
+
+            const totalFolderNotes = (globalNotes || []).filter(
+              (n: any) => String(n.group_id) === String(g.group_id),
+            ).length;
+            if (totalFolderNotes > 5) {
+              previewHTML += `<div class="text-[10px] text-blue-500 font-bold uppercase tracking-widest mt-3">+ ${totalFolderNotes - 5} more notes</div>`;
+            }
+          } else {
+            previewHTML = `<p class="text-slate-400 italic text-sm mt-2">Empty Folder</p>`;
+          }
+
+          return {
+            ...g,
+            chunk_id: String(g.group_id),
+            relation: "Folder",
+            bridge: g.title,
+            text: previewHTML,
+          };
+        });
+        items.push(...folders);
+      } else if (isNotesMode && activeFolder) {
+        const notes = currentNotes || [];
+        const linkedEchoIds = notes
+          .map((n: any) => String(n.linked_echo_id))
+          .filter(
+            (id: string) => id !== "undefined" && id !== "null" && id !== "",
+          );
+
+        const linkedEchoes: any[] = [];
+        (allClusters || []).forEach((c: any) => {
+          (c.chunks || []).forEach((chunk: any) => {
+            const chunkId = String(chunk.echo_id);
+            if (
+              linkedEchoIds.includes(chunkId) &&
+              !linkedEchoes.find((e: any) => String(e.echo_id) === chunkId)
+            ) {
+              linkedEchoes.push({
+                ...chunk,
+                chunk_id: chunkId,
+                relation: "AI Echo",
+                type: "echo",
+              });
+            }
+          });
+        });
+
+        const formattedNotes = notes.map((n: any) => ({
+          ...n,
+          chunk_id: String(n.note_id),
+          relation: "User Note",
+          type: "note",
+          bridge: n.title,
+          text: n.content,
+        }));
+
+        const pushedEchoIds = new Set();
+        formattedNotes.forEach((note: any) => {
+          items.push(note);
+          const parentEcho = linkedEchoes.find(
+            (e: any) =>
+              String(e.echo_id) === String(note.linked_echo_id) &&
+              !pushedEchoIds.has(e.chunk_id),
+          );
+          if (parentEcho) {
+            pushedEchoIds.add(parentEcho.chunk_id);
+            items.push(parentEcho);
+          }
+        });
+      }
+
+      return items;
+    }, [
+      isNotesMode,
+      activeFolder,
+      cluster,
+      noteGroups,
+      globalNotes,
+      currentNotes,
+      allClusters,
+    ]);
+
+    const [activeThoughts, setActiveThoughts] = useState<Record<string, any[]>>(
+      {},
+    );
+    const getRealId = (node: any) =>
+      node.note_id || node.echo_id || node.chunk_id;
+
+    const handleSaveThoughts = async (
+      parentId: string,
+      parentType: string,
+      newThoughts: any[],
+    ) => {
+      setActiveThoughts((prev) => ({ ...prev, [parentId]: newThoughts }));
+      try {
+        await fetch("http://127.0.0.1:8000/brain/quick_thoughts/update", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            item_id: parentId,
+            thoughts: JSON.stringify(newThoughts),
+            item_type: parentType,
+          }),
+        });
+      } catch (error) {
+        console.error("Error saving quick thoughts:", error);
+      }
+    };
+
+    const handleModifyThought = (
+      action: string,
+      thoughtId: number,
+      parentId: string,
+      parentType: string,
+      newText = "",
+    ) => {
+      const parentNode = orbitingItems.find(
+        (i: any) => getRealId(i) === parentId,
+      );
+
+      // Safely parse existing DB string to prevent React crashes
+      let parsed = [];
+      try {
+        parsed = parentNode?.quick_thoughts
+          ? JSON.parse(parentNode.quick_thoughts)
+          : [];
+      } catch (e) {}
+
+      const existing =
+        activeThoughts[parentId] !== undefined
+          ? activeThoughts[parentId]
+          : parsed;
+
+      let updated;
+      if (action === "update") {
+        updated = existing.map((t: any) =>
+          t.id === thoughtId ? { ...t, text: newText } : t,
+        );
+      } else {
+        updated = existing.filter((t: any) => t.id !== thoughtId);
+      }
+
+      handleSaveThoughts(parentId, parentType, updated);
+    };
+
+    const handleAddQuickThought = () => {
+      if (!currentActiveNode) return;
+
+      const parentId = getRealId(currentActiveNode);
+      const parentType =
+        currentActiveNode.type ||
+        (currentActiveNode.relation?.includes("Note") ? "note" : "echo");
+
+      let parsed = [];
+      try {
+        parsed = currentActiveNode.quick_thoughts
+          ? JSON.parse(currentActiveNode.quick_thoughts)
+          : [];
+      } catch (e) {}
+
+      const existing =
+        activeThoughts[parentId] !== undefined
+          ? activeThoughts[parentId]
+          : parsed;
+
+      const styles = [
+        "bg-pink-100 border-pink-200 text-pink-950",
+        "bg-yellow-100 border-yellow-200 text-yellow-950",
+        "bg-sky-100 border-sky-200 text-sky-950",
+        "bg-emerald-100 border-emerald-200 text-emerald-950",
+      ];
+
+      handleSaveThoughts(parentId, parentType, [
+        ...existing,
+        {
+          id: Date.now(),
+          text: "",
+          styleClass: styles[Math.floor(Math.random() * styles.length)],
+        },
+      ]);
+    };
+    // --- FIXED: Handle Backend DB Save for Tags ---
+    const handleTagsUpdate = async (
+      id: string,
+      newTagsString: string,
+      type: string,
+    ) => {
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:8000/brain/tags/update",
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              item_id: id,
+              tags: newTagsString,
+              item_type: type,
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          console.error(
+            `Failed to save sticky to ${type}. Status:`,
+            response.status,
+          );
+        }
+      } catch (error) {
+        console.error("Network error while saving sticky note:", error);
+      }
+    };
+
+    const currentActiveNode =
+      activeNode ||
+      (isNotesMode && !activeFolder ? null : orbitingItems[0]) ||
+      null;
+    const currentDirection = clusterIndex % 2 === 0 ? "LEFT" : "RIGHT";
+
+    // TIER 1: Viewport Culling Math (Calculated before the useMemo)
+    const currentWorldX = localPos.x + (gridOffsetX || 0);
+    const currentWorldY = localPos.y + (gridOffsetY || 0);
+    const isVisible =
+      currentWorldX > (cullingRect?.left || -5000) &&
+      currentWorldX < (cullingRect?.right || 5000) &&
+      currentWorldY > (cullingRect?.top || -5000) &&
+      currentWorldY < (cullingRect?.bottom || 5000);
+
+    // TIER 2 & 3: Memoized Render List with your custom LOD Culling!
+    const allItemsToRender = React.useMemo(() => {
+      // TIER 1 Action: If off-screen, completely abort array parsing!
+      if (!isVisible) return [];
+
+      // TIER 2 & 3 Action: Stack-Level Trimming (12 items if open, ONLY 2 items if closed)
+      const limited = isExpanded
+        ? orbitingItems.slice(pageIndex * 12, (pageIndex + 1) * 12)
+        : orbitingItems.slice(0, 2);
+
+      const thoughts: any[] = [];
+
+      limited.forEach((item: any) => {
+        const parentId = getRealId(item);
+        const parentType =
+          item.type || (item.relation?.includes("Note") ? "note" : "echo");
+
+        let parsed = [];
+        try {
+          parsed = item.quick_thoughts ? JSON.parse(item.quick_thoughts) : [];
+        } catch (e) {}
+
+        const thoughtsToUse =
+          activeThoughts[parentId] !== undefined
+            ? activeThoughts[parentId]
+            : parsed;
+
+        thoughtsToUse.forEach((qt: any) => {
+          thoughts.push({
+            ...qt,
+            chunk_id: `qt-${parentId}-${qt.id}`,
+            parent_id: parentId,
+            parent_type: parentType,
+            is_quick_thought: true,
+          });
+        });
+      });
+
+      return [...limited, ...thoughts];
+    }, [orbitingItems, pageIndex, activeThoughts, isVisible, isExpanded]);
+
+    const coverStickies = React.useMemo(() => {
+      if (isExpanded || !isVisible) return [];
+      const stickies: any[] = [];
+      orbitingItems.slice(0, 12).forEach((item: any) => {
+        // STRICTLY extract Tag-Based Sticky Notes ONLY (No Quick Thoughts)
+        try {
+          if (item.tags && item.tags.includes("sticky_data:")) {
+            const jsonStr = item.tags.split("sticky_data:")[1];
+            const parsedStickies = JSON.parse(jsonStr);
+            if (Array.isArray(parsedStickies)) {
+              parsedStickies.forEach((s: any) => {
+                // THE FIX: Do not hoist empty "dummy" stickies!
+                if (s.text && s.text.trim().length > 0) {
+                  stickies.push(s);
+                }
+              });
+            }
+          }
+        } catch (e) {}
+      });
+      return stickies;
+    }, [orbitingItems, isExpanded, isVisible]);
+
+    const resolvedX = localPos.x + (gridOffsetX || 0);
+    const resolvedY = localPos.y + (gridOffsetY || 0);
+
+    const finalSnapPos = gridAnimationTargets
+      ? gridAnimationTargets[itemId]
+      : undefined;
+    const targetX = finalSnapPos
+      ? finalSnapPos.x + (gridOffsetX || 0)
+      : undefined;
+    const targetY = finalSnapPos
+      ? finalSnapPos.y + (gridOffsetY || 0)
+      : undefined;
+
+    const { animate, transition } = getGridAnimationProps(
+      isBeingGridded,
+      resolvedX,
+      resolvedY,
+      targetX,
+      targetY,
+      true,
+    );
+
+    const isArchiving = isBeingArchived && archiveTarget;
+
+    return (
+      <motion.div
+        drag={!isExpanded}
+        dragMomentum={false}
+        onDragStart={() => {
+          isDraggingRef.current = true;
+          if (bringToFrontGrid) bringToFrontGrid(itemId);
+        }}
+        onDragEnd={(_, info) => {
+          const newX = localPos.x + info.offset.x;
+          const newY = localPos.y + info.offset.y;
+          setLocalPosState({ x: newX, y: newY });
+          if (updateGridPosition) updateGridPosition(itemId, newX, newY);
+
+          setTimeout(() => {
+            isDraggingRef.current = false;
+          }, 150);
+        }}
+        initial={
+          isBeingUnarchived && unarchiveOrigin
+            ? {
+                x: unarchiveOrigin.x,
+                y: unarchiveOrigin.y,
+                scale: 0.5,
+                opacity: 0,
+              }
+            : { x: initialX, y: initialY }
+        }
+        animate={animate}
+        transition={transition}
+        className="absolute no-pan"
+        style={{ zIndex: isExpanded ? 5000 : 10 }}
+      >
+        {/* TIER 1 CULLING: Render literally nothing if off-screen, saving massive GPU memory */}
+        {isVisible && (
+          <>
+            {/* THE BINDER COVER AND BACKGROUND CARDS (Strictly Z-Index Cycling) */}
+            {!isExpanded && (
+              <div className="absolute top-0 left-0 pointer-events-none group">
+                {(() => {
+                  // Strictly cycle the Z-Index. No physical movement whatsoever.
+                  const zLayers = [
+                    [30, 20, 10],
+                    [10, 30, 20],
+                    [20, 10, 30],
+                  ];
+
+                  const coverZ = zLayers[stackRotation][0];
+                  const bg1Z = zLayers[stackRotation][1];
+                  const bg2Z = zLayers[stackRotation][2];
+
+                  return (
+                    <>
+                      {/* 1. THE INDEX CARDS (Restored to exact original static alignment) */}
+                      {orbitingItems.slice(0, 2).map((item: any, i: number) => {
+                        const currentZ = i === 0 ? bg1Z : bg2Z;
+                        return (
+                          <div
+                            key={`bg-${item.chunk_id || i}`}
+                            className="absolute inset-0 pointer-events-none transition-transform duration-300"
+                            style={{
+                              zIndex: currentZ,
+                              // Exact original staggered look
+                            }}
+                          >
+                            <div
+                              className="pointer-events-auto h-full w-full"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStackToggle();
+                              }}
+                            >
+                              <SpatialCard
+                                chunk={item}
+                                index={i}
+                                isExpanded={false}
+                                canvasScale={canvasScale}
+                                hideStickies={true}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* 2. THE MAIN COVER CARD (Exact original layout) */}
+                      <div
+                        className="absolute top-0 left-0 w-[350px] h-[480px] rounded-4xl bg-white shadow-2xl border border-slate-200 cursor-pointer pointer-events-auto transition-transform duration-300"
+                        style={{
+                          zIndex: coverZ,
+                          transform: "translate(-50%, -50%)",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStackToggle();
+                        }}
+                      >
+                        <div className="absolute inset-0 rounded-[inherit] overflow-hidden">
+                          {cluster?.cover_media || noteStack?.cover_image ? (
+                            <>
+                              <UniversalCoverMedia
+                                url={
+                                  cluster?.cover_media || noteStack?.cover_image
+                                }
+                              />
+                              <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
+                            </>
+                          ) : (
+                            <div className="absolute inset-0 bg-white rounded-[inherit] p-8 pt-16 flex flex-col">
+                              <ul className="flex-1 overflow-hidden flex flex-col gap-5">
+                                {orbitingItems
+                                  .slice(0, 5)
+                                  .map((item: any, idx: number) => (
+                                    <li
+                                      key={idx}
+                                      className="pb-2 border-b border-slate-300 flex items-start gap-4"
+                                    >
+                                      <div className="flex-1">
+                                        <h4 className="font-bold text-slate-700 text-sm leading-snug">
+                                          {item.title ||
+                                            item.bridge ||
+                                            "Untitled"}
+                                        </h4>
+                                      </div>
+                                    </li>
+                                  ))}
+                                {orbitingItems.length === 0 && (
+                                  <li className="text-slate-400 italic text-sm py-4">
+                                    Stack is empty.
+                                  </li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Peek-a-boo Stickies */}
+                        {coverStickies
+                          .slice(0, 4)
+                          .map((sticky: any, i: number) => {
+                            const cornerStyles = [
+                              {
+                                top: -15,
+                                right: -40,
+                                transform: "rotate(6deg)",
+                                left: "auto",
+                                bottom: "auto",
+                              },
+                              {
+                                bottom: -30,
+                                left: -50,
+                                transform: "rotate(-12deg)",
+                                top: "auto",
+                                right: "auto",
+                              },
+                              {
+                                top: -25,
+                                left: -35,
+                                transform: "rotate(-8deg)",
+                                right: "auto",
+                                bottom: "auto",
+                              },
+                              {
+                                bottom: -15,
+                                right: -50,
+                                transform: "rotate(6deg)",
+                                left: "auto",
+                                top: "auto",
+                              },
+                            ];
+                            const colorClasses = (
+                              sticky.styleClass || ""
+                            ).replace(
+                              /(top|bottom|left|right)-\[.*?\]|-?rotate-\d+/g,
+                              "",
+                            );
+                            return (
+                              <div
+                                key={sticky.id || i}
+                                className={`absolute w-28 h-28 p-3 shadow-md border z-[-1] pointer-events-none flex flex-col ${colorClasses}`}
+                                style={cornerStyles[i]}
+                              >
+                                <span className="text-[8px] font-bold uppercase tracking-widest opacity-50 mb-1 border-b border-black/10 pb-1">
+                                  Sticky Note
+                                </span>
+                                <p className="w-full text-[10px] font-serif overflow-hidden leading-snug line-clamp-3">
+                                  {sticky.text}
+                                </p>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* 3. HOVER CONTROLS (Floats safely above everything, positioned near the top right of the 350x480 cover) */}
+                <div
+                  className="absolute flex items-center gap-2 z-[9999] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                  style={{ top: "-224px", right: "-159px" }}
+                >
+                  <label
+                    className="cursor-pointer p-2 bg-white/90 hover:bg-slate-100   rounded-full text-slate-600 transition-transform hover:scale-110 border border-slate-200 shadow-sm"
+                    onClick={(e) => e.stopPropagation()}
+                    title="Add Cover Media"
+                  >
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*,video/*,audio/*"
+                      onChange={async (e) => {
+                        e.stopPropagation();
+                        if (!e.target.files?.[0]) return;
+                        const formData = new FormData();
+                        formData.append("file", e.target.files[0]);
+                        const targetId = isNotesMode
+                          ? noteStack.stack_id
+                          : cluster.id;
+                        const endpoint = isNotesMode ? "stack" : "cluster";
+                        await fetch(
+                          `http://127.0.0.1:8000/upload/media/${endpoint}/${targetId}`,
+                          { method: "POST", body: formData },
+                        );
+                      }}
+                    />
+                    <PlusIcon className="w-5 h-5" />
+                  </label>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStackRotation((prev) => (prev + 1) % 3);
+                    }}
+                    className="p-2 bg-white/90 hover:bg-slate-100   rounded-full text-slate-600 transition-transform hover:scale-110 border border-slate-200 shadow-sm"
+                    title="Cycle Cards to Back"
+                  >
+                    <ArrowsRightLeftIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+            <AnimatePresence>
+              {!isExpanded && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute -top-14 left-0 pointer-events-none"
+                >
+                  <h4 className="text-sm font-extrabold text-slate-800 tracking-tight">
+                    {stackTitle}
+                  </h4>
+                  <p className="text-[10px] font-mono font-bold text-slate-500 uppercase">
+                    {orbitingItems.length}{" "}
+                    {isNotesMode && !activeFolder ? "Folders" : "Nodes"}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {isExpanded && (
+                <motion.div
+                  initial={{ opacity: 1, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="absolute pointer-events-none z-[2000]"
+                  style={{
+                    left: clusterIndex % 2 === 0 ? 360 : -360,
+                    top: 0,
+                    x: "-50%",
+                    y: "-50%",
+                    rotate: clusterIndex % 2 === 0 ? 90 : -90,
+                  }}
+                >
+                  <h2 className="text-6xl font-black text-slate-700/80 uppercase tracking-[0.15em] whitespace-nowrap">
+                    {isNotesMode && activeFolder
+                      ? activeFolder.title
+                      : stackTitle}
+                  </h2>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="relative">
+              {allItemsToRender.map((item: any, index: number) => {
+                if (!isExpanded) return null;
+                const safeKey = `card-${pageIndex}-${index}-${
+                  item.chunk_id || item.echo_id || item.note_id || "fallback"
+                }`;
+                return (
+                  <SpatialCard
+                    key={safeKey}
+                    chunk={item}
+                    index={index}
+                    total={allItemsToRender.length}
+                    isExpanded={isExpanded}
+                    isActive={currentActiveNode?.chunk_id === item.chunk_id}
+                    direction={currentDirection}
+                    canvasScale={canvasScale}
+                    primarySizeOffset={primarySizeOffset}
+                    canvasMode={canvasMode}
+                    onUpdateStickies={handleTagsUpdate}
+                    onModifyQuickThought={handleModifyThought}
+                    onExpand={() => {
+                      handleStackToggle();
+                      if (!isNotesMode) setActiveNode(item);
+                    }}
+                    onSetActive={(node: any) => {
+                      if (isNotesMode && !activeFolder) {
+                        setActiveFolder(node);
+                        fetchNotesForGroup(node.group_id);
+                      } else {
+                        setActiveNode(node);
+                      }
+                    }}
+                  />
+                );
+              })}
+
+              <PrimaryViewerCard
+                activeNode={
+                  isNotesMode && !activeFolder && noteStack
+                    ? {
+                        ...noteStack,
+                        relation: "Stack",
+                        type: "stack",
+                        title: noteStack.title,
+                        chunk_id: noteStack.stack_id,
+                        cover_image: noteStack.cover_image,
+                      }
+                    : !isNotesMode && !currentActiveNode && cluster
+                      ? {
+                          ...cluster,
+                          relation: "Cluster",
+                          type: "cluster",
+                          title: cluster.title,
+                          chunk_id: cluster.id,
+                          cover_media: cluster.cover_media,
+                        }
+                      : isNotesMode && activeFolder && !currentActiveNode
+                        ? {}
+                        : currentActiveNode
+                }
+                globalNotes={globalNotes}
+                isExpanded={isExpanded}
+                canvasScale={canvasScale}
+                sizeOffset={primarySizeOffset}
+                setSizeOffset={setPrimarySizeOffset}
+                totalItems={orbitingItems.length}
+                pageIndex={pageIndex}
+                setPageIndex={setPageIndex}
+                direction={currentDirection}
+                onAddQuickThought={handleAddQuickThought}
+              />
+            </div>
+
+            <AnimatePresence>
+              {isExpanded && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isNotesMode && activeFolder) {
+                      setActiveFolder(null);
+                      setActiveNode(null);
+                    } else {
+                      handleStackToggle();
+                    }
+                  }}
+                  className="absolute -top-12 -right-12 z-[6000] p-4 bg-white text-slate-400 hover:text-red-600 rounded-full shadow-2xl border border-slate-100 transition-colors active:scale-90"
+                >
+                  {isNotesMode && activeFolder ? (
+                    <ArrowsRightLeftIcon className="w-6 h-6" />
+                  ) : (
+                    <XMarkIcon className="w-6 h-6" />
+                  )}
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+      </motion.div>
+    );
+  },
+);
+
+export default function SpatialCanvasUI({
+  clusters,
+  notes: globalNotes = [],
+  fetchClusters,
+  spatialMetadata = {},
+}: {
+  clusters: any[];
+  notes?: any[];
+  fetchClusters?: () => void;
+  spatialMetadata?: Record<string, any>;
+}) {
+  const {
+    draftGridCoordinates,
+    gridZIndexes,
+    bringToFrontGrid,
+    updateGridPosition,
+    saveGrid,
+    animatingGridIds,
+    gridAnimationTargets,
+  } = useGridLayout();
+  const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
+  const [canvasScale, setCanvasScale] = useState(0.7);
+  const [canvasMode, setCanvasMode] = useState<"ECHO" | "NOTES">("ECHO");
+  const [cullingRect, setCullingRect] = useState({
+    left: -5000,
+    right: 5000,
+    top: -5000,
+    bottom: 5000,
+  });
+
+  const [isShiftDown, setIsShiftDown] = useShiftKey();
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+
+  const [animatingArchive, setAnimatingArchive] = useState<{
+    isActive: boolean;
+    targetX: number;
+    targetY: number;
+    sourceIds: string[];
+  } | null>(null);
+
+  // Tracks the origin point for the "Explode Out" animation when unarchiving
+  const [unarchivingSource, setUnarchivingSource] = useState<{
+    x: number;
+    y: number;
+    sourceIds: string[];
+  } | null>(null);
+
+  const handleToggleStack = React.useCallback((itemId: string) => {
+    setExpandedStackId((prev) => (prev === itemId ? null : itemId));
+  }, []);
+
+  const isDraggingFolderRef = React.useRef(false);
+
+  // --- HOOK INTEGRATION ---
+  const {
+    stacks,
+    groups,
+    currentNotes,
+    fetchStacks,
+    fetchGroups,
+    fetchNotesForGroup,
+  } = useNotes();
+
+  useEffect(() => {
+    fetchStacks();
+    fetchGroups();
+  }, []);
+
+  // Fetch base structures when switching to notes mode
+  useEffect(() => {
+    if (canvasMode === "NOTES") {
+      fetchStacks();
+      fetchGroups();
+    }
+  }, [canvasMode]);
+
+  //
+  const aggregatedClusters = React.useMemo(() => {
+    if (!clusters || clusters.length === 0) return [];
+
+    const roots = clusters.filter((c) => !c.parent_cluster_id);
+    const branches = clusters.filter((c) => c.parent_cluster_id);
+
+    const mergedRoots = roots.map((root) => ({
+      ...root,
+      chunks: [...(root.chunks || [])],
+    }));
+
+    const getUltimateRootId = (clusterId: string): string => {
+      const cluster = clusters.find(
+        (c) => c.id === clusterId || c.cluster_id === clusterId,
+      );
+      if (!cluster) return clusterId;
+      if (!cluster.parent_cluster_id) return cluster.id || cluster.cluster_id;
+      return getUltimateRootId(cluster.parent_cluster_id);
+    };
+
+    branches.forEach((branch) => {
+      const rootId = getUltimateRootId(branch.id || branch.cluster_id);
+      const root = mergedRoots.find(
+        (r) => r.id === rootId || r.cluster_id === rootId,
+      );
+      if (root) {
+        root.chunks.push(...(branch.chunks || []));
+      } else {
+        mergedRoots.push({ ...branch, chunks: [...(branch.chunks || [])] });
+      }
+    });
+
+    mergedRoots.forEach((root) => {
+      root.chunks.sort((a: any, b: any) => {
+        const timeA = new Date(a.created_at || 0).getTime();
+        const timeB = new Date(b.created_at || 0).getTime();
+        return timeA - timeB;
+      });
+    });
+
+    mergedRoots.sort((a: any, b: any) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      return timeA - timeB;
+    });
+
+    // --- NEW: THE ARCHIVE GROUPING LAYER ---
+    const finalDisplayNodes: any[] = [];
+    const archiveMap = new Map<string, any>();
+
+    mergedRoots.forEach((root) => {
+      if (root.archive_group_id) {
+        if (!archiveMap.has(root.archive_group_id)) {
+          archiveMap.set(root.archive_group_id, {
+            id: root.archive_group_id, // The arch_ ID becomes the unique node ID
+            is_archive_node: true,
+            title: "Archive",
+            chunks: [], // We store the roots here to fan out visually
+          });
+        }
+        archiveMap.get(root.archive_group_id).chunks.push(root);
+      } else {
+        finalDisplayNodes.push(root);
+      }
+    });
+
+    archiveMap.forEach((archNode) => finalDisplayNodes.push(archNode));
+
+    return finalDisplayNodes;
+  }, [clusters, spatialMetadata]);
+
+  // --- NEW: STACK AGGREGATOR FOR NOTES ARCHIVES ---
+  const aggregatedStacks = React.useMemo(() => {
+    if (!stacks || stacks.length === 0) return [];
+
+    const finalDisplayNodes: any[] = [];
+    const archiveMap = new Map<string, any>();
+    const mutableStacks = [...stacks];
+
+    mutableStacks.sort((a: any, b: any) => {
+      const zA = spatialMetadata[a.stack_id]?.z_index || 0;
+      const zB = spatialMetadata[b.stack_id]?.z_index || 0;
+
+      if (zA !== zB) return zA - zB;
+
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      return timeA - timeB;
+    });
+
+    stacks.forEach((stack: any) => {
+      if (stack.archive_group_id) {
+        if (!archiveMap.has(stack.archive_group_id)) {
+          archiveMap.set(stack.archive_group_id, {
+            stack_id: stack.archive_group_id,
+            is_archive_node: true,
+            title: "Archived Notes",
+            chunks: [],
+          });
+        }
+        archiveMap.get(stack.archive_group_id).chunks.push(stack);
+      } else {
+        finalDisplayNodes.push(stack);
+      }
+    });
+
+    archiveMap.forEach((archNode) => finalDisplayNodes.push(archNode));
+
+    return finalDisplayNodes;
+  }, [stacks, spatialMetadata]);
+
+  const loopDataset =
+    canvasMode === "ECHO" ? aggregatedClusters : aggregatedStacks;
+
+  // NEW: Camera Controller Reference
+  const transformComponentRef = React.useRef<any>(null);
+
+  // NEW: Calculate the exact row and column of the actively expanded stack
+  const expandedIndex = loopDataset.findIndex(
+    (item: any) =>
+      (canvasMode === "ECHO" ? item.id : item.stack_id) === expandedStackId,
+  );
+  const expandedRow = expandedIndex !== -1 ? Math.floor(expandedIndex / 3) : -1;
+  const expandedCol = expandedIndex !== -1 ? expandedIndex % 3 : -1;
+
+  // NEW: Safely extracts coordinates and prevents NaN crashes during heavy drags
+  const updateCulling = (ref: any) => {
+    if (!ref?.state) return;
+    const scale = ref.state.scale || 1;
+    // Fallback to 0 if the library momentarily drops state
+    const x = ref.state.positionX ?? ref.state.x ?? 0;
+    const y = ref.state.positionY ?? ref.state.y ?? 0;
+    const buffer = 2000; // Increased buffer so it easily covers off-screen pans
+
+    setCullingRect({
+      left: -x / scale - buffer,
+      right: (-x + window.innerWidth) / scale + buffer,
+      top: -y / scale - buffer,
+      bottom: (-y + window.innerHeight) / scale + buffer,
+    });
+  };
+
+  return (
+    <div
+      id="spatial-canvas-container"
+      className="absolute inset-0 bg-[#f4f4f5] overflow-hidden pointer-events-auto"
+      onPointerDownCapture={(e) => {
+        if (
+          document.activeElement &&
+          document.activeElement.tagName === "TEXTAREA" &&
+          e.target !== document.activeElement
+        ) {
+          (document.activeElement as HTMLElement).blur();
+        }
+      }}
+    >
+      {/* --- DUAL-MODE TOGGLE UI --- */}
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200">
+        <button
+          onClick={() => {
+            setCanvasMode("ECHO");
+            setExpandedStackId(null);
+          }}
+          className={`px-6 py-2 rounded-full text-sm font-bold uppercase tracking-wider transition-all ${
+            canvasMode === "ECHO"
+              ? "bg-slate-900 text-white shadow-md"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+          }`}
+        >
+          Echo Mode
+        </button>
+        <button
+          onClick={() => {
+            setCanvasMode("NOTES");
+            setExpandedStackId(null);
+          }}
+          className={`px-6 py-2 rounded-full text-sm font-bold uppercase tracking-wider transition-all ${
+            canvasMode === "NOTES"
+              ? "bg-slate-900 text-white shadow-md"
+              : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+          }`}
+        >
+          Notes Mode
+        </button>
+      </div>
+
+      <TransformWrapper
+        ref={transformComponentRef}
+        initialScale={0.7}
+        initialPositionX={300}
+        initialPositionY={150}
+        minScale={0.1}
+        maxScale={3}
+        limitToBounds={false}
+        centerZoomedOut={false}
+        // THE FIX: Change 'excludedClasses' to 'excluded' right here!
+        panning={{
+          disabled: isShiftDown,
+          excluded: ["no-pan", "no-pan-resize"],
+        }}
+        onInit={(ref) => {
+          setCanvasScale(ref.state.scale);
+          updateCulling(ref);
+        }}
+        wheel={{
+          step: 0.1,
+          smoothStep: 0.0005,
+          excluded: ["no-pan", "no-pan-resize"],
+        }}
+        onPanningStop={(ref) => updateCulling(ref)}
+        onZoomStop={(ref) => {
+          setCanvasScale(ref.state.scale);
+          updateCulling(ref);
+        }}
+      >
+        <TransformComponent wrapperStyle={{ width: "100%", height: "100%" }}>
+          <div className="relative w-0 h-0">
+            {/* Background Desk Grid */}
+            <div
+              className="absolute pointer-events-none opacity-50"
+              style={{
+                left: -15000,
+                top: -15000,
+                width: 30000,
+                height: 30000,
+                backgroundImage:
+                  "radial-gradient(#cbd5e1 1.5px, transparent 1.5px)",
+                backgroundSize: "32px 32px",
+              }}
+            />
+
+            <MotionConfig
+              transformPagePoint={(p) => ({
+                x: p.x / canvasScale,
+                y: p.y / canvasScale,
+              })}
+            >
+              {loopDataset.map((item: any, i: number) => {
+                const row = Math.floor(i / 3);
+                const col = i % 3;
+                const itemId = canvasMode === "ECHO" ? item.id : item.stack_id;
+
+                const savedMeta = spatialMetadata[itemId];
+                // THE FIX: Use the new hook state
+                const draftMeta = draftGridCoordinates[itemId];
+
+                const defaultX = col * 600 + (row % 2 === 0 ? 0 : 300);
+
+                const defaultY = row * 650;
+
+                // Priority: 1. Live Dragging, 2. Database Saved, 3. Default Grid
+                const baseX = draftMeta?.x ?? savedMeta?.x_coord ?? defaultX;
+                const baseY = draftMeta?.y ?? savedMeta?.y_coord ?? defaultY;
+                // --- THE "MOSES EFFECT" MATH ---
+                let gridOffsetX = 0;
+                let gridOffsetY = 0;
+
+                if (expandedIndex !== -1 && i !== expandedIndex) {
+                  const colDiff = col - expandedCol;
+                  const rowDiff = row - expandedRow;
+
+                  if (colDiff < 0) gridOffsetX = -1200;
+                  else if (colDiff > 0) gridOffsetX = 1200;
+
+                  if (rowDiff < 0) gridOffsetY = -900;
+                  else if (rowDiff > 0) gridOffsetY = 1600;
+                }
+
+                const isSelected = selectedItemIds.includes(itemId);
+
+                // 1. IDENTIFY ARCHIVE GROUPS
+                const isArchive = item.is_archive_node;
+                const isAnimating =
+                  animatingArchive?.sourceIds.includes(itemId);
+
+                // 2. RENDER THE ARCHIVE FOLDER
+                if (isArchive) {
+                  const archiveChildren = item.chunks || [];
+
+                  // Sorting logic: prioritize items saved as "landscape" in metadata
+                  const sortedChildren = [...archiveChildren].sort((a, b) => {
+                    const idA = canvasMode === "ECHO" ? a.id : a.stack_id;
+                    const idB = canvasMode === "ECHO" ? b.id : b.stack_id;
+                    const orientA =
+                      spatialMetadata[idA]?.orientation || "portrait";
+                    const orientB =
+                      spatialMetadata[idB]?.orientation || "portrait";
+                    if (orientA === "landscape" && orientB !== "landscape")
+                      return -1;
+                    if (orientB === "landscape" && orientA !== "landscape")
+                      return 1;
+                    return 0;
+                  });
+
+                  const previewItems = sortedChildren.slice(0, 4);
+                  const isBeingGridded = animatingGridIds.includes(itemId); // <-- ADD THIS
+
+                  const resolvedX = baseX + gridOffsetX;
+                  const resolvedY = baseY + gridOffsetY;
+                  const finalSnapPos = gridAnimationTargets
+                    ? gridAnimationTargets[itemId]
+                    : undefined;
+                  // THE FIX: Fallback to the resolved coordinates so Framer Motion never receives "undefined"
+                  const targetX = finalSnapPos
+                    ? finalSnapPos.x + gridOffsetX
+                    : resolvedX;
+                  const targetY = finalSnapPos
+                    ? finalSnapPos.y + gridOffsetY
+                    : resolvedY;
+
+                  return (
+                    <motion.div
+                      key={itemId}
+                      drag
+                      dragMomentum={false}
+                      initial={{ x: baseX, y: baseY, scale: 0 }}
+                      animate={{ x: targetX, y: targetY, scale: 1, opacity: 1 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 220,
+                        damping: 25,
+                      }}
+                      className="absolute no-pan"
+                      style={{
+                        // THE FIX: Read live drags first, then saved DB Z-Index, then fallback
+                        zIndex:
+                          gridZIndexes[itemId] ||
+                          savedMeta?.z_index ||
+                          (isSelected ? 9999 : 10),
+                        outline: isSelected ? "2px solid #4ade80" : "none",
+                        outlineOffset: "8px",
+                        borderRadius: "16px",
+                      }}
+                      // --- TRACK FOLDER DRAGS ---
+                      onDragStart={() => {
+                        isDraggingFolderRef.current = true;
+                        bringToFrontGrid(itemId); // THE FIX: Hook method
+                      }}
+                      onDragEnd={(_, info) => {
+                        updateGridPosition(
+                          itemId,
+                          baseX + info.offset.x,
+                          baseY + info.offset.y,
+                        ); // THE FIX: Hook method
+                        // DEBOUNCE
+                        setTimeout(() => {
+                          isDraggingFolderRef.current = false;
+                        }, 150);
+                      }}
+                    >
+                      <ArchiveFolderCard
+                        id={item.id || item.stack_id} // Used for deterministic gradients
+                        title={item.title || "Archived Group"}
+                        count={archiveChildren.length}
+                        isEmpty={archiveChildren.length === 0}
+                        onClick={async (e: any) => {
+                          if (e) e.stopPropagation();
+
+                          // --- ABORT IF IT WAS JUST DRAGGED ---
+                          if (isDraggingFolderRef.current) return;
+
+                          const targetId = item.id || item.stack_id;
+
+                          // 1. Set the explosion origin for the child cards
+                          setUnarchivingSource({
+                            x: baseX + gridOffsetX,
+                            y: baseY + gridOffsetY,
+                            sourceIds: archiveChildren.map((c: any) =>
+                              canvasMode === "ECHO" ? c.id : c.stack_id,
+                            ),
+                          });
+
+                          try {
+                            // 2. Call the API
+                            const response = await fetch(
+                              "http://127.0.0.1:8000/brain/archive/ungroup",
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  archive_id: targetId,
+                                  type: canvasMode,
+                                }),
+                              },
+                            );
+
+                            if (response.ok) {
+                              // 3. Refetch to trigger the layout explosion!
+                              if (
+                                canvasMode === "ECHO" &&
+                                typeof fetchClusters === "function"
+                              )
+                                fetchClusters();
+                              else if (
+                                canvasMode === "NOTES" &&
+                                typeof fetchStacks === "function"
+                              )
+                                fetchStacks();
+
+                              // 4. Clear the animation tracker after the cards finish flying
+                              setTimeout(() => setUnarchivingSource(null), 600);
+                            }
+                          } catch (err) {
+                            console.error("Failed to unarchive", err);
+                            setUnarchivingSource(null);
+                          }
+                        }}
+                      >
+                        {/* THE FIX: Replaced heavy generic divs with the dumb Binder component! */}
+                        {previewItems.map((child: any, idx: number) => {
+                          const childId =
+                            canvasMode === "ECHO" ? child.id : child.stack_id;
+                          const meta = spatialMetadata[childId] || {};
+                          return (
+                            <BinderCoverPreview
+                              key={idx}
+                              title={
+                                child.title ||
+                                child.book_id ||
+                                "Archived Content"
+                              }
+                              coverMedia={
+                                child.cover_media || child.cover_image
+                              }
+                              orientation={meta.orientation || "portrait"}
+                            />
+                          );
+                        })}
+                      </ArchiveFolderCard>
+                    </motion.div>
+                  );
+                }
+
+                // 3. RENDER THE STANDARD STACK WITH PROPER HIGHLIGHT WRAPPER
+                return (
+                  <div
+                    key={itemId}
+                    className="absolute pointer-events-none"
+                    style={{
+                      border: isSelected
+                        ? "2px solid #4ade80"
+                        : "2px solid transparent",
+                      borderRadius: "26px",
+                      transition: "border 0.2s ease",
+                      // THE FIX: Reads live drafts first, then saved DB Z-Index, then fallback
+                      zIndex:
+                        gridZIndexes[itemId] ||
+                        savedMeta?.z_index ||
+                        (isSelected ? 9999 : 1),
+                    }}
+                  >
+                    <div className="pointer-events-auto w-full h-full">
+                      <SpatialStack
+                        itemId={itemId} // <-- THE FIX
+                        cullingRect={cullingRect}
+                        cluster={canvasMode === "ECHO" ? item : null}
+                        noteStack={canvasMode === "NOTES" ? item : null}
+                        allGroups={groups} // <-- THE FIX: No inline `.filter()` here!
+                        clusterIndex={i}
+                        initialX={baseX}
+                        initialY={baseY}
+                        gridOffsetX={gridOffsetX}
+                        gridOffsetY={gridOffsetY}
+                        isExpanded={expandedStackId === itemId}
+                        canvasScale={canvasScale}
+                        canvasMode={canvasMode}
+                        fetchNotesForGroup={fetchNotesForGroup}
+                        currentNotes={currentNotes}
+                        globalNotes={globalNotes}
+                        allClusters={clusters}
+                        isBeingArchived={isAnimating}
+                        animatingArchive={animatingArchive}
+                        onToggleStack={handleToggleStack}
+                        isBeingUnarchived={unarchivingSource?.sourceIds.includes(
+                          itemId,
+                        )}
+                        unarchivingSource={unarchivingSource}
+                        bringToFrontGrid={bringToFrontGrid}
+                        updateGridPosition={updateGridPosition}
+                        isBeingGridded={animatingGridIds.includes(itemId)}
+                        gridAnimationTargets={gridAnimationTargets}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </MotionConfig>
+            {/* 3. THE FIX: MARQUEE RENDERED LAST SO IT SITS ON TOP! */}
+            <div
+              className={`absolute inset-0 z-[99999] ${isShiftDown ? "pointer-events-auto" : "pointer-events-none"}`}
+            >
+              <MarqueeSelector
+                isShiftDown={isShiftDown}
+                canvasScale={canvasScale}
+                onCancel={() => setIsShiftDown(false)}
+                onSelectionComplete={async (bounds) => {
+                  const selectedIds = loopDataset
+                    .map((item: any, i: number) => {
+                      const itemId =
+                        canvasMode === "ECHO" ? item.id : item.stack_id;
+
+                      // 1. PULL THE ACTUAL TRUE POSITIONS
+                      const draft = draftGridCoordinates[itemId]; // THE FIX
+                      const saved = spatialMetadata[itemId];
+
+                      // 2. FALLBACK MATH (Must match your render loop)
+                      const row = Math.floor(i / 3);
+                      const col = i % 3;
+                      const defX = col * 600 + (row % 2 === 0 ? 0 : 300);
+                      const defY = row * 650; // NOTE: Make sure this matches your render loop (650 or 500)
+
+                      // 3. PRIORITY RESOLUTION
+                      const actualX = draft?.x ?? saved?.x_coord ?? defX;
+                      const actualY = draft?.y ?? saved?.y_coord ?? defY;
+
+                      // 4. HITBOX CALCULATION BASED ON TRUE POSITION
+                      if (
+                        actualX + 200 >= bounds.left &&
+                        actualX - 200 <= bounds.right &&
+                        actualY + 250 >= bounds.top &&
+                        actualY - 250 <= bounds.bottom
+                      ) {
+                        return itemId;
+                      }
+                      return null;
+                    })
+                    .filter(Boolean);
+
+                  setSelectedItemIds(selectedIds as string[]);
+                }}
+              />
+            </div>
+          </div>
+        </TransformComponent>
+      </TransformWrapper>
+
+      <SelectionToolbar
+        selectedCount={selectedItemIds.length}
+        onClear={() => setSelectedItemIds([])}
+        onSetGrid={() => {
+          // THE FIX: Fire the modular save engine!
+          saveGrid({
+            selectedIds: selectedItemIds,
+            spatialMetadata: spatialMetadata,
+            dataset: loopDataset,
+            getId: (item) => (canvasMode === "ECHO" ? item.id : item.stack_id),
+            getType: (item) => (item?.is_archive_node ? "ARCHIVE" : "GRID"),
+            getDefaultPos: (index) => {
+              const row = Math.floor(index / 3);
+              const col = index % 3;
+              return {
+                x: col * 600 + (row % 2 === 0 ? 0 : 300),
+                y: row * 650,
+              };
+            },
+            onSuccess: () => {
+              setSelectedItemIds([]);
+
+              // THE OPTIMIZATION FIX: Delay the heavy refetch until the animation physically settles!
+              setTimeout(() => {
+                if (
+                  canvasMode === "ECHO" &&
+                  typeof fetchClusters === "function"
+                )
+                  fetchClusters();
+                if (canvasMode === "NOTES" && typeof fetchStacks === "function")
+                  fetchStacks();
+              }, 600);
+            },
+          });
+        }}
+        onArchive={async () => {
+          // 1. Trigger the optimistic "Suck-In" Animation instantly
+          const firstItemIndex = loopDataset.findIndex((item: any) =>
+            selectedItemIds.includes(
+              canvasMode === "ECHO" ? item.id : item.stack_id,
+            ),
+          );
+
+          if (firstItemIndex !== -1) {
+            const row = Math.floor(firstItemIndex / 3);
+            const col = firstItemIndex % 3;
+            setAnimatingArchive({
+              isActive: true,
+              targetX: col * 600 + (row % 2 === 0 ? 0 : 300),
+              targetY: row * 650,
+              sourceIds: selectedItemIds,
+            });
+          }
+
+          try {
+            const response = await fetch(
+              "http://127.0.0.1:8000/brain/archive/group",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  items: selectedItemIds,
+                  type: canvasMode,
+                }),
+              },
+            );
+            const payload = await response.json();
+
+            if (!response.ok || payload.status !== "success") {
+              throw new Error(payload.message || "Archiving request failed.");
+            }
+
+            // Success! Clear selection and refetch
+            setSelectedItemIds([]);
+            if (canvasMode === "ECHO" && typeof fetchClusters === "function")
+              fetchClusters();
+            else if (
+              canvasMode === "NOTES" &&
+              typeof fetchStacks === "function"
+            )
+              fetchStacks();
+
+            // Turn off animation state after a short delay so the real folder can render
+            setTimeout(() => setAnimatingArchive(null), 500);
+          } catch (error) {
+            console.error("Failed to archive groups", error);
+            // Rollback animation on failure! Cards snap back to their spots.
+            setAnimatingArchive(null);
+          }
+        }}
+      />
+    </div>
+  );
+}
