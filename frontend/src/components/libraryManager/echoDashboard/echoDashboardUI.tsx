@@ -150,8 +150,8 @@ export default function EchoDashboardUI(props: any) {
   return (
     <>
       <div className="relative h-full w-full">
-        <div className="absolute left-3 right-3 top-3 z-[2500] flex justify-center pointer-events-auto sm:left-6 sm:right-auto sm:top-6 sm:block">
-          <div className="inline-flex max-w-full overflow-x-auto rounded-full ml-150 border border-slate-200 bg-white/95 p-1 shadow-lg">
+        <div className="absolute left-3 right-3 top-3 z-[2500] flex ml-150 justify-center pointer-events-auto sm:left-6 sm:right-auto sm:top-6 sm:block">
+          <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
             <button
               type="button"
               onClick={() => setDashboardView("CANVAS")}

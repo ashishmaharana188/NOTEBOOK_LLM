@@ -78,8 +78,8 @@ const NotesSectionUI: React.FC = () => {
 
   return (
     <div className="relative w-full h-full bg-[#f8f9fa] overflow-hidden font-sans border border-border-subtle shadow-sm rounded-lg">
-      <div className="absolute left-3 right-3 top-3 z-[2000] flex justify-center pointer-events-auto sm:left-6 sm:right-auto sm:top-6 sm:block">
-        <div className="inline-flex max-w-full overflow-x-auto rounded-full ml-150 border border-slate-200 bg-white/95 p-1 shadow-lg">
+      <div className="absolute left-3 right-3 top-3 z-[2000] flex justify-center ml-150 pointer-events-auto sm:left-6 sm:right-auto sm:top-6 sm:block">
+        <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
           <button
             type="button"
             onClick={() => setDashboardView("CANVAS")}
