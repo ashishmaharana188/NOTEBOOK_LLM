@@ -9,14 +9,14 @@ export interface LibraryManagerProps {
   onStartDownload: (book: any) => void;
 
   ingesting: string | null;
-  ingestQueue?: IngestQueueState;
+  ingestQueue?: IngestQueueState | undefined;
   onUpload: (file: File) => Promise<void>;
   onIngest: (filename: string) => Promise<void>;
   onCancelIngest: (filename: string) => Promise<void>;
   onDeleteLibrary: (filename: string, bulk?: boolean) => Promise<void>;
   onDeleteBrain: (filename: string, bulk?: boolean) => Promise<void>;
   onRead: (filename: string, isProcessed?: boolean) => void;
-  onOpenEchoDashboard: () => void;
+  onOpenEchoDashboard?: () => void;
 
   discoveryResults?: DiscoveryResult[];
   facets?: any[];

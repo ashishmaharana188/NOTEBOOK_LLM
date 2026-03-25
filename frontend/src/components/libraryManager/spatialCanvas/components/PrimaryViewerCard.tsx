@@ -461,14 +461,14 @@ const PrimaryViewerCard = ({
 
       {/* Drag Handles (Sitting safely outside the mask) */}
       <div
-        className="no-pan-resize absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize z-[6000] flex items-end justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="no-pan-resize absolute bottom-0 right-0 z-[6000] flex h-10 w-10 cursor-nwse-resize items-end justify-end p-3 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
         onMouseDown={(e) => startDrag(e, "size")}
       >
         <div className="w-4 h-4 border-r-4 border-b-4 border-slate-300/50   rounded-br-sm pointer-events-none" />
       </div>
 
       <div
-        className="no-pan-resize absolute top-0 right-0 w-10 h-10 cursor-nesw-resize z-[6000] flex items-start justify-end p-3 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="no-pan-resize absolute top-0 right-0 z-[6000] flex h-10 w-10 cursor-nesw-resize items-start justify-end p-3 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
         onMouseDown={(e) => startDrag(e, "radius")}
       >
         <div className="w-3.5 h-3.5 rounded-full bg-slate-300/50   pointer-events-none" />

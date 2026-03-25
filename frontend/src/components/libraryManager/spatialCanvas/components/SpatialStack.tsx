@@ -280,10 +280,10 @@ const SpatialStack = React.memo(
         const currentWorldY = localPos.y + (gridOffsetY || 0);
         const isVisible =
             isRootVisible ??
-            currentWorldX > (cullingRect?.left || -5000) &&
-            currentWorldX < (cullingRect?.right || 5000) &&
-            currentWorldY > (cullingRect?.top || -5000) &&
-            currentWorldY < (cullingRect?.bottom || 5000);
+            ((currentWorldX > (cullingRect?.left || -5000) &&
+                currentWorldX < (cullingRect?.right || 5000) &&
+                currentWorldY > (cullingRect?.top || -5000) &&
+                currentWorldY < (cullingRect?.bottom || 5000)));
 
         const coverStickies = useCoverStickies(
             orbitingItems,
@@ -760,7 +760,7 @@ const SpatialStack = React.memo(
                                 })()}
 
                                 <div
-                                    className="absolute flex items-center gap-2 z-[9999] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                    className="absolute z-[9999] flex items-center gap-2 opacity-100 transition-opacity pointer-events-auto sm:opacity-0 sm:group-hover:opacity-100"
                                     style={{ top: "-224px", right: "-159px" }}
                                 >
                                     <label

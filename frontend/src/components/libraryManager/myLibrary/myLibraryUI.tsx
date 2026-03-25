@@ -18,7 +18,7 @@ interface MyLibraryProps {
     libraryFiles: string[];
     brainBooks: BrainBook[];
     ingesting: string | null;
-    ingestQueue?: IngestQueueState;
+    ingestQueue?: IngestQueueState | undefined;
     onUpload: (file: File) => Promise<void>;
     onIngest: (filename: string) => Promise<void>;
     onCancelIngest: (filename: string) => Promise<void>;

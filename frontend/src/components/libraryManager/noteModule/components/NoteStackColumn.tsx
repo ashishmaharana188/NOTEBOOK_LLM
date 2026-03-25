@@ -225,7 +225,7 @@ const NoteStackColumn = React.memo(
                             </svg>
                         </div>
 
-                        <div className="absolute -top-1 right-135 opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-auto">
+                        <div className="absolute -top-1 right-135 z-50 pointer-events-auto opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                             <label
                                 className="no-pan cursor-pointer bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full backdrop-blur-sm transition-colors flex items-center justify-center"
                                 onClick={(e) => e.stopPropagation()}

@@ -431,7 +431,7 @@ const SpatialCard = React.memo(
                     chunk.parent_type,
                   );
                 }}
-                className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 transition-opacity opacity-0 group-hover:opacity-100 z-50"
+                className="absolute -top-2 -right-2 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-100 transition-opacity hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
               >
                 <XMarkIcon className="w-3 h-3" />
               </button>
@@ -508,7 +508,7 @@ const SpatialCard = React.memo(
             >
               <button
                 onClick={(e) => handleRemoveSticky(e, sticky.id)}
-                className="absolute -top-2 -right-2 w-5 h-5 bg-white border border-slate-200 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 opacity-0 group-hover/sticky:opacity-100 transition-opacity z-[80]"
+                className="absolute -top-2 -right-2 z-[80] flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-100 transition-opacity hover:text-red-500 sm:opacity-0 sm:group-hover/sticky:opacity-100"
               >
                 <XMarkIcon className="w-3 h-3" />
               </button>
@@ -527,7 +527,7 @@ const SpatialCard = React.memo(
           {isExpanded && role !== "QUICK_THOUGHT" && (
             <button
               onClick={handleAddLocalSticky}
-              className="absolute -top-3 -right-3 w-8 h-8 bg-white border border-slate-200 rounded-full shadow-md flex items-center justify-center text-slate-400 hover:text-pink-500 z-[80] opacity-0 group-hover:opacity-100 transition-all active:scale-90"
+              className="absolute -top-3 -right-3 z-[80] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-100 shadow-md transition-all hover:text-pink-500 active:scale-90 sm:opacity-0 sm:group-hover:opacity-100"
             >
               <PlusIcon className="w-4 h-4" />
             </button>
@@ -556,7 +556,7 @@ const SpatialCard = React.memo(
           {isExpanded && isActive && (
             <>
               <div
-                className="no-pan-resize absolute bottom-0 right-0 w-8 h-8 cursor-nwse-resize z-50 flex items-end justify-end p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="no-pan-resize absolute bottom-0 right-0 z-50 flex h-8 w-8 cursor-nwse-resize items-end justify-end p-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                 onMouseDown={(e) => startDrag(e, "size")}
                 onPointerDownCapture={(e) => startDrag(e, "size")}
               >
@@ -565,7 +565,7 @@ const SpatialCard = React.memo(
                 />
               </div>
               <div
-                className="no-pan-resize absolute top-0 right-0 w-8 h-8 cursor-nesw-resize z-50 flex items-start justify-end p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="no-pan-resize absolute top-0 right-0 z-50 flex h-8 w-8 cursor-nesw-resize items-start justify-end p-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                 onMouseDown={(e) => startDrag(e, "radius")}
                 onPointerDownCapture={(e) => startDrag(e, "radius")}
               >

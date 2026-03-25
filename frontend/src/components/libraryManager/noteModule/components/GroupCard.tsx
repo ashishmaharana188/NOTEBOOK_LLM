@@ -158,7 +158,7 @@ const GroupCard = React.memo(
                 e.stopPropagation();
                 onDeleteGroup(group.group_id);
               }}
-              className="absolute top-[21px] right-6 p-1 text-muted hover:text-red-600 transition opacity-0 group-hover:opacity-100"
+              className="absolute top-[21px] right-6 p-1 text-muted opacity-100 transition hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
               title="Delete Folder"
             >
               <svg
@@ -238,7 +238,7 @@ const GroupCard = React.memo(
                         setIsRenaming(true);
                         setEditTitle(group.title);
                       }}
-                      className="text-gray-400 hover:text-blue-500 opacity-0 group-hover/title:opacity-100 transition-opacity"
+                      className="text-gray-400 opacity-100 transition-opacity hover:text-blue-500 sm:opacity-0 sm:group-hover/title:opacity-100"
                     >
                       <svg
                         className="w-4 h-4"
@@ -297,7 +297,7 @@ const GroupCard = React.memo(
                               e.stopPropagation();
                               onDeleteNote(note.note_id);
                             }}
-                            className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="text-gray-400 opacity-100 transition-opacity hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"
                           >
                             <svg
                               className="w-4 h-4"
