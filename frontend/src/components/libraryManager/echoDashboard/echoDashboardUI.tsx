@@ -23,6 +23,11 @@ import FloatingNoteModal from "./modals/FloatingNoteModal";
 import useEchoDashboardState from "./hooks/useEchoDashboardState";
 import { useModelRuntime } from "../../system/ModelRuntimeProvider";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
+import { buildApiUrl } from "../../../lib/runtimeConfig";
+import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
+
+const ECHO_COLUMN_WIDTH = 420;
+const ECHO_COLUMN_HEIGHT = 750;
 
 export default function EchoDashboardUI(props: any) {
     const { runtime, loadRoles, unloadRoles } = useModelRuntime();
@@ -38,6 +43,12 @@ export default function EchoDashboardUI(props: any) {
         activeBookTitle = "Current Focus",
         libraryId = "",
     } = props;
+    const { canvasScale, syncViewport, isRectVisible } = useCanvasViewport({
+        initialScale: 0.6,
+        initialPositionX: 0,
+        initialPositionY: 0,
+        buffer: 1800,
+    });
 
     // --- FIX 1: Direct to Note Editor Bypass ---
     const handleCreateNoteFromEcho = (echoData: any) => {
@@ -52,19 +63,79 @@ export default function EchoDashboardUI(props: any) {
     };
 
     // --- FIX 2: Hide Note Stacks from rendering as Echo Clusters! ---
-    const echoClusters = (state.savedGlobalClusters || []).filter(
-        (cluster: any) => {
-            // If the cluster's ID matches a Note Stack ID, it's a Stack, NOT an Echo Cluster.
-            const isNoteStack = state.stacks?.some(
-                (stack: any) => String(stack.stack_id) === String(cluster.id),
-            );
-            return !isNoteStack;
-        },
+    const echoClusters = React.useMemo(
+        () =>
+            (state.savedGlobalClusters || []).filter((cluster: any) => {
+                const isNoteStack = state.stacks?.some(
+                    (stack: any) =>
+                        String(stack.stack_id) === String(cluster.id),
+                );
+                return !isNoteStack;
+            }),
+        [state.savedGlobalClusters, state.stacks],
     );
     const activeColumnPos = state.positions[state.activeColumnId] || {
         x: 0,
         y: 0,
     };
+    const activeColumnVisible = isRectVisible({
+        x: activeColumnPos.x,
+        y: activeColumnPos.y,
+        width: ECHO_COLUMN_WIDTH,
+        height: ECHO_COLUMN_HEIGHT,
+    });
+    const visibleEchoClusters = React.useMemo(
+        () =>
+            echoClusters.filter((cluster: any) => {
+                const position = state.positions[cluster.id] || {
+                    x: 1000,
+                    y: 100,
+                };
+                return isRectVisible({
+                    x: position.x,
+                    y: position.y,
+                    width: ECHO_COLUMN_WIDTH,
+                    height: ECHO_COLUMN_HEIGHT,
+                });
+            }),
+        [echoClusters, isRectVisible, state.positions],
+    );
+    const visibleEchoClusterIds = React.useMemo(
+        () => new Set(visibleEchoClusters.map((cluster: any) => String(cluster.id))),
+        [visibleEchoClusters],
+    );
+    const visibleEchoEdges = React.useMemo(
+        () =>
+            echoClusters.filter((cluster: any) => {
+                if (!cluster.parent_cluster_id) return false;
+                const start = state.positions[cluster.parent_cluster_id];
+                const end = state.positions[cluster.id];
+                if (!start || !end) return false;
+                if (
+                    visibleEchoClusterIds.has(String(cluster.id)) ||
+                    visibleEchoClusterIds.has(String(cluster.parent_cluster_id))
+                ) {
+                    return true;
+                }
+                const edgeLeft = Math.min(start.x + ECHO_COLUMN_WIDTH, end.x);
+                const edgeTop = Math.min(start.y, end.y);
+                return isRectVisible({
+                    x: edgeLeft,
+                    y: edgeTop,
+                    width:
+                        Math.abs(end.x - (start.x + ECHO_COLUMN_WIDTH)) || 1,
+                    height: Math.abs(end.y - start.y) + 160,
+                });
+            }),
+        [echoClusters, isRectVisible, state.positions, visibleEchoClusterIds],
+    );
+    const handleViewportUpdate = React.useCallback(
+        (ref: any) => {
+            syncViewport(ref);
+            state.setCanvasScale(ref?.state?.scale || 1);
+        },
+        [state.setCanvasScale, syncViewport],
+    );
 
     return (
         <>
@@ -138,10 +209,9 @@ export default function EchoDashboardUI(props: any) {
                             disabled: state.isCanvasWheelDisabled,
                         }}
                         panning={{ excluded: ["no-pan"] }}
-                        onInit={(ref) => state.setCanvasScale(ref.state.scale)}
-                        onZoomStop={(ref) =>
-                            state.setCanvasScale(ref.state.scale)
-                        }
+                        onInit={handleViewportUpdate}
+                        onPanningStop={handleViewportUpdate}
+                        onZoomStop={handleViewportUpdate}
                     >
                         {({ zoomIn, zoomOut, zoomToElement }) => (
                             <>
@@ -158,7 +228,7 @@ export default function EchoDashboardUI(props: any) {
                                         <MagnifyingGlassPlusIcon className="w-4 h-4" />
                                     </button>
                                     <div className="text-[9px] font-mono font-bold text-center text-muted py-1 border-y border-slate-100 w-full">
-                                        {Math.round(state.canvasScale * 100)}%
+                                        {Math.round(canvasScale * 100)}%
                                     </div>
                                     <button
                                         onClick={() => zoomOut(0.2)}
@@ -222,12 +292,7 @@ export default function EchoDashboardUI(props: any) {
                                             }}
                                         >
                                             <g transform="translate(15000, 15000)">
-                                                {echoClusters
-                                                    .filter(
-                                                        (c) =>
-                                                            c.parent_cluster_id,
-                                                    )
-                                                    .map((c) => {
+                                                {visibleEchoEdges.map((c) => {
                                                         const start =
                                                             state.positions[
                                                                 c
@@ -268,7 +333,7 @@ export default function EchoDashboardUI(props: any) {
                                             </g>
                                         </svg>
 
-                                        {state.showInbox && (
+                                        {state.showInbox && activeColumnVisible && (
                                             <DraggableColumn
                                                 id={state.activeColumnId}
                                                 title={activeBookTitle}
@@ -290,7 +355,7 @@ export default function EchoDashboardUI(props: any) {
                                                 bringToFront={
                                                     state.bringToFront
                                                 }
-                                                scale={state.canvasScale}
+                                                scale={canvasScale}
                                             >
                                                 <div className="p-4 bg-canvas/50 min-h-full">
                                                     <div className="sticky top-0 bg-canvas/95 z-30 pb-3 border-b border-border-subtle mb-4">
@@ -558,7 +623,7 @@ export default function EchoDashboardUI(props: any) {
                                             </DraggableColumn>
                                         )}
 
-                                        {echoClusters.map((cluster: any) => (
+                                        {visibleEchoClusters.map((cluster: any) => (
                                             <SavedClusterColumn
                                                 key={cluster.id}
                                                 cluster={cluster}
@@ -579,7 +644,7 @@ export default function EchoDashboardUI(props: any) {
                                                 bringToFront={
                                                     state.bringToFront
                                                 }
-                                                canvasScale={state.canvasScale}
+                                                canvasScale={canvasScale}
                                                 handleToggleActive={
                                                     state.handleToggleActive
                                                 }
@@ -691,7 +756,7 @@ export default function EchoDashboardUI(props: any) {
                             );
                             if (newNoteId && state.echoNoteState.echoId) {
                                 await axios.post(
-                                    "https://doomprompting123-space.hf.space/brain/echo/link_note",
+                                    buildApiUrl("/brain/echo/link_note"),
                                     {
                                         echo_id: state.echoNoteState.echoId,
                                         note_id: newNoteId,

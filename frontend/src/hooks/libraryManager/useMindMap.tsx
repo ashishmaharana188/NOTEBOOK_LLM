@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { useRefreshBus } from "../../components/system/RefreshBusProvider";
+import { API_BASE_URL } from "../../lib/runtimeConfig";
 
 export default function useMindMap() {
     const { subscribe } = useRefreshBus();
@@ -11,7 +12,7 @@ export default function useMindMap() {
         setLoading(true);
         try {
             const API = axios.create({
-                baseURL: "https://doomprompting123-space.hf.space",
+                baseURL: API_BASE_URL,
             });
             const res = await API.get("/graph/core");
             if (res.data.status === "success") {

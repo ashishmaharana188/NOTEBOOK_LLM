@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ArchiveFolderCard from "../../../appTools/archiveCardComponent/archiveFolderCard";
 import BinderCoverPreview from "../../../appTools/archiveCardComponent/binderCoverPreview";
 import { getGridAnimationProps } from "../../../../hooks/appTools/useGridLayout";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 const SpatialArchiveFolder = React.memo(
     ({
@@ -99,7 +100,7 @@ const SpatialArchiveFolder = React.memo(
             setLocalTitle(newTitle); // Instantly update UI
             try {
                 await fetch(
-                    "https://doomprompting123-space.hf.space/brain/archive/update_title",
+                    buildApiUrl("/brain/archive/update_title"),
                     {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },

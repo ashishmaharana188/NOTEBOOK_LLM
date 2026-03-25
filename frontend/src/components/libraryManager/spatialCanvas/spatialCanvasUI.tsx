@@ -20,6 +20,7 @@ import useCanvasCamera from "./hooks/useCanvasCamera";
 import useCanvasData from "./hooks/useCanvasData";
 import { notify } from "../../system/AppNotifications";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
+import { buildApiUrl } from "../../../lib/runtimeConfig";
 
 export default function SpatialCanvasUI({
     clusters,
@@ -607,7 +608,7 @@ export default function SpatialCanvasUI({
 
         try {
             const response = await fetch(
-                `https://doomprompting123-space.hf.space/brain/links/${action}`,
+                buildApiUrl(`/brain/links/${action}`),
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -667,7 +668,7 @@ export default function SpatialCanvasUI({
 
         try {
             const response = await fetch(
-                "https://doomprompting123-space.hf.space/brain/archive/append",
+                buildApiUrl("/brain/archive/append"),
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1362,7 +1363,7 @@ export default function SpatialCanvasUI({
 
                         if (scatteredItems.length > 0) {
                             const response = await fetch(
-                                "https://doomprompting123-space.hf.space/brain/archive/scattered",
+                                buildApiUrl("/brain/archive/scattered"),
                                 {
                                     method: "POST",
                                     headers: {
@@ -1409,7 +1410,7 @@ export default function SpatialCanvasUI({
 
                         if (rootItems.length > 0) {
                             const response = await fetch(
-                                "https://doomprompting123-space.hf.space/brain/archive/group",
+                                buildApiUrl("/brain/archive/group"),
                                 {
                                     method: "POST",
                                     headers: {
@@ -1428,7 +1429,7 @@ export default function SpatialCanvasUI({
                             ) {
                                 try {
                                     await fetch(
-                                        "https://doomprompting123-space.hf.space/brain/canvas/metadata/save",
+                                        buildApiUrl("/brain/canvas/metadata/save"),
                                         {
                                             method: "POST",
                                             headers: {
@@ -1579,7 +1580,7 @@ export default function SpatialCanvasUI({
                             await Promise.all(
                                 fullArchivesToProcess.map((target) =>
                                     fetch(
-                                        "https://doomprompting123-space.hf.space/brain/archive/ungroup",
+                                        buildApiUrl("/brain/archive/ungroup"),
                                         {
                                             method: "POST",
                                             headers: {
@@ -1647,7 +1648,7 @@ export default function SpatialCanvasUI({
                     if (rootItems.length > 0) {
                         try {
                             await fetch(
-                                "https://doomprompting123-space.hf.space/brain/archive/ungroup/items",
+                                buildApiUrl("/brain/archive/ungroup/items"),
                                 {
                                     method: "POST",
                                     headers: {
@@ -1668,7 +1669,7 @@ export default function SpatialCanvasUI({
                     if (scatteredItems.length > 0) {
                         try {
                             await fetch(
-                                "https://doomprompting123-space.hf.space/brain/archive/scattered/remove",
+                                buildApiUrl("/brain/archive/scattered/remove"),
                                 {
                                     method: "POST",
                                     headers: {
@@ -1718,7 +1719,7 @@ export default function SpatialCanvasUI({
                                 // The folder is completely empty! Kill it!
                                 if (currentExpandedId === pId) handleDrillUp();
                                 await fetch(
-                                    "https://doomprompting123-space.hf.space/brain/archive/ungroup",
+                                    buildApiUrl("/brain/archive/ungroup"),
                                     {
                                         method: "POST",
                                         headers: {

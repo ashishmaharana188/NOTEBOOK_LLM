@@ -12,6 +12,7 @@ import { confirmAction } from "../../system/AppNotifications";
 import CircularProgress from "../../system/CircularProgress";
 import type { BrainBook } from "../../../types/libraryBackendTypes";
 import type { IngestQueueState } from "../libraryManagerTypes";
+import { API_BASE_URL } from "../../../lib/runtimeConfig";
 
 interface MyLibraryProps {
     libraryFiles: string[];
@@ -123,7 +124,7 @@ export default function MyLibrary({
 
         try {
             const API = axios.create({
-                baseURL: "https://doomprompting123-space.hf.space",
+                baseURL: API_BASE_URL,
             });
 
             setCleanMsg("Registering Local Files...");

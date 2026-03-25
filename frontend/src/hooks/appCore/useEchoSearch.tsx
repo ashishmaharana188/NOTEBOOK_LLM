@@ -5,9 +5,10 @@ import type {
     EchoRecommendation,
 } from "../../components/libraryManager/echoDashboard/echoTypes";
 import { useModelRuntime } from "../../components/system/ModelRuntimeProvider";
+import { API_BASE_URL } from "../../lib/runtimeConfig";
 
 const API = axios.create({
-    baseURL: "https://doomprompting123-space.hf.space",
+    baseURL: API_BASE_URL,
 });
 
 export function useEchoSearch() {

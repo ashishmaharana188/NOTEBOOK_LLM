@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import useNotes from "../../../../hooks/noteManager/useNotes";
 import { confirmAction } from "../../../system/AppNotifications";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 export default function useNotesSectionState() {
     const {
@@ -112,7 +113,9 @@ export default function useNotesSectionState() {
                         // THE FIX: Add a robust fallback so the form ALWAYS opens, even if the backend 404s on a brand new manual card!
                         axios
                             .get(
-                                `https://doomprompting123-space.hf.space/notes/item/single/${action.payload.noteId}`,
+                                buildApiUrl(
+                                    `/notes/item/single/${action.payload.noteId}`,
+                                ),
                             )
                             .then((res) => {
                                 if (

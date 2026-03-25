@@ -6,6 +6,7 @@ import {
     SparklesIcon,
     ViewfinderCircleIcon,
 } from "@heroicons/react/24/outline";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 export default function FloatingEchoModal({
     echoId,
@@ -18,7 +19,7 @@ export default function FloatingEchoModal({
 
     useEffect(() => {
         axios
-            .get(`https://doomprompting123-space.hf.space/brain/echo/${echoId}`)
+            .get(buildApiUrl(`/brain/echo/${echoId}`))
             .then((res) => {
                 if (res.data.status === "success") setEcho(res.data.data);
             });

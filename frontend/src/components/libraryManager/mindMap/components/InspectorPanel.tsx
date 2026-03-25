@@ -9,6 +9,7 @@ import {
 import useNotes from "../../.././../hooks/noteManager/useNotes";
 import { notify } from "../../../system/AppNotifications";
 import { useModelRuntime } from "../../../system/ModelRuntimeProvider";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 const InspectorPanel = ({
     selectedNode,
@@ -64,12 +65,9 @@ const InspectorPanel = ({
         try {
             const targetFilename = selectedNode.filename || selectedNode.label;
             const res = await ensureRolesThen(["embedding"], () =>
-                axios.post(
-                    "https://doomprompting123-space.hf.space/brain/ingest",
-                    {
-                        filename: targetFilename,
-                    },
-                ),
+                axios.post(buildApiUrl("/brain/ingest"), {
+                    filename: targetFilename,
+                }),
             );
             if (!res) return;
 

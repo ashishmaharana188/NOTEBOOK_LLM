@@ -13,12 +13,59 @@ import NoteStackColumn from "./components/NoteStackColumn";
 import useNotesSectionState from "./hooks/useNotesSectionState";
 import axios from "axios";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
+import { buildApiUrl } from "../../../lib/runtimeConfig";
+import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
+
+const NOTE_STACK_WIDTH = 650;
+const NOTE_STACK_HEIGHT = 2600;
 
 const NotesSectionUI: React.FC = () => {
     const state = useNotesSectionState();
     const { publish } = useRefreshBus();
     const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
         "CANVAS",
+    );
+    const { canvasScale, syncViewport, isRectVisible } = useCanvasViewport({
+        initialScale: 1,
+        initialPositionX: 0,
+        initialPositionY: 0,
+        buffer: 1800,
+    });
+    const visibleStacks = React.useMemo(
+        () =>
+            (state.stacks || []).filter((stack) => {
+                const position = state.positions[stack.stack_id] || {
+                    x: 100,
+                    y: 150,
+                };
+                return isRectVisible({
+                    x: position.x,
+                    y: position.y,
+                    width: NOTE_STACK_WIDTH,
+                    height: NOTE_STACK_HEIGHT,
+                });
+            }),
+        [isRectVisible, state.positions, state.stacks],
+    );
+    const groupsByStackId = React.useMemo(() => {
+        const grouped = new Map<string, any[]>();
+        (state.groups || []).forEach((group) => {
+            const key = String(group.stack_id || "");
+            const existing = grouped.get(key);
+            if (existing) {
+                existing.push(group);
+                return;
+            }
+            grouped.set(key, [group]);
+        });
+        return grouped;
+    }, [state.groups]);
+    const handleViewportUpdate = React.useCallback(
+        (ref: any) => {
+            syncViewport(ref);
+            state.setCanvasScale(ref?.state?.scale || 1);
+        },
+        [state.setCanvasScale, syncViewport],
     );
 
     return (
@@ -59,8 +106,9 @@ const NotesSectionUI: React.FC = () => {
                     centerZoomedOut={false}
                     wheel={{ step: 0.1, smoothStep: 0.0005 }}
                     panning={{ excluded: ["no-pan"] }}
-                    onInit={(ref) => state.setCanvasScale(ref.state.scale)}
-                    onZoomStop={(ref) => state.setCanvasScale(ref.state.scale)}
+                    onInit={handleViewportUpdate}
+                    onPanningStop={handleViewportUpdate}
+                    onZoomStop={handleViewportUpdate}
                 >
                     {({ zoomIn, zoomOut, zoomToElement }) => (
                         <React.Fragment>
@@ -96,15 +144,17 @@ const NotesSectionUI: React.FC = () => {
                                                 START YOUR WORKSPACE. ]
                                             </div>
                                         ) : (
-                                            state.stacks.map((stack) => (
+                                            visibleStacks.map((stack) => (
                                                 <NoteStackColumn
                                                     key={stack.stack_id}
                                                     stack={stack}
-                                                    groups={state.groups.filter(
-                                                        (g) =>
-                                                            g.stack_id ===
-                                                            stack.stack_id,
-                                                    )}
+                                                    groups={
+                                                        groupsByStackId.get(
+                                                            String(
+                                                                stack.stack_id,
+                                                            ),
+                                                        ) || []
+                                                    }
                                                     activeGroupId={
                                                         state.activeGroupId
                                                     }
@@ -124,7 +174,7 @@ const NotesSectionUI: React.FC = () => {
                                                             stack.stack_id
                                                         ] || 10
                                                     }
-                                                    scale={state.canvasScale}
+                                                    scale={canvasScale}
                                                     bringToFront={
                                                         state.bringToFront
                                                     }
@@ -179,7 +229,7 @@ const NotesSectionUI: React.FC = () => {
                                     <MagnifyingGlassPlusIcon className="w-5 h-5" />
                                 </button>
                                 <div className="text-[10px] font-mono font-bold text-center text-muted py-1 border-y border-gray-100 w-full">
-                                    {Math.round(state.canvasScale * 100)}%
+                                    {Math.round(canvasScale * 100)}%
                                 </div>
                                 <button
                                     onClick={() => zoomOut(0.2)}
@@ -292,7 +342,7 @@ const NotesSectionUI: React.FC = () => {
                         if (noteId) {
                             // THE FIX: Bypass the hook and force the exact payload to the API
                             await axios.put(
-                                "https://doomprompting123-space.hf.space/notes/item/update",
+                                buildApiUrl("/notes/item/update"),
                                 {
                                     note_id: noteId,
                                     title: title,

@@ -5,6 +5,7 @@ import {
     PencilSquareIcon,
     XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { buildApiUrl } from "../../../lib/runtimeConfig";
 
 export default function EchoContextModal({
     echoId,
@@ -27,7 +28,7 @@ export default function EchoContextModal({
         setFullContext("");
 
         axios
-            .get(`https://doomprompting123-space.hf.space/brain/echo/${echoId}`)
+            .get(buildApiUrl(`/brain/echo/${echoId}`))
             .then((res) => {
                 if (!cancelled && res.data.status === "success") {
                     setEcho(res.data.data);
@@ -57,14 +58,11 @@ export default function EchoContextModal({
         setLoadingContext(true);
 
         axios
-            .post(
-                "https://doomprompting123-space.hf.space/echo/expand_context",
-                {
-                    filename: primarySource.filename,
-                    chunk_id: primarySource.original_chunk_id,
-                    window: 4,
-                },
-            )
+            .post(buildApiUrl("/echo/expand_context"), {
+                filename: primarySource.filename,
+                chunk_id: primarySource.original_chunk_id,
+                window: 4,
+            })
             .then((res) => {
                 if (
                     !cancelled &&

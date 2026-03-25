@@ -8,6 +8,7 @@ import {
 import type { EchoChunk } from "../echoTypes";
 import ExpandableChunkCard from "./ExpandableChunkCard";
 import { useModelRuntime } from "../../../system/ModelRuntimeProvider";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 const InteractiveChunkCard = React.memo(
     ({
@@ -58,7 +59,7 @@ const InteractiveChunkCard = React.memo(
             try {
                 if (isSaved && echoId) {
                     const res = await axios.put(
-                        "https://doomprompting123-space.hf.space/brain/echo/update_title",
+                        buildApiUrl("/brain/echo/update_title"),
                         {
                             echo_id: echoId,
                             title: customTitle || "Untitled Snippet",
@@ -72,7 +73,7 @@ const InteractiveChunkCard = React.memo(
                 } else {
                     const res = await ensureRolesThen(["embedding"], () =>
                         axios.post(
-                            "https://doomprompting123-space.hf.space/brain/echo/save",
+                            buildApiUrl("/brain/echo/save"),
                             {
                                 book_id: bookId || activeBookTitle,
                                 library_id: libraryId || "",
@@ -115,7 +116,7 @@ const InteractiveChunkCard = React.memo(
             try {
                 if (isSaved && echoId) {
                     await axios.post(
-                        "https://doomprompting123-space.hf.space/brain/echo/delete",
+                        buildApiUrl("/brain/echo/delete"),
                         {
                             echo_id: echoId,
                         },

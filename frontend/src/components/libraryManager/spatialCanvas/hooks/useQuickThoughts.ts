@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 export const getRealId = (node: any) =>
     node.note_id || node.echo_id || node.chunk_id;
@@ -13,7 +14,7 @@ export default function useQuickThoughts(orbitingItems: any[]) {
             setActiveThoughts((prev) => ({ ...prev, [parentId]: newThoughts }));
             try {
                 await fetch(
-                    "https://doomprompting123-space.hf.space/brain/quick_thoughts/update",
+                    buildApiUrl("/brain/quick_thoughts/update"),
                     {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },

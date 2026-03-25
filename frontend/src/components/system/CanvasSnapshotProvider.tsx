@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import axios from "axios";
 import { useRefreshBus } from "./RefreshBusProvider";
+import { buildApiUrl } from "../../lib/runtimeConfig";
 
 interface CanvasSnapshotContextValue {
     clusters: any[];
@@ -44,36 +45,50 @@ export function CanvasSnapshotProvider({
     const [dirty, setDirty] = useState(false);
     const [isActive, setIsActive] = useState(false);
     const fetchReq = useRef(0);
+    const inFlightRefreshRef = useRef<Promise<void> | null>(null);
 
     const refreshCanvasSnapshot = useCallback(async () => {
+        if (inFlightRefreshRef.current) {
+            return inFlightRefreshRef.current;
+        }
+
         const currentReq = ++fetchReq.current;
-        setLoading(true);
-        try {
-            const res = await axios.get(
-                "https://doomprompting123-space.hf.space/brain/echoes/saved",
-            );
-            if (
-                currentReq === fetchReq.current &&
-                res.data.status === "success"
-            ) {
-                const normalizedClusters = (res.data.data || []).map(
-                    (cluster: any) => ({
-                        ...cluster,
-                        id: cluster.id || cluster.cluster_id,
-                    }),
-                );
-                setClusters(normalizedClusters);
-                setNotes(res.data.notes || []);
-                setManualLinks(res.data.manual_links || []);
-                setSpatialMetadata(res.data.spatial_metadata || {});
-                setLoaded(true);
-                setDirty(false);
+        const refreshPromise = (async () => {
+            setLoading(true);
+            try {
+                const res = await axios.get(buildApiUrl("/brain/echoes/saved"));
+                if (
+                    currentReq === fetchReq.current &&
+                    res.data.status === "success"
+                ) {
+                    const normalizedClusters = (res.data.data || []).map(
+                        (cluster: any) => ({
+                            ...cluster,
+                            id: cluster.id || cluster.cluster_id,
+                        }),
+                    );
+                    setClusters(normalizedClusters);
+                    setNotes(res.data.notes || []);
+                    setManualLinks(res.data.manual_links || []);
+                    setSpatialMetadata(res.data.spatial_metadata || {});
+                    setLoaded(true);
+                    setDirty(false);
+                }
+            } catch (error) {
+                console.error("Failed to fetch canvas snapshot", error);
+            } finally {
+                if (currentReq === fetchReq.current) {
+                    setLoading(false);
+                }
             }
-        } catch (error) {
-            console.error("Failed to fetch canvas snapshot", error);
+        })();
+
+        inFlightRefreshRef.current = refreshPromise;
+        try {
+            await refreshPromise;
         } finally {
-            if (currentReq === fetchReq.current) {
-                setLoading(false);
+            if (inFlightRefreshRef.current === refreshPromise) {
+                inFlightRefreshRef.current = null;
             }
         }
     }, []);

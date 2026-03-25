@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { buildApiUrl } from "../../lib/runtimeConfig";
 
 export default function useGridLayout() {
     // 1. Tracks real-time drags before saving
@@ -123,7 +124,7 @@ export default function useGridLayout() {
 
         try {
             const response = await fetch(
-                "https://doomprompting123-space.hf.space/brain/canvas/metadata/save",
+                buildApiUrl("/brain/canvas/metadata/save"),
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -164,7 +165,7 @@ export default function useGridLayout() {
         if (payload.length > 0) {
             try {
                 const res = await fetch(
-                    "https://doomprompting123-space.hf.space/brain/cluster/orbit_metadata",
+                    buildApiUrl("/brain/cluster/orbit_metadata"),
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },

@@ -11,6 +11,7 @@ import {
     extractStickiesFromTags,
     stripStickyDataFromTags,
 } from "../spatialCanvas/utils/stickyData";
+import { buildApiUrl } from "../../../lib/runtimeConfig";
 
 export default function NotesFormUI({
     groupId,
@@ -69,7 +70,7 @@ export default function NotesFormUI({
         formData.append("file", file);
 
         const response = await fetch(
-            `https://doomprompting123-space.hf.space/upload/media/note/${localNoteId.current}`,
+            buildApiUrl(`/upload/media/note/${localNoteId.current}`),
             {
                 method: "POST",
                 body: formData,

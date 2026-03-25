@@ -7,6 +7,7 @@ import type {
 } from "../../../../hooks/noteManager/useNotes";
 import GroupDivider from "./GroupDivider";
 import GroupCard from "./GroupCard";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 interface NoteStackColumnProps {
     stack: NoteStack;
@@ -136,7 +137,7 @@ const NoteStackColumn = React.memo(
 
             try {
                 await fetch(
-                    `https://doomprompting123-space.hf.space/upload/media/stack/${stackId}`,
+                    buildApiUrl(`/upload/media/stack/${stackId}`),
                     {
                         method: "POST",
                         body: formData,

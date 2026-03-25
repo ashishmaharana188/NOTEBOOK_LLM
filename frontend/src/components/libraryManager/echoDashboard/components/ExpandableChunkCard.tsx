@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { BookOpenIcon } from "@heroicons/react/24/outline";
 import type { EchoChunk } from "../echoTypes";
+import { API_BASE_URL } from "../../../../lib/runtimeConfig";
 
 export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -30,7 +31,7 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
         setLoadingContext(true);
         try {
             const API = axios.create({
-                baseURL: "https://doomprompting123-space.hf.space",
+                baseURL: API_BASE_URL,
             });
             const res = await API.post("/echo/expand_context", {
                 filename: filename,

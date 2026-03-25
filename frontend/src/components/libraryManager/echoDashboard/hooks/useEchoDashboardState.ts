@@ -3,6 +3,7 @@ import axios from "axios";
 import useNotes from "../../../../hooks/noteManager/useNotes";
 import { confirmAction } from "../../../system/AppNotifications";
 import { useCanvasSnapshot } from "../../../system/CanvasSnapshotProvider";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 export default function useEchoDashboardState({
     isOpen,
@@ -261,7 +262,7 @@ export default function useEchoDashboardState({
         async (clusterId: string, newTitle: string) => {
             try {
                 await axios.put(
-                    "https://doomprompting123-space.hf.space/brain/cluster/update_title",
+                    buildApiUrl("/brain/cluster/update_title"),
                     {
                         cluster_id: clusterId,
                         title: newTitle,
@@ -289,7 +290,7 @@ export default function useEchoDashboardState({
 
             try {
                 await axios.delete(
-                    `https://doomprompting123-space.hf.space/brain/cluster/${clusterId}`,
+                    buildApiUrl(`/brain/cluster/${clusterId}`),
                 );
                 await refreshCanvasSnapshot();
             } catch (err) {
@@ -306,7 +307,7 @@ export default function useEchoDashboardState({
     ) => {
         try {
             await axios.post(
-                "https://doomprompting123-space.hf.space/brain/cluster/activate",
+                buildApiUrl("/brain/cluster/activate"),
                 {
                     cluster_id: clusterId,
                     book_id: bookId,
@@ -327,7 +328,7 @@ export default function useEchoDashboardState({
     ) => {
         try {
             const res = await axios.post(
-                "https://doomprompting123-space.hf.space/brain/cluster/spawn",
+                buildApiUrl("/brain/cluster/spawn"),
                 {
                     book_id: bookId,
                     parent_cluster_id: parentId,

@@ -5,6 +5,7 @@ import {
     XMarkIcon,
     DocumentTextIcon,
 } from "@heroicons/react/24/outline";
+import { buildApiUrl } from "../../../lib/runtimeConfig";
 
 const CARD_SIZES = ["A3", "A4", "A5", "A6", "A7"];
 
@@ -45,7 +46,7 @@ export function ManualCardCreator({
 
             // 1. Save a blank placeholder note to the database
             const noteRes = await axios.post(
-                "https://doomprompting123-space.hf.space/notes/item/create",
+                buildApiUrl("/notes/item/create"),
                 {
                     group_id: noteGroupId,
                     title: "Untitled Note", // Default placeholder title
@@ -65,7 +66,7 @@ export function ManualCardCreator({
                 // 2. Inject pointer into the Master Binder (Echo Mode)
                 if (shouldInjectToEchoLayout) {
                     await axios.put(
-                        "https://doomprompting123-space.hf.space/brain/cluster/layout",
+                        buildApiUrl("/brain/cluster/layout"),
                         {
                             cluster_id: layoutClusterId,
                             orbit_layout: newLayout,

@@ -3,6 +3,7 @@ import { motion, useTransform, useMotionValue } from "framer-motion";
 import ArchiveFolderCard from "../../../appTools/archiveCardComponent/archiveFolderCard";
 import BinderCoverPreview from "../../../appTools/archiveCardComponent/binderCoverPreview";
 import { useRefreshBus } from "../../../system/RefreshBusProvider";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 const SpatialFolderCard = React.memo(
     ({
@@ -77,7 +78,7 @@ const SpatialFolderCard = React.memo(
             setLocalTitle(newTitle); // Instantly update UI
             try {
                 await fetch(
-                    "https://doomprompting123-space.hf.space/notes/groups/update",
+                    buildApiUrl("/notes/groups/update"),
                     {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
@@ -95,7 +96,7 @@ const SpatialFolderCard = React.memo(
         const handleDeleteFolder = async () => {
             try {
                 const response = await fetch(
-                    `https://doomprompting123-space.hf.space/brain/archive/inner/${folderId}`,
+                    buildApiUrl(`/brain/archive/inner/${folderId}`),
                     {
                         method: "DELETE",
                     },

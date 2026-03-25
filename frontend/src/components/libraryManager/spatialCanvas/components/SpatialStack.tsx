@@ -23,6 +23,7 @@ import useOrbitingItems from "../hooks/useOrbitingItems";
 import useStackLayoutMap from "../hooks/useStackLayoutMap";
 import useQuickThoughts, { getRealId } from "../hooks/useQuickThoughts";
 import useCoverStickies from "../hooks/useCoverStickies";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 const SpatialStack = React.memo(
     ({
@@ -395,7 +396,7 @@ const SpatialStack = React.memo(
             async (id: string, newTagsString: string, type: string) => {
                 try {
                     const response = await fetch(
-                        "https://doomprompting123-space.hf.space/brain/tags/update",
+                        buildApiUrl("/brain/tags/update"),
                         {
                             method: "PUT",
                             headers: { "Content-Type": "application/json" },
@@ -785,7 +786,9 @@ const SpatialStack = React.memo(
                                                     ? "stack"
                                                     : "cluster";
                                                 await fetch(
-                                                    `https://doomprompting123-space.hf.space/upload/media/${endpoint}/${targetId}`,
+                                                    buildApiUrl(
+                                                        `/upload/media/${endpoint}/${targetId}`,
+                                                    ),
                                                     {
                                                         method: "POST",
                                                         body: formData,

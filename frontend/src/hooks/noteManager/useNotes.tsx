@@ -9,8 +9,9 @@ import React, {
 } from "react";
 import axios from "axios";
 import { useRefreshBus } from "../../components/system/RefreshBusProvider";
+import { API_BASE_URL } from "../../lib/runtimeConfig";
 
-const API_BASE = "https://doomprompting123-space.hf.space";
+const API_BASE = API_BASE_URL;
 
 export interface NoteStack {
     stack_id: string;
@@ -112,43 +113,76 @@ export function NotesDataProvider({ children }: { children: React.ReactNode }) {
     const fetchStacksReq = useRef(0);
     const fetchGroupsReq = useRef(0);
     const fetchNotesReqByGroup = useRef<Record<string, number>>({});
+    const fetchStacksPromiseRef = useRef<Promise<void> | null>(null);
+    const fetchGroupsPromiseRef = useRef<Promise<void> | null>(null);
+    const fetchNotesPromiseByGroup = useRef<Record<string, Promise<void>>>({});
 
     const fetchStacks = useCallback(async () => {
+        if (fetchStacksPromiseRef.current) {
+            return fetchStacksPromiseRef.current;
+        }
+
         const currentReq = ++fetchStacksReq.current;
-        setLoadingStacks(true);
-        try {
-            const res = await axios.get(`${API_BASE}/notes/stacks`);
-            if (
-                currentReq === fetchStacksReq.current &&
-                res.data.status === "success"
-            ) {
-                setStacks(res.data.data || []);
+        const request = (async () => {
+            setLoadingStacks(true);
+            try {
+                const res = await axios.get(`${API_BASE}/notes/stacks`);
+                if (
+                    currentReq === fetchStacksReq.current &&
+                    res.data.status === "success"
+                ) {
+                    setStacks(res.data.data || []);
+                }
+            } catch (error) {
+                console.error("Failed to fetch stacks", error);
+            } finally {
+                if (currentReq === fetchStacksReq.current) {
+                    setLoadingStacks(false);
+                }
             }
-        } catch (error) {
-            console.error("Failed to fetch stacks", error);
+        })();
+
+        fetchStacksPromiseRef.current = request;
+        try {
+            await request;
         } finally {
-            if (currentReq === fetchStacksReq.current) {
-                setLoadingStacks(false);
+            if (fetchStacksPromiseRef.current === request) {
+                fetchStacksPromiseRef.current = null;
             }
         }
     }, []);
 
     const fetchGroups = useCallback(async () => {
+        if (fetchGroupsPromiseRef.current) {
+            return fetchGroupsPromiseRef.current;
+        }
+
         const currentReq = ++fetchGroupsReq.current;
-        setLoadingGroups(true);
-        try {
-            const res = await axios.get(`${API_BASE}/notes/groups`);
-            if (
-                currentReq === fetchGroupsReq.current &&
-                res.data.status === "success"
-            ) {
-                setGroups(res.data.data || []);
+        const request = (async () => {
+            setLoadingGroups(true);
+            try {
+                const res = await axios.get(`${API_BASE}/notes/groups`);
+                if (
+                    currentReq === fetchGroupsReq.current &&
+                    res.data.status === "success"
+                ) {
+                    setGroups(res.data.data || []);
+                }
+            } catch (error) {
+                console.error("Failed to fetch groups", error);
+            } finally {
+                if (currentReq === fetchGroupsReq.current) {
+                    setLoadingGroups(false);
+                }
             }
-        } catch (error) {
-            console.error("Failed to fetch groups", error);
+        })();
+
+        fetchGroupsPromiseRef.current = request;
+        try {
+            await request;
         } finally {
-            if (currentReq === fetchGroupsReq.current) {
-                setLoadingGroups(false);
+            if (fetchGroupsPromiseRef.current === request) {
+                fetchGroupsPromiseRef.current = null;
             }
         }
     }, []);
@@ -168,31 +202,46 @@ export function NotesDataProvider({ children }: { children: React.ReactNode }) {
                 });
             }
 
+            if (fetchNotesPromiseByGroup.current[groupId]) {
+                return fetchNotesPromiseByGroup.current[groupId];
+            }
+
             const currentReq = (fetchNotesReqByGroup.current[groupId] || 0) + 1;
             fetchNotesReqByGroup.current[groupId] = currentReq;
 
-            setLoadingByScope((prev) => ({ ...prev, [scopeId]: true }));
-            try {
-                const res = await axios.get(
-                    `${API_BASE}/notes/item/${groupId}`,
-                );
-                if (
-                    fetchNotesReqByGroup.current[groupId] === currentReq &&
-                    res.data.status === "success"
-                ) {
-                    setNotesByGroup((prev) => ({
-                        ...prev,
-                        [groupId]: res.data.data || [],
-                    }));
+            const request = (async () => {
+                setLoadingByScope((prev) => ({ ...prev, [scopeId]: true }));
+                try {
+                    const res = await axios.get(
+                        `${API_BASE}/notes/item/${groupId}`,
+                    );
+                    if (
+                        fetchNotesReqByGroup.current[groupId] === currentReq &&
+                        res.data.status === "success"
+                    ) {
+                        setNotesByGroup((prev) => ({
+                            ...prev,
+                            [groupId]: res.data.data || [],
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch notes", error);
+                } finally {
+                    if (fetchNotesReqByGroup.current[groupId] === currentReq) {
+                        setLoadingByScope((prev) => ({
+                            ...prev,
+                            [scopeId]: false,
+                        }));
+                    }
                 }
-            } catch (error) {
-                console.error("Failed to fetch notes", error);
+            })();
+
+            fetchNotesPromiseByGroup.current[groupId] = request;
+            try {
+                await request;
             } finally {
-                if (fetchNotesReqByGroup.current[groupId] === currentReq) {
-                    setLoadingByScope((prev) => ({
-                        ...prev,
-                        [scopeId]: false,
-                    }));
+                if (fetchNotesPromiseByGroup.current[groupId] === request) {
+                    delete fetchNotesPromiseByGroup.current[groupId];
                 }
             }
         },
