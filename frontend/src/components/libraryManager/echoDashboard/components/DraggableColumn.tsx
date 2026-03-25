@@ -113,7 +113,8 @@ const DraggableColumn = React.memo(
       };
     }, []);
 
-    const handleMouseDown = (e: React.MouseEvent) => {
+    const handleDragPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.stopPropagation();
       bringToFront(id);
       setDragState({ active: true, shift: e.shiftKey });
@@ -126,7 +127,7 @@ const DraggableColumn = React.memo(
     };
 
     useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
+      const handlePointerMove = (e: PointerEvent) => {
         if (dragState.active) {
           const dx = (e.clientX - dragRef.current.startX) / scale;
           const dy = (e.clientY - dragRef.current.startY) / scale;
@@ -153,7 +154,7 @@ const DraggableColumn = React.memo(
         }
       };
 
-      const handleMouseUp = () => {
+      const handlePointerUp = () => {
         if (dragState.active) {
           setDragState({ active: false, shift: false });
           setLocalPos(currentPos.current);
@@ -166,12 +167,12 @@ const DraggableColumn = React.memo(
       };
 
       if (dragState.active || isResizing) {
-        window.addEventListener("mousemove", handleMouseMove);
-        window.addEventListener("mouseup", handleMouseUp);
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", handlePointerUp);
       }
       return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
       };
     }, [
       dragState.active,
@@ -211,14 +212,15 @@ const DraggableColumn = React.memo(
           height: `${localSize.height}px`,
           zIndex: isHighlighted ? 9999 : zIndex,
         }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
           bringToFront(id);
         }}
       >
         <div
-          onMouseDown={handleMouseDown}
+          onPointerDown={handleDragPointerDown}
           className="p-5 border-b border-slate-100 flex items-center justify-between cursor-grab active:cursor-grabbing bg-transparent hover:bg-slate-50 transition-colors rounded-t-2xl group/header canvas-heavy-transition"
+          style={{ touchAction: "none" }}
         >
           <div className="flex items-center gap-3 w-full pr-4">
             <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-100 pointer-events-none">
@@ -253,6 +255,7 @@ const DraggableColumn = React.memo(
                       onRename(editTitle.trim());
                   }}
                   onMouseDown={(e) => e.stopPropagation()} // Prevents dragging while clicking the input
+                  onPointerDown={(e) => e.stopPropagation()}
                 />
               ) : (
                 <div className="flex items-center gap-2 group/title">
@@ -268,6 +271,7 @@ const DraggableColumn = React.memo(
                   {onRename && (
                     <button
                       onMouseDown={(e) => e.stopPropagation()} // 1. Stops the drag engine from picking up the column
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
@@ -290,7 +294,7 @@ const DraggableColumn = React.memo(
           {/* TOP RIGHT DELETE BUTTON */}
           {onDelete && (
             <button
-              onMouseDown={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation();
                 onDelete();
               }}
@@ -310,6 +314,7 @@ const DraggableColumn = React.memo(
               : "overflow-y-auto custom-scrollbar bg-slate-50/50"
           }`}
           onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onWheel={(e) => {
             if (!disableScroll) e.stopPropagation();
           }}
@@ -323,7 +328,7 @@ const DraggableColumn = React.memo(
 
         <button
           type="button"
-          onMouseDown={(e) => {
+          onPointerDown={(e) => {
             e.stopPropagation();
             bringToFront(id);
             setIsResizing(true);
@@ -336,6 +341,7 @@ const DraggableColumn = React.memo(
           }}
           className="absolute bottom-2 right-2 z-20 flex items-center justify-center w-7 h-7 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 shadow-sm cursor-nwse-resize"
           title="Resize Column"
+          style={{ touchAction: "none" }}
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
             <path

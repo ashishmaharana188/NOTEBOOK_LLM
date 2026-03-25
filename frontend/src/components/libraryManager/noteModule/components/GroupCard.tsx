@@ -97,7 +97,7 @@ const GroupCard = React.memo(
 
     return (
       <motion.div
-        className="no-pan relative flex justify-center"
+        className="no-pan relative flex justify-center overflow-visible"
         style={{
           width: "100%",
           height: TAB_HEIGHT,
@@ -115,7 +115,7 @@ const GroupCard = React.memo(
           onDragEnd={handleDragEnd}
           animate={controls}
           style={{ y, willChange: "transform" }}
-          className={`relative ${reducedVisuals ? "canvas-interaction-reduced" : ""} ${
+          className={`relative overflow-visible ${reducedVisuals ? "canvas-interaction-reduced" : ""} ${
             !isDragging
               ? "transition-[filter,transform] duration-75"
               : "transition-none"
@@ -127,7 +127,7 @@ const GroupCard = React.memo(
         >
           <div
             onClick={handleTabClick}
-            className="group relative cursor-pointer active:cursor-grabbing"
+            className="group relative z-10 cursor-pointer active:cursor-grabbing"
             style={{ width: TAB_WIDTH, height: TAB_HEIGHT }}
           >
             <svg
@@ -181,14 +181,14 @@ const GroupCard = React.memo(
             </button>
           </div>
 
-            <motion.div
-              className="absolute left-1/2 transform -translate-x-1/2 bg-[#F3F4F6] rounded-b-xl border-2 border-t-0 border-gray-900 shadow-2xl overflow-hidden flex flex-col canvas-heavy-shell"
+          <motion.div
+            className="absolute left-1/2 transform -translate-x-1/2 bg-[#F3F4F6] rounded-b-xl border-2 border-t-0 border-gray-900 overflow-hidden flex flex-col canvas-heavy-shell"
               style={{
               top: TAB_HEIGHT - 2,
               width: CARD_WIDTH,
               height: cardHeight,
               scale: cardScale,
-              zIndex: -1,
+              zIndex: 0,
             }}
           >
             <motion.div
@@ -331,8 +331,8 @@ const GroupCard = React.memo(
               top: TAB_HEIGHT,
               width: CARD_WIDTH - 10,
               height: cardHeight,
-              zIndex: -2,
-              opacity: 0.2,
+              zIndex: -1,
+              opacity: 0.08,
             }}
           />
         </motion.div>

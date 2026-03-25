@@ -334,7 +334,11 @@ const SpatialCard = React.memo(
     });
     const reducedVisuals = interactionReduced || isDraggingCard;
     const previewMode =
-      reducedVisuals || canvasScale < 0.55 ? "compact" : "full";
+      reducedVisuals || canvasScale < 0.42
+        ? "compact"
+        : canvasScale < 0.68
+          ? "media"
+          : "full";
 
     return (
       // 1. THE INVISIBLE ANCHOR (No shadows or backgrounds allowed here!)

@@ -104,7 +104,8 @@ const NoteStackColumn = React.memo(
       };
     }, []);
 
-    const handleMouseDown = (e: React.MouseEvent) => {
+    const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.stopPropagation();
       bringToFront(stack.stack_id);
       setIsDragging(true);
@@ -117,7 +118,7 @@ const NoteStackColumn = React.memo(
     };
 
     useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
+      const handlePointerMove = (e: PointerEvent) => {
         if (!isDragging) return;
         const dx = (e.clientX - dragRef.current.startX) / scale;
         const dy = (e.clientY - dragRef.current.startY) / scale;
@@ -129,7 +130,7 @@ const NoteStackColumn = React.memo(
         currentPos.current = newPos; // THE FIX 2: Seamlessly update the ref during drag
         schedulePosition();
       };
-      const handleMouseUp = () => {
+      const handlePointerUp = () => {
         if (isDragging) {
           setIsDragging(false);
           setLocalPos(currentPos.current);
@@ -138,12 +139,12 @@ const NoteStackColumn = React.memo(
         }
       };
       if (isDragging) {
-        window.addEventListener("mousemove", handleMouseMove);
-        window.addEventListener("mouseup", handleMouseUp);
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", handlePointerUp);
       }
       return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
       };
     }, [isDragging, onDragEnd, scale, schedulePosition, stack.stack_id]);
 
@@ -226,7 +227,7 @@ const NoteStackColumn = React.memo(
           backfaceVisibility: "hidden",
           zIndex: isDragging || isHighlighted ? 9999 : zIndex,
         }}
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
           bringToFront(stack.stack_id);
         }}
@@ -237,7 +238,8 @@ const NoteStackColumn = React.memo(
               ? "border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.4)] scale-[1.03]"
               : "border-gray-300 shadow-sm"
           } ${isDragging ? "shadow-2xl cursor-grabbing" : "cursor-grab"}`}
-          onMouseDown={handleMouseDown}
+          onPointerDown={handlePointerDown}
+          style={{ touchAction: "none" }}
         >
           <div className="flex justify-between items-center border-b border-gray-300 pb-2 relative pointer-events-none">
             <div className="flex items-center gap-2 p-1.5 text-muted rounded-md">
@@ -261,6 +263,7 @@ const NoteStackColumn = React.memo(
                 className="no-pan cursor-pointer bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full  -sm transition-colors flex items-center justify-center"
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
               >
                 <input
                   type="file"
@@ -290,6 +293,7 @@ const NoteStackColumn = React.memo(
                   }}
                   className="w-full p-1 text-lg font-bold border border-gray-400 rounded focus:outline-none pointer-events-auto bg-white"
                   autoFocus
+                  onPointerDown={(e) => e.stopPropagation()}
                 />
                 <button
                   onClick={() => {
@@ -310,6 +314,7 @@ const NoteStackColumn = React.memo(
                     setIsRenamingStack(true);
                     setEditStackTitle(stack.title);
                   }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   title="Click to rename"
                 >
                   {stack.title}
@@ -320,6 +325,7 @@ const NoteStackColumn = React.memo(
                     setIsRenamingStack(true);
                     setEditStackTitle(stack.title);
                   }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   className="text-gray-400 hover:text-blue-500 opacity-0 group-hover/stack:opacity-100 transition-opacity"
                 >
                   <svg
@@ -342,6 +348,7 @@ const NoteStackColumn = React.memo(
             <div className="flex gap-2 pointer-events-auto">
               <button
                 onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDeleteStack(stack.stack_id);
@@ -370,6 +377,7 @@ const NoteStackColumn = React.memo(
             <div
               className="flex gap-2"
               onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
             >
               <input
                 autoFocus
@@ -402,6 +410,7 @@ const NoteStackColumn = React.memo(
           ) : (
             <button
               onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={() => setIsCreatingGroup(true)}
               className="w-full py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 text-sm font-bold rounded transition border-dashed"
             >
@@ -412,6 +421,7 @@ const NoteStackColumn = React.memo(
         <div
           className="flex flex-col items-center w-full cursor-auto"
           onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           {els.length > 0 ? (
             els

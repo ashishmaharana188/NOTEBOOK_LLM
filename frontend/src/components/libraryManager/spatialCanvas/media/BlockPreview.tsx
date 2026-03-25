@@ -1,6 +1,6 @@
 import React from "react";
 
-type PreviewMode = "full" | "compact";
+type PreviewMode = "full" | "media" | "compact";
 
 const stripHtml = (content: string) =>
   content
@@ -54,12 +54,25 @@ const BlockPreview = React.memo(
     const parsed = React.useMemo(() => {
       const plainText = stripHtml(htmlContent || "");
       const mediaKind = detectMediaKind(htmlContent || "");
+      const imageMatch = (htmlContent || "").match(
+        /<img[^>]+src=["']([^"']+)["']/i,
+      );
+      const imageSrc = imageMatch?.[1] || null;
 
       if (previewMode === "compact") {
         return {
           type: "compact",
           mediaKind,
           plainText,
+        };
+      }
+
+      if (previewMode === "media") {
+        return {
+          type: mediaKind === "Image" && imageSrc ? "media" : "compact",
+          mediaKind,
+          plainText,
+          imageSrc,
         };
       }
 
@@ -138,11 +151,11 @@ const BlockPreview = React.memo(
           : parsed.plainText;
       return (
         <div
-          className={`absolute inset-0 p-5 flex flex-col justify-between overflow-hidden ${textClass} canvas-heavy-preview-compact`}
+          className={`absolute inset-0 p-5 flex flex-col items-center justify-center text-center overflow-hidden ${textClass} canvas-heavy-preview-compact`}
         >
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex max-w-full flex-col items-center gap-3">
             {!isNote && title ? (
-              <h3 className="font-bold tracking-tight leading-snug text-base text-slate-900 line-clamp-2">
+              <h3 className="font-bold tracking-tight leading-snug text-base text-slate-900 line-clamp-2 max-w-full">
                 {title}
               </h3>
             ) : (
@@ -156,9 +169,28 @@ const BlockPreview = React.memo(
               </span>
             )}
           </div>
-          <p className="mt-4 text-xs leading-6 opacity-80 line-clamp-6">
+          <p className="mt-4 max-w-full text-xs leading-6 opacity-80 line-clamp-6">
             {compactText || "No content available."}
           </p>
+        </div>
+      );
+    }
+
+    if (parsed.type === "media") {
+      return (
+        <div className="absolute inset-0 z-10 overflow-hidden canvas-heavy-media">
+          <img
+            src={parsed.imageSrc || undefined}
+            alt="Preview"
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-5 text-center">
+            {!isNote && title && (
+              <h3 className="text-sm font-bold tracking-tight text-white line-clamp-2">
+                {title}
+              </h3>
+            )}
+          </div>
         </div>
       );
     }
