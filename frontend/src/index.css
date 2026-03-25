@@ -134,3 +134,41 @@ body {
 .note-editor-shell .bn-mantine .bn-grid-suggestion-menu {
   overflow-x: hidden;
 }
+
+.canvas-interaction-reduced .canvas-heavy-shell {
+  box-shadow: 0 8px 20px -14px rgba(15, 23, 42, 0.22) !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+}
+
+.canvas-interaction-reduced .canvas-heavy-shadow {
+  box-shadow: 0 6px 14px -12px rgba(15, 23, 42, 0.24) !important;
+  filter: none !important;
+}
+
+.canvas-interaction-reduced .canvas-heavy-transition,
+.canvas-interaction-reduced .canvas-heavy-transition::before,
+.canvas-interaction-reduced .canvas-heavy-transition::after,
+.canvas-interaction-reduced .canvas-heavy-shell,
+.canvas-interaction-reduced .canvas-heavy-shell::before,
+.canvas-interaction-reduced .canvas-heavy-shell::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+}
+
+.canvas-interaction-reduced .canvas-heavy-media video,
+.canvas-interaction-reduced .canvas-heavy-media iframe,
+.canvas-interaction-reduced .canvas-heavy-media img,
+.canvas-interaction-reduced .canvas-heavy-media canvas {
+  transform: translateZ(0);
+  filter: saturate(0.92) contrast(0.96);
+}
+
+.canvas-interaction-reduced .canvas-heavy-ornament {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.canvas-interaction-reduced .canvas-heavy-preview-rich {
+  display: none !important;
+}

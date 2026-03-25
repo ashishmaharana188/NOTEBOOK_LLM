@@ -26,6 +26,7 @@ const PrimaryViewerCard = ({
   onAddQuickThought,
   globalNotes,
   onFocusNote,
+  interactionReduced,
 }: any) => {
   const [radiusOffset, setRadiusOffset] = useState(0);
   const dragRef = useRef<{
@@ -178,7 +179,9 @@ const PrimaryViewerCard = ({
       initial={{ opacity: 0, scale: 0.9, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9, y: 20 }}
-      className="absolute top-0 left-0 bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col z-[4000] group no-pan"
+      className={`absolute top-0 left-0 bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)] border border-slate-200 flex flex-col z-[4000] group no-pan canvas-heavy-shell ${
+        interactionReduced ? "canvas-interaction-reduced" : ""
+      }`}
       style={{
         transformOrigin: "center center",
         x: -finalWidth / 2,
@@ -194,7 +197,7 @@ const PrimaryViewerCard = ({
     >
       {/* THE FIX: THE INNER CLIPPING MASK */}
       {/* This perfectly rounds the corners of the content, but lets the Ruler sit outside! */}
-      <div className="absolute inset-0 overflow-hidden rounded-[inherit]">
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit] canvas-heavy-media">
         {!activeNode ? (
           <div className="absolute inset-0 bg-slate-900 rounded-[inherit] flex items-center justify-center">
             <span className="text-slate-500 animate-pulse text-xs font-bold uppercase tracking-widest">
@@ -204,7 +207,7 @@ const PrimaryViewerCard = ({
         ) : activeNode.relation === "Stack" ||
           activeNode.relation === "Cluster" ? (
           <div
-            className="absolute inset-0 bg-slate-900 pointer-events-auto rounded-[inherit] overflow-hidden flex flex-col items-center justify-center no-pan"
+            className="absolute inset-0 bg-slate-900 pointer-events-auto rounded-[inherit] overflow-hidden flex flex-col items-center justify-center no-pan canvas-heavy-media"
             onWheelCapture={(e) => e.stopPropagation()}
             onTouchStartCapture={(e) => e.stopPropagation()}
             onPointerDownCapture={(e) => e.stopPropagation()}
@@ -226,7 +229,7 @@ const PrimaryViewerCard = ({
           </div>
         ) : activeNode.relation === "Folder" ? (
           <div
-            className="absolute inset-0 bg-white pointer-events-auto rounded-[inherit] p-10 pt-28 flex flex-col no-pan"
+            className="absolute inset-0 bg-white pointer-events-auto rounded-[inherit] p-10 pt-28 flex flex-col no-pan canvas-heavy-media"
             onWheelCapture={(e) => e.stopPropagation()}
             onTouchStartCapture={(e) => e.stopPropagation()}
             onPointerDownCapture={(e) => e.stopPropagation()}
@@ -285,7 +288,7 @@ const PrimaryViewerCard = ({
                     onFocusNote(activeNode);
                   }
                 }}
-                className="text-xs font-bold text-blue-600 bg-white/90 hover:bg-blue-50 active:scale-95   px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 pointer-events-auto transition-all"
+                className="text-xs font-bold text-blue-600 bg-white/90 hover:bg-blue-50 active:scale-95 px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 pointer-events-auto transition-all canvas-heavy-transition"
               >
                 <DocumentTextIcon className="w-4 h-4" /> {focusLabel}
               </button>
@@ -295,7 +298,7 @@ const PrimaryViewerCard = ({
                     e.stopPropagation();
                     if (onAddQuickThought) onAddQuickThought();
                   }}
-                  className="px-3 py-1.5 bg-pink-100/90   text-pink-700 hover:bg-pink-200 border border-pink-200 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-1 shadow-sm"
+                  className="px-3 py-1.5 bg-pink-100/90 text-pink-700 hover:bg-pink-200 border border-pink-200 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-1 shadow-sm canvas-heavy-transition"
                 >
                   <PlusIcon className="w-3 h-3" /> Quick Thought
                 </button>
@@ -306,7 +309,7 @@ const PrimaryViewerCard = ({
             <motion.div
               drag={!isReadLocked ? "x" : false}
               dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.2}
+              dragElastic={0}
               onDragEnd={handleDragEnd}
               className={`absolute inset-0 z-10 ${!isReadLocked ? "cursor-grab active:cursor-grabbing" : ""} no-pan`}
             >

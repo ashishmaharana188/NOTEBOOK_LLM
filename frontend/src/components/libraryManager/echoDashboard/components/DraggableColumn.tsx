@@ -25,6 +25,7 @@ const DraggableColumn = React.memo(
     onMaximize,
     disableScroll,
     setIsCanvasWheelDisabled,
+    interactionReduced,
     onRename, // <--- NEW PROP
     onDelete,
   }: any) => {
@@ -183,6 +184,8 @@ const DraggableColumn = React.memo(
       scheduleSize,
     ]);
 
+    const reducedVisuals = interactionReduced || dragState.active || isResizing;
+
     return (
       <div
         ref={shellRef}
@@ -190,11 +193,13 @@ const DraggableColumn = React.memo(
         onMouseEnter={() => setIsCanvasWheelDisabled?.(true)}
         onMouseLeave={() => setIsCanvasWheelDisabled?.(false)}
         onWheel={(e) => e.stopPropagation()}
-        className={`no-pan absolute flex flex-col bg-white/95 rounded-2xl border ${
+        className={`no-pan absolute flex flex-col bg-white/95 rounded-2xl border canvas-heavy-shell ${
           isHighlighted
             ? "border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.5)] scale-[1.02] z-[9999]"
             : "border-slate-200 shadow-xl"
-        } ${dragState.active ? "shadow-2xl cursor-grabbing scale-[1.01]" : ""} ${isResizing ? "select-none" : ""}`}
+        } ${dragState.active ? "shadow-2xl cursor-grabbing scale-[1.01]" : ""} ${isResizing ? "select-none" : ""} ${
+          reducedVisuals ? "canvas-interaction-reduced" : ""
+        }`}
         style={{
           left: 0,
           top: 0,
@@ -213,7 +218,7 @@ const DraggableColumn = React.memo(
       >
         <div
           onMouseDown={handleMouseDown}
-          className="p-5 border-b border-slate-100 flex items-center justify-between cursor-grab active:cursor-grabbing bg-transparent hover:bg-slate-50 transition-colors rounded-t-2xl group/header"
+          className="p-5 border-b border-slate-100 flex items-center justify-between cursor-grab active:cursor-grabbing bg-transparent hover:bg-slate-50 transition-colors rounded-t-2xl group/header canvas-heavy-transition"
         >
           <div className="flex items-center gap-3 w-full pr-4">
             <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-100 pointer-events-none">

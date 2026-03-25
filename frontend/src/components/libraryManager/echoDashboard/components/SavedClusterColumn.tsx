@@ -29,6 +29,7 @@ const SavedClusterColumn = React.memo(
     refreshGlobalCanvas,
     localLinkedNotes,
     setIsCanvasWheelDisabled,
+    interactionReduced,
     handleRenameCluster, // <--- NEW
     handleDeleteCluster,
   }: any) => {
@@ -124,6 +125,7 @@ const SavedClusterColumn = React.memo(
         scale={canvasScale}
         disableScroll={true}
         setIsCanvasWheelDisabled={setIsCanvasWheelDisabled}
+        interactionReduced={interactionReduced}
         onRename={(newTitle: string) =>
           handleRenameCluster(cluster.id, newTitle)
         } // <--- NEW

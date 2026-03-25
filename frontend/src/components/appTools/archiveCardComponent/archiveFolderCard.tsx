@@ -106,7 +106,7 @@ function ArchiveFolderCard({
     >
       {/* 1. BACK COVER */}
       <div
-        className="absolute inset-0 bg-slate-300 rounded-2xl"
+        className="absolute inset-0 bg-slate-300 rounded-2xl canvas-heavy-shadow"
         style={{ zIndex: 0 }}
       />
 
@@ -123,7 +123,7 @@ function ArchiveFolderCard({
             return (
               <div
                 key={`archive-child-${safeIndex}`} // ✨ THE FIX: Added the missing unique key!
-                className="absolute inset-0 transition-transform duration-500 pointer-events-auto"
+                className="absolute inset-0 transition-transform duration-500 pointer-events-auto canvas-heavy-transition"
                 style={{
                   zIndex: 10 + safeIndex,
                   transform: `translate(${random.offsetX}px, ${random.offsetY}px) rotate(${random.rotate}deg)`,
@@ -141,14 +141,14 @@ function ArchiveFolderCard({
 
       {/* 3. FRONT COVER (Solid Color + Thicker Borders for Outer Stacks) */}
       <div
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 pointer-events-none canvas-heavy-shadow"
         style={{
           zIndex: 50,
           filter: "drop-shadow(4px 0px 8px rgba(0, 0, 0, 0.12))",
         }}
       >
         <div
-          className={`w-full h-full flex flex-col relative overflow-hidden ${
+          className={`w-full h-full flex flex-col relative overflow-hidden canvas-heavy-shell ${
             isOuterStack ? "border-[6px] border-slate-300/60 rounded-xl" : ""
           }`}
           style={{

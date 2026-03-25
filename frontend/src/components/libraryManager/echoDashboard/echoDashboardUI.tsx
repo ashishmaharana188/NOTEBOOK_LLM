@@ -25,6 +25,7 @@ import { useModelRuntime } from "../../system/ModelRuntimeProvider";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
+import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
 import useIsMobile from "../../../hooks/appTools/useIsMobile";
 
 const ECHO_COLUMN_WIDTH = 420;
@@ -37,6 +38,8 @@ export default function EchoDashboardUI(props: any) {
   const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
     isMobile ? "LIST" : "CANVAS",
   );
+  const { isInteracting, startInteraction, settleInteraction } =
+    useCanvasInteractionMode(140);
   const state = useEchoDashboardState(props);
   const {
     recommendations = [],
@@ -224,8 +227,21 @@ export default function EchoDashboardUI(props: any) {
             }}
             panning={{ excluded: ["no-pan"] }}
             onInit={handleViewportUpdate}
-            onPanningStop={handleViewportUpdate}
-            onZoomStop={handleViewportUpdate}
+            onWheelStart={() => startInteraction()}
+            onWheelStop={(ref) => {
+              handleViewportUpdate(ref);
+              settleInteraction();
+            }}
+            onPanningStart={() => startInteraction()}
+            onPanningStop={(ref) => {
+              handleViewportUpdate(ref);
+              settleInteraction();
+            }}
+            onZoomStart={() => startInteraction()}
+            onZoomStop={(ref) => {
+              handleViewportUpdate(ref);
+              settleInteraction();
+            }}
           >
             {({ zoomIn, zoomOut, zoomToElement }) => (
               <>
@@ -264,7 +280,11 @@ export default function EchoDashboardUI(props: any) {
                     height: "100%",
                   }}
                 >
-                  <div className="relative w-0 h-0 [text-rendering:optimizeLegibility]">
+                  <div
+                    className={`relative w-0 h-0 [text-rendering:optimizeLegibility] ${
+                      isInteracting ? "canvas-interaction-reduced" : ""
+                    }`}
+                  >
                     <div
                       className="absolute pointer-events-none"
                       style={{
@@ -342,6 +362,7 @@ export default function EchoDashboardUI(props: any) {
                         zIndex={state.zIndexes[state.activeColumnId] || 1}
                         bringToFront={state.bringToFront}
                         scale={canvasScale}
+                        interactionReduced={isInteracting}
                       >
                         <div className="p-4 bg-canvas/50 min-h-full">
                           <div className="sticky top-0 bg-canvas/95 z-30 pb-3 border-b border-border-subtle mb-4">
@@ -550,6 +571,7 @@ export default function EchoDashboardUI(props: any) {
                         }
                         handleRenameCluster={state.handleRenameCluster}
                         handleDeleteCluster={state.handleDeleteCluster}
+                        interactionReduced={isInteracting}
                       />
                     ))}
                   </div>

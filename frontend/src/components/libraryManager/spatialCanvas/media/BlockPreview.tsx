@@ -1,22 +1,72 @@
 import React from "react";
 
-// THE FIX: Wrapped in React.memo so the browser doesn't re-paint the text during drags
+type PreviewMode = "full" | "compact";
+
+const stripHtml = (content: string) =>
+  content
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const detectMediaKind = (content: string) => {
+  const lowered = content.toLowerCase();
+  if (
+    lowered.includes("<video") ||
+    lowered.includes("<iframe") ||
+    lowered.includes("youtube.com") ||
+    lowered.includes("youtu.be")
+  ) {
+    return "Media";
+  }
+  if (lowered.includes("<img")) {
+    return "Image";
+  }
+  if (
+    lowered.includes("<audio") ||
+    lowered.includes(".mp3") ||
+    lowered.includes(".wav")
+  ) {
+    return "Audio";
+  }
+  if (lowered.includes("<pre")) {
+    return "Code";
+  }
+  return null;
+};
+
+// The preview stays cheap during motion and restores the full rich DOM at rest.
 const BlockPreview = React.memo(
   ({
     htmlContent,
     textClass,
     isNote,
     title,
+    previewMode = "full",
   }: {
     htmlContent: string;
     textClass: string;
     isNote: boolean;
     title: string;
+    previewMode?: PreviewMode;
   }) => {
-    // THE FIX: The Heavy DOMParser runs EXACTLY ONCE per card, and caches the result!
     const parsed = React.useMemo(() => {
-      if (!htmlContent) return { type: "empty" };
-      if (!htmlContent.includes("<")) return { type: "plain" };
+      const plainText = stripHtml(htmlContent || "");
+      const mediaKind = detectMediaKind(htmlContent || "");
+
+      if (previewMode === "compact") {
+        return {
+          type: "compact",
+          mediaKind,
+          plainText,
+        };
+      }
+
+      if (!htmlContent) return { type: "empty", plainText };
+      if (!htmlContent.includes("<")) {
+        return { type: "plain", plainText: htmlContent };
+      }
 
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlContent, "text/html");
@@ -64,8 +114,11 @@ const BlockPreview = React.memo(
         }
       });
 
-      if (!truncatedHTML)
-        truncatedHTML = `<p>${htmlContent.substring(0, 150)}...</p>`;
+      if (!truncatedHTML) {
+        truncatedHTML = plainText
+          ? `<p>${plainText.substring(0, 150)}...</p>`
+          : "<p>No content available.</p>";
+      }
 
       return {
         type: "html",
@@ -74,10 +127,42 @@ const BlockPreview = React.memo(
         src,
         outerHTML,
         truncatedHTML,
+        plainText,
       };
-    }, [htmlContent]);
+    }, [htmlContent, previewMode]);
 
-    // --- RENDERING BASED ON THE CACHED PARSER ---
+    if (parsed.type === "compact") {
+      const compactText =
+        parsed.plainText.length > 240
+          ? `${parsed.plainText.slice(0, 240)}...`
+          : parsed.plainText;
+      return (
+        <div
+          className={`absolute inset-0 p-5 flex flex-col justify-between overflow-hidden ${textClass} canvas-heavy-preview-compact`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            {!isNote && title ? (
+              <h3 className="font-bold tracking-tight leading-snug text-base text-slate-900 line-clamp-2">
+                {title}
+              </h3>
+            ) : (
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                Preview
+              </span>
+            )}
+            {parsed.mediaKind && (
+              <span className="shrink-0 rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">
+                {parsed.mediaKind}
+              </span>
+            )}
+          </div>
+          <p className="mt-4 text-xs leading-6 opacity-80 line-clamp-6">
+            {compactText || "No content available."}
+          </p>
+        </div>
+      );
+    }
+
     if (parsed.type === "empty") {
       return (
         <div
@@ -98,7 +183,7 @@ const BlockPreview = React.memo(
               {title}
             </h3>
           )}
-          <p className="leading-relaxed font-sans text-sm">{htmlContent}</p>
+          <p className="leading-relaxed font-sans text-sm">{parsed.plainText}</p>
         </div>
       );
     }
@@ -118,7 +203,7 @@ const BlockPreview = React.memo(
 
     if (parsed.tagName === "video" || parsed.tagName === "iframe") {
       return (
-        <div className="absolute inset-0 bg-black z-10 overflow-hidden">
+        <div className="absolute inset-0 bg-black z-10 overflow-hidden canvas-heavy-media">
           {parsed.tagName === "video" ? (
             <video
               src={parsed.src}
@@ -140,7 +225,7 @@ const BlockPreview = React.memo(
 
     if (parsed.tagName === "img") {
       return (
-        <div className="absolute inset-0 z-10 bg-slate-100 overflow-hidden">
+        <div className="absolute inset-0 z-10 bg-slate-100 overflow-hidden canvas-heavy-media">
           <img
             src={parsed.src}
             alt="Preview"
@@ -152,7 +237,7 @@ const BlockPreview = React.memo(
 
     if (parsed.tagName === "pre") {
       return (
-        <div className="absolute inset-0 bg-[#0d1117] text-slate-100 p-8 z-10 overflow-hidden flex flex-col">
+        <div className="absolute inset-0 bg-[#0d1117] text-slate-100 p-8 z-10 overflow-hidden flex flex-col canvas-heavy-media">
           <div className="absolute top-4 right-5 text-[10px] font-bold tracking-widest text-slate-500 uppercase z-20">
             Code
           </div>
@@ -174,7 +259,7 @@ const BlockPreview = React.memo(
           </h3>
         )}
         <div
-          className="flex-1 overflow-hidden prose prose-sm prose-slate prose-headings:font-bold prose-p:leading-relaxed prose-a:text-blue-600 max-w-none mask-image-b"
+          className="flex-1 overflow-hidden prose prose-sm prose-slate prose-headings:font-bold prose-p:leading-relaxed prose-a:text-blue-600 max-w-none mask-image-b canvas-heavy-preview-rich"
           style={{
             WebkitMaskImage:
               "linear-gradient(to bottom, black 70%, transparent 100%)",

@@ -17,7 +17,7 @@ function BinderCoverPreview({
 
   return (
     <div
-      className={`relative rounded-xl overflow-hidden shadow-sm border border-slate-200/60 bg-white
+      className={`relative rounded-xl overflow-hidden shadow-sm border border-slate-200/60 bg-white canvas-heavy-shell canvas-heavy-media
         ${isLandscape ? "w-full h-3/4 mt-auto" : "w-full h-full"}
       `}
     >

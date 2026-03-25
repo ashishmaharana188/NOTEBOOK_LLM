@@ -15,6 +15,7 @@ import axios from "axios";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
+import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
 import useIsMobile from "../../../hooks/appTools/useIsMobile";
 
 const NOTE_STACK_WIDTH = 650;
@@ -27,6 +28,8 @@ const NotesSectionUI: React.FC = () => {
   const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
     isMobile ? "LIST" : "CANVAS",
   );
+  const { isInteracting, startInteraction, settleInteraction } =
+    useCanvasInteractionMode(140);
   const { canvasScale, syncViewport, isRectVisible } = useCanvasViewport({
     initialScale: 1,
     initialPositionX: 0,
@@ -117,8 +120,21 @@ const NotesSectionUI: React.FC = () => {
           wheel={{ step: 0.1, smoothStep: 0.0005 }}
           panning={{ excluded: ["no-pan"] }}
           onInit={handleViewportUpdate}
-          onPanningStop={handleViewportUpdate}
-          onZoomStop={handleViewportUpdate}
+          onWheelStart={() => startInteraction()}
+          onWheelStop={(ref) => {
+            handleViewportUpdate(ref);
+            settleInteraction();
+          }}
+          onPanningStart={() => startInteraction()}
+          onPanningStop={(ref) => {
+            handleViewportUpdate(ref);
+            settleInteraction();
+          }}
+          onZoomStart={() => startInteraction()}
+          onZoomStop={(ref) => {
+            handleViewportUpdate(ref);
+            settleInteraction();
+          }}
         >
           {({ zoomIn, zoomOut, zoomToElement }) => (
             <React.Fragment>
@@ -130,7 +146,11 @@ const NotesSectionUI: React.FC = () => {
               <TransformComponent
                 wrapperStyle={{ width: "100%", height: "100%" }}
               >
-                <div className="relative w-0 h-0">
+                <div
+                  className={`relative w-0 h-0 ${
+                    isInteracting ? "canvas-interaction-reduced" : ""
+                  }`}
+                >
                   <div
                     className="absolute pointer-events-none opacity-40"
                     style={{
@@ -148,7 +168,7 @@ const NotesSectionUI: React.FC = () => {
                     className="absolute left-0 top-0 z-10 w-0 h-0"
                   >
                     {!state.stacks || state.stacks.length === 0 ? (
-                      <div className="absolute top-[200px] left-[100px] text-muted font-mono text-sm bg-surface/80 px-6 py-2 rounded-lg border border-gray-300 shadow-sm backdrop-blur whitespace-nowrap">
+                      <div className="absolute top-[200px] left-[100px] text-muted font-mono text-sm bg-surface/80 px-6 py-2 rounded-lg border border-gray-300 shadow-sm   whitespace-nowrap">
                         [ NO STACKS FOUND. CREATE ONE TO START YOUR WORKSPACE. ]
                       </div>
                     ) : (
@@ -182,6 +202,7 @@ const NotesSectionUI: React.FC = () => {
                           onRenameGroup={state.renameGroup}
                           isHighlighted={state.highlightId === stack.stack_id}
                           highlightedGroupId={state.highlightId}
+                          interactionReduced={isInteracting}
                         />
                       ))
                     )}
@@ -232,7 +253,7 @@ const NotesSectionUI: React.FC = () => {
 
       <div className="absolute right-3 top-16 z-[2000] pointer-events-auto flex gap-4 items-start sm:top-6 sm:right-6">
         {state.isCreatingStack ? (
-          <div className="bg-surface/95 backdrop-blur p-4 rounded-lg shadow-xl border border-gray-400 flex flex-col gap-2">
+          <div className="bg-surface/95   p-4 rounded-lg shadow-xl border border-gray-400 flex flex-col gap-2">
             <input
               autoFocus
               type="text"

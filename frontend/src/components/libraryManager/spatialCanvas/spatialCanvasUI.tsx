@@ -21,6 +21,7 @@ import useCanvasData from "./hooks/useCanvasData";
 import { notify } from "../../system/AppNotifications";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
+import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
 
 export default function SpatialCanvasUI({
     clusters,
@@ -54,6 +55,8 @@ export default function SpatialCanvasUI({
     const rootExpandedId = drillDownPath[0] || null;
     const currentExpandedId = drillDownPath[drillDownPath.length - 1] || null;
     const [canvasMode, setCanvasMode] = useState<"ECHO" | "NOTES">("ECHO");
+    const { isInteracting, startInteraction, settleInteraction } =
+        useCanvasInteractionMode(150);
 
     const [isShiftDown, setIsShiftDown] = useShiftKey();
     const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -885,15 +888,32 @@ export default function SpatialCanvasUI({
                     smoothStep: 0.0005,
                     excluded: ["no-pan", "no-pan-resize"],
                 }}
-                onPanningStop={(ref) => updateCulling(ref)}
-                onZoomStop={(ref) => updateCulling(ref)}
+                onWheelStart={() => startInteraction()}
+                onWheelStop={(ref) => {
+                    updateCulling(ref);
+                    settleInteraction();
+                }}
+                onPanningStart={() => startInteraction()}
+                onPanningStop={(ref) => {
+                    updateCulling(ref);
+                    settleInteraction();
+                }}
+                onZoomStart={() => startInteraction()}
+                onZoomStop={(ref) => {
+                    updateCulling(ref);
+                    settleInteraction();
+                }}
                 // THE FIX: Stop the canvas from hijacking double clicks!
                 doubleClick={{ disabled: true }}
             >
                 <TransformComponent
                     wrapperStyle={{ width: "100%", height: "100%" }}
                 >
-                    <div className="relative w-0 h-0">
+                    <div
+                        className={`relative w-0 h-0 ${
+                            isInteracting ? "canvas-interaction-reduced" : ""
+                        }`}
+                    >
                         <div
                             className="absolute pointer-events-none opacity-50"
                             style={{
@@ -977,6 +997,9 @@ export default function SpatialCanvasUI({
                                                 );
                                             }}
                                             onDrillDown={handleDrillDown}
+                                            interactionReduced={
+                                                isInteracting
+                                            }
                                         />
                                     );
                                 }
@@ -1101,6 +1124,9 @@ export default function SpatialCanvasUI({
                                                 onOpenMindMap={onOpenMindMap}
                                                 groupsByOwnerId={
                                                     groupsByOwnerId
+                                                }
+                                                interactionReduced={
+                                                    isInteracting
                                                 }
                                             />
                                         </div>

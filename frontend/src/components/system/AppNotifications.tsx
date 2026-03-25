@@ -40,9 +40,8 @@ interface ConfirmRequest extends ConfirmDialogInput {
 }
 
 let notifyBridge: ((input: NotificationInput) => void) | null = null;
-let confirmBridge:
-  | ((input: ConfirmDialogInput) => Promise<boolean>)
-  | null = null;
+let confirmBridge: ((input: ConfirmDialogInput) => Promise<boolean>) | null =
+  null;
 
 const normalizeMessage = (value: unknown) => {
   if (typeof value === "string") return value;
@@ -62,7 +61,11 @@ const inferToneFromMessage = (message: string): NotificationTone => {
   if (/warning|caution|mixed|separately|careful/i.test(message)) {
     return "warning";
   }
-  if (/success|complete|completed|saved|started|synced|uploaded|clean/i.test(message)) {
+  if (
+    /success|complete|completed|saved|started|synced|uploaded|clean/i.test(
+      message,
+    )
+  ) {
     return "success";
   }
   return "info";
@@ -347,7 +350,7 @@ export function AppNotificationProvider({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[300100] flex items-center justify-center bg-slate-950/35 px-4 backdrop-blur-[2px]"
+            className="fixed inset-0 z-[300100] flex items-center justify-center bg-slate-950/35 px-4  -[2px]"
           >
             <motion.div
               initial={{ opacity: 0, y: 18, scale: 0.96 }}
@@ -360,7 +363,9 @@ export function AppNotificationProvider({
                 <div
                   className={`mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${confirmStyle.chip}`}
                 >
-                  <ConfirmIcon className={`h-6 w-6 ${confirmStyle.iconClass}`} />
+                  <ConfirmIcon
+                    className={`h-6 w-6 ${confirmStyle.iconClass}`}
+                  />
                 </div>
 
                 <div className="min-w-0 flex-1">

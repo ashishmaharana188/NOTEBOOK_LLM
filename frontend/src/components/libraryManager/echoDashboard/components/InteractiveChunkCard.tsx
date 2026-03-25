@@ -146,7 +146,7 @@ const InteractiveChunkCard = React.memo(
         if (isDeleted) return null;
 
         return (
-            <div className="bg-surface border border-slate-200 shadow-sm rounded-lg flex flex-col group hover:shadow-md hover:border-slate-300 transition-all duration-200 mb-4 overflow-hidden relative">
+            <div className="bg-surface border border-slate-200 shadow-sm rounded-lg flex flex-col group hover:shadow-md hover:border-slate-300 transition-all duration-200 mb-4 overflow-hidden relative canvas-heavy-shell canvas-heavy-transition">
                 {/* TOP COMPACT ACTION HEADER */}
                 <div className="px-4 py-2 border-b border-slate-100 bg-slate-50 flex justify-between items-center relative z-10">
                     {/* LEFT: Compact Actions */}

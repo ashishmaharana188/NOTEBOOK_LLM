@@ -1,4 +1,10 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   MinusIcon,
   XMarkIcon,
@@ -7,10 +13,16 @@ import {
 import { useCanvasSnapshot } from "../system/CanvasSnapshotProvider";
 import useIsMobile from "../../hooks/appTools/useIsMobile";
 
-const EchoDashboardUI = React.lazy(() => import("./echoDashboard/echoDashboardUI"));
+const EchoDashboardUI = React.lazy(
+  () => import("./echoDashboard/echoDashboardUI"),
+);
 const NotesSectionUI = React.lazy(() => import("./noteModule/notesSectionUI"));
-const SpatialCanvasUI = React.lazy(() => import("./spatialCanvas/spatialCanvasUI"));
-const SystemConfigPanel = React.lazy(() => import("./system/systemConfigPanel"));
+const SpatialCanvasUI = React.lazy(
+  () => import("./spatialCanvas/spatialCanvasUI"),
+);
+const SystemConfigPanel = React.lazy(
+  () => import("./system/systemConfigPanel"),
+);
 const EchoContextModal = React.lazy(() => import("./shared/EchoContextModal"));
 
 export default function WorkspaceShellUI(props: any) {
@@ -27,9 +39,7 @@ export default function WorkspaceShellUI(props: any) {
 
   const [activeTab, setActiveTab] = useState<
     "ECHOES" | "NOTES" | "SPATIAL" | "SYSTEM"
-  >(
-    currentView || "ECHOES",
-  );
+  >(currentView || "ECHOES");
   const [isMinimized, setIsMinimized] = useState(false);
 
   const [focusedEchoId, setFocusedEchoId] = useState<string | null>(null);
@@ -70,7 +80,8 @@ export default function WorkspaceShellUI(props: any) {
 
   const openNoteEditor = useCallback((node: any) => {
     const noteId = node.note_id || node.chunk_id || node.id;
-    const groupId = node.group_id || node.parent_id || node.cluster_id || "unfiled";
+    const groupId =
+      node.group_id || node.parent_id || node.cluster_id || "unfiled";
     const text = node.text || node.content || "";
 
     sessionStorage.setItem(
@@ -170,12 +181,16 @@ export default function WorkspaceShellUI(props: any) {
   return (
     <div className="fixed inset-0 z-[100] transition-opacity duration-300 font-sans pointer-events-auto">
       <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-900/60  -sm"
         onClick={() => setIsMinimized(true)}
       ></div>
 
-      <div className={`absolute bg-[#f8fafc] shadow-2xl border border-slate-300 flex flex-col overflow-hidden text-primary animate-in zoom-in-95 duration-200 ${isMobile ? "inset-0 border-0 rounded-none" : "inset-4"}`}>
-        <div className={`absolute z-[2500] pointer-events-auto ${isMobile ? "inset-x-3 top-3 flex flex-col gap-3" : "top-6 left-6 flex items-center gap-4"}`}>
+      <div
+        className={`absolute bg-[#f8fafc] shadow-2xl border border-slate-300 flex flex-col overflow-hidden text-primary animate-in zoom-in-95 duration-200 ${isMobile ? "inset-0 border-0 rounded-none" : "inset-4"}`}
+      >
+        <div
+          className={`absolute z-[2500] pointer-events-auto ${isMobile ? "inset-x-3 top-3 flex flex-col gap-3" : "top-6 left-6 flex items-center gap-4"}`}
+        >
           <div className="flex items-center gap-1 bg-surface/95 p-1 rounded-sm shadow-sm border border-border-subtle self-start">
             <button
               onClick={() => setIsMinimized(true)}
@@ -193,46 +208,46 @@ export default function WorkspaceShellUI(props: any) {
 
           <div className="max-w-full overflow-x-auto rounded-sm border border-border-subtle bg-surface/95 p-1 shadow-sm">
             <div className="flex min-w-max gap-1">
-            <button
-              onClick={() => setActiveTab("ECHOES")}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
-                activeTab === "ECHOES"
-                  ? "bg-slate-200 text-slate-800 shadow-sm"
-                  : "text-muted hover:text-primary hover:bg-slate-100"
-              }`}
-            >
-              Echo Canvas
-            </button>
-            <button
-              onClick={() => setActiveTab("SPATIAL")}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all flex items-center gap-1 ${
-                activeTab === "SPATIAL"
-                  ? "bg-purple-600 text-white shadow-sm"
-                  : "text-purple-600 hover:bg-purple-50"
-              }`}
-            >
-              Reader Canvas
-            </button>
-            <button
-              onClick={() => setActiveTab("NOTES")}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
-                activeTab === "NOTES"
-                  ? "bg-slate-800 text-white shadow-sm"
-                  : "text-muted hover:text-primary hover:bg-slate-100"
-              }`}
-            >
-              Notes Canvas
-            </button>
-            <button
-              onClick={() => setActiveTab("SYSTEM")}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
-                activeTab === "SYSTEM"
-                  ? "bg-amber-500 text-slate-950 shadow-sm"
-                  : "text-amber-700 hover:bg-amber-50"
-              }`}
-            >
-              System
-            </button>
+              <button
+                onClick={() => setActiveTab("ECHOES")}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
+                  activeTab === "ECHOES"
+                    ? "bg-slate-200 text-slate-800 shadow-sm"
+                    : "text-muted hover:text-primary hover:bg-slate-100"
+                }`}
+              >
+                Echo Canvas
+              </button>
+              <button
+                onClick={() => setActiveTab("SPATIAL")}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all flex items-center gap-1 ${
+                  activeTab === "SPATIAL"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-purple-600 hover:bg-purple-50"
+                }`}
+              >
+                Reader Canvas
+              </button>
+              <button
+                onClick={() => setActiveTab("NOTES")}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
+                  activeTab === "NOTES"
+                    ? "bg-slate-800 text-white shadow-sm"
+                    : "text-muted hover:text-primary hover:bg-slate-100"
+                }`}
+              >
+                Notes Canvas
+              </button>
+              <button
+                onClick={() => setActiveTab("SYSTEM")}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
+                  activeTab === "SYSTEM"
+                    ? "bg-amber-500 text-slate-950 shadow-sm"
+                    : "text-amber-700 hover:bg-amber-50"
+                }`}
+              >
+                System
+              </button>
             </div>
           </div>
         </div>

@@ -3,7 +3,7 @@ import React from "react";
 const OrbitLayersLegend = ({ activeLayer }: { activeLayer: string | null }) => {
   return (
     <div
-      className={`absolute top-6 right-8 bg-surface/90 backdrop-blur-sm border border-gray-300 p-5 shadow-sm z-10 w-64 rounded-none transition-transform duration-500 ${
+      className={`absolute top-6 right-8 bg-surface/90  -sm border border-gray-300 p-5 shadow-sm z-10 w-64 rounded-none transition-transform duration-500 ${
         activeLayer ? "translate-x-[150%]" : "translate-x-0"
       }`}
     >

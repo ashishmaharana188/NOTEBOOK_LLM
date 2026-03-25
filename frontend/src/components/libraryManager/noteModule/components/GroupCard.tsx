@@ -28,6 +28,7 @@ interface GroupCardProps {
   onDeleteNote: (noteId: string) => void;
   onRenameGroup: (groupId: string, newTitle: string) => void;
   isHighlighted?: boolean;
+  interactionReduced?: boolean;
 }
 
 const GroupCard = React.memo(
@@ -44,6 +45,7 @@ const GroupCard = React.memo(
     onDeleteNote,
     onRenameGroup,
     isHighlighted,
+    interactionReduced,
   }: GroupCardProps) => {
     const controls = useAnimation();
     const y = useMotionValue(0);
@@ -58,6 +60,7 @@ const GroupCard = React.memo(
     const contentOpacity = useTransform(y, [-30, -150], [0, 1]);
     const cardScale = useTransform(y, [-30, -MAX_EXTENSION], [0.98, 1]);
     const activeZ = isDragging || isLockedOpen || y.get() < -5 ? 99999 : zIndex;
+    const reducedVisuals = interactionReduced || isDragging;
 
     const handleDragStart = () => setIsDragging(true);
     const handleDragEnd = async (_: any, info: PanInfo) => {
@@ -112,7 +115,7 @@ const GroupCard = React.memo(
           onDragEnd={handleDragEnd}
           animate={controls}
           style={{ y, willChange: "transform" }}
-          className={`relative ${
+          className={`relative ${reducedVisuals ? "canvas-interaction-reduced" : ""} ${
             !isDragging
               ? "transition-[filter,transform] duration-75"
               : "transition-none"
@@ -129,7 +132,7 @@ const GroupCard = React.memo(
           >
             <svg
               viewBox="0 0 600 65"
-              className="w-full h-full drop-shadow-sm overflow-visible"
+              className="w-full h-full drop-shadow-sm overflow-visible canvas-heavy-shadow"
             >
               <path
                 d="M0 65 L0 25 Q0 15, 10 15 L220 15 Q240 15, 250 5 L255 0 H425 Q435 0, 440 5 L445 15 Q455 15, 470 15 L590 15 Q600 15, 600 25 L600 65 Z"
@@ -178,9 +181,9 @@ const GroupCard = React.memo(
             </button>
           </div>
 
-          <motion.div
-            className="absolute left-1/2 transform -translate-x-1/2 bg-[#F3F4F6] rounded-b-xl border-2 border-t-0 border-gray-900 shadow-2xl overflow-hidden flex flex-col"
-            style={{
+            <motion.div
+              className="absolute left-1/2 transform -translate-x-1/2 bg-[#F3F4F6] rounded-b-xl border-2 border-t-0 border-gray-900 shadow-2xl overflow-hidden flex flex-col canvas-heavy-shell"
+              style={{
               top: TAB_HEIGHT - 2,
               width: CARD_WIDTH,
               height: cardHeight,

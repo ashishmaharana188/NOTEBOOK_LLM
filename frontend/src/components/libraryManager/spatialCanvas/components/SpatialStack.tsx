@@ -73,6 +73,7 @@ const SpatialStack = React.memo(
         linkSummaryByItemId,
         onOpenMindMap,
         groupsByOwnerId,
+        interactionReduced,
     }: any) => {
         const isNotesMode = canvasMode === "NOTES";
 
@@ -204,6 +205,8 @@ const SpatialStack = React.memo(
         ]);
 
         const isDraggingRef = useRef(false);
+        const [isDraggingRoot, setIsDraggingRoot] = useState(false);
+        const reducedVisuals = interactionReduced || isDraggingRoot;
 
         const handleStackToggle = useCallback(() => {
             if (isDraggingRef.current) return;
@@ -469,6 +472,7 @@ const SpatialStack = React.memo(
                 dragMomentum={false}
                 onDragStart={() => {
                     isDraggingRef.current = true;
+                    setIsDraggingRoot(true);
                     if (bringToFrontGrid) bringToFrontGrid(itemId);
                 }}
                 onDragEnd={(event, info) => {
@@ -485,6 +489,7 @@ const SpatialStack = React.memo(
                             );
                             setTimeout(() => {
                                 isDraggingRef.current = false;
+                                setIsDraggingRoot(false);
                             }, 150);
                             return;
                         }
@@ -498,6 +503,7 @@ const SpatialStack = React.memo(
 
                     setTimeout(() => {
                         isDraggingRef.current = false;
+                        setIsDraggingRoot(false);
                     }, 150);
                 }}
                 initial={
@@ -512,7 +518,9 @@ const SpatialStack = React.memo(
                 }
                 animate={animate}
                 transition={transition as any}
-                className="absolute no-pan"
+                className={`absolute no-pan ${
+                    reducedVisuals ? "canvas-interaction-reduced" : ""
+                }`}
                 style={{
                     zIndex: isExpanded ? 5000 : 10,
                     willChange: "transform",
@@ -594,6 +602,9 @@ const SpatialStack = React.memo(
                                                                             false
                                                                         }
                                                                         selectedItemIds={[]}
+                                                                        interactionReduced={
+                                                                            reducedVisuals
+                                                                        }
                                                                     />
                                                                 ) : (
                                                                     <SpatialCard
@@ -612,6 +623,9 @@ const SpatialStack = React.memo(
                                                                         hideStickies={
                                                                             true
                                                                         }
+                                                                        interactionReduced={
+                                                                            reducedVisuals
+                                                                        }
                                                                         enginePos={{
                                                                             x: 0,
                                                                             y: 0,
@@ -624,7 +638,7 @@ const SpatialStack = React.memo(
                                                 })}
 
                                             <div
-                                                className={`absolute top-0 left-0 w-[350px] h-[480px] rounded-4xl bg-white shadow-2xl border cursor-pointer pointer-events-auto transition-transform duration-300 ${
+                                                className={`absolute top-0 left-0 w-[350px] h-[480px] rounded-4xl bg-white shadow-2xl border cursor-pointer pointer-events-auto transition-transform duration-300 canvas-heavy-shell ${
                                                     isStackSelected
                                                         ? "ring-1 ring-green-400 border-green-400 z-[999]"
                                                         : "border-slate-200"
@@ -639,7 +653,7 @@ const SpatialStack = React.memo(
                                                     handleStackToggle();
                                                 }}
                                             >
-                                                <div className="absolute inset-0 rounded-[inherit] overflow-hidden">
+                                                <div className="absolute inset-0 rounded-[inherit] overflow-hidden canvas-heavy-media">
                                                     {cluster?.cover_media ||
                                                     noteStack?.cover_image ? (
                                                         <>
@@ -652,7 +666,7 @@ const SpatialStack = React.memo(
                                                             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 to-transparent pointer-events-none"></div>
                                                         </>
                                                     ) : (
-                                                        <div className="absolute inset-0 bg-white rounded-[inherit] p-8 pt-16 flex flex-col">
+                                                        <div className="absolute inset-0 bg-white rounded-[inherit] p-8 pt-16 flex flex-col canvas-heavy-shell">
                                                             <ul className="flex-1 overflow-hidden flex flex-col gap-5">
                                                                 {orbitingItems
                                                                     .slice(0, 5)
@@ -738,7 +752,7 @@ const SpatialStack = React.memo(
                                                                         sticky.id ||
                                                                         i
                                                                     }
-                                                                    className={`absolute w-28 h-28 p-3 shadow-md border z-[-1] pointer-events-none flex flex-col ${colorClasses}`}
+                                                                    className={`absolute w-28 h-28 p-3 shadow-md border z-[-1] pointer-events-none flex flex-col canvas-heavy-ornament ${colorClasses}`}
                                                                     style={
                                                                         cornerStyles[
                                                                             i
@@ -921,6 +935,9 @@ const SpatialStack = React.memo(
                                                 selectedItemIdSet={
                                                     selectedItemIdSet
                                                 }
+                                                interactionReduced={
+                                                    reducedVisuals
+                                                }
                                                 onDragEndCard={(
                                                     draggedId: string,
                                                     deltaX: number,
@@ -1043,6 +1060,9 @@ const SpatialStack = React.memo(
                                             selectedItemIds={selectedItemIds}
                                             selectedItemIdSet={
                                                 selectedItemIdSet
+                                            }
+                                            interactionReduced={
+                                                reducedVisuals
                                             }
                                             onDragEndCard={(
                                                 draggedId: string,
@@ -1207,6 +1227,7 @@ const SpatialStack = React.memo(
                                     handleAddQuickThought(currentActiveNode)
                                 }
                                 onFocusNote={onFocusNote}
+                                interactionReduced={reducedVisuals}
                             />
                         </div>
 

@@ -29,8 +29,10 @@ const SpatialArchiveFolder = React.memo(
         selectedItemIdSet,
         isMergeMode,
         onAppendToArchive,
+        interactionReduced,
     }: any) => {
         const [isFannedOut, setIsFannedOut] = useState(false);
+        const [isDraggingFolder, setIsDraggingFolder] = useState(false);
 
         // NEW: Track hover state for the floating title badge
         const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
@@ -92,6 +94,7 @@ const SpatialArchiveFolder = React.memo(
         const [localTitle, setLocalTitle] = useState(
             item.title || "Archived Items",
         );
+        const reducedVisuals = interactionReduced || isDraggingFolder;
         React.useEffect(() => {
             setLocalTitle(item.title || "Archived Items");
         }, [item.title]);
@@ -146,7 +149,9 @@ const SpatialArchiveFolder = React.memo(
                 initial={{ x: baseX, y: baseY, scale: 0 }}
                 animate={animate}
                 transition={transition as any}
-                className="absolute no-pan"
+                className={`absolute no-pan ${
+                    reducedVisuals ? "canvas-interaction-reduced" : ""
+                }`}
                 style={{
                     zIndex:
                         gridZIndexes[itemId] ||
@@ -163,6 +168,7 @@ const SpatialArchiveFolder = React.memo(
                 whileDrag={{ zIndex: 99999 }}
                 onDragStart={() => {
                     isDraggingFolderRef.current = true;
+                    setIsDraggingFolder(true);
                     if (bringToFrontGrid) bringToFrontGrid(itemId);
                 }}
                 onDragEnd={(_, info) => {
@@ -174,6 +180,7 @@ const SpatialArchiveFolder = React.memo(
 
                     setTimeout(() => {
                         isDraggingFolderRef.current = false;
+                        setIsDraggingFolder(false);
                     }, 150);
                 }}
             >

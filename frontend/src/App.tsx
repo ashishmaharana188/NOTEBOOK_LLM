@@ -78,7 +78,9 @@ function App() {
         const data: WebSocketMessage = JSON.parse(event.data);
         if (data.type === "DOWNLOAD_COMPLETE") {
           setDownloadingBooks((prev) =>
-            prev.filter((b) => b.id !== data.id && b.filename !== data.filename),
+            prev.filter(
+              (b) => b.id !== data.id && b.filename !== data.filename,
+            ),
           );
           refreshAll();
         }
@@ -118,7 +120,7 @@ function App() {
       {libraryOpen && isMobile ? (
         <div className="fixed inset-0 z-[120] sm:hidden">
           <div
-            className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px]"
+            className="absolute inset-0 bg-slate-900/45  -[1px]"
             onClick={() => setLibraryOpen(false)}
           />
           <div className="absolute inset-y-0 left-0 w-[min(88vw,20rem)] max-w-full">

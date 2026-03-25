@@ -98,7 +98,7 @@ export default function NotesDashboardListView({
 
   return (
     <div className="h-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-6 py-4  ">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">
             Notes Hierarchy
@@ -215,11 +215,12 @@ export default function NotesDashboardListView({
                               </div>
                             )}
 
-                            {notesByGroup[groupId] && groupNotes.length === 0 && (
-                              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-400">
-                                No notes in this folder.
-                              </div>
-                            )}
+                            {notesByGroup[groupId] &&
+                              groupNotes.length === 0 && (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-400">
+                                  No notes in this folder.
+                                </div>
+                              )}
 
                             {groupNotes.map((note: any) => (
                               <button

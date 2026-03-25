@@ -40,8 +40,11 @@ const SpatialCard = React.memo(
     onInteract,
     linkSummary,
     onOpenMindMap,
+    interactionReduced,
+    hideStickies,
   }: any) => {
     const [isLandscape, setIsLandscape] = useState(false);
+    const [isDraggingCard, setIsDraggingCard] = useState(false);
     const role = getCardRole(index, chunk, canvasMode);
     const [qtText, setQtText] = useState(chunk.text || "");
 
@@ -329,6 +332,9 @@ const SpatialCard = React.memo(
       if (isCardSelected) return y;
       return 0;
     });
+    const reducedVisuals = interactionReduced || isDraggingCard;
+    const previewMode =
+      reducedVisuals || canvasScale < 0.55 ? "compact" : "full";
 
     return (
       // 1. THE INVISIBLE ANCHOR (No shadows or backgrounds allowed here!)
@@ -345,6 +351,7 @@ const SpatialCard = React.memo(
         }}
         onDragStart={() => {
           isDraggingRef.current = true;
+          setIsDraggingCard(true);
         }}
         onDrag={(e, info) => {
           if (dragDeltaX && dragDeltaY && isCardSelected) {
@@ -369,6 +376,7 @@ const SpatialCard = React.memo(
           if (dragDeltaY) dragDeltaY.set(0);
           setTimeout(() => {
             isDraggingRef.current = false;
+            setIsDraggingCard(false);
           }, 150);
         }}
         initial={{
@@ -408,11 +416,13 @@ const SpatialCard = React.memo(
           if (!isExpanded) onExpand(chunk);
           else onSetActive(chunk);
         }}
-        className="absolute top-0 left-0 cursor-pointer group"
+        className={`absolute top-0 left-0 cursor-pointer group ${
+          reducedVisuals ? "canvas-interaction-reduced" : ""
+        }`}
       >
         {/* ✨ 2. THE VISIBLE FOLLOWER (Inherits the exact size, handles all visuals and movement) ✨ */}
         <motion.div
-          className={`absolute inset-0 flex flex-col rounded-[inherit] ${bgClass} shadow-xl border ${
+          className={`absolute inset-0 flex flex-col rounded-[inherit] ${bgClass} shadow-xl border canvas-heavy-shell ${
             isSelected
               ? "ring-2 ring-green-400 border-green-400"
               : isActive && isExpanded
@@ -486,6 +496,7 @@ const SpatialCard = React.memo(
                   textClass={textClass}
                   isNote={role.includes("NOTE")}
                   title={chunk.title || chunk.bridge || "Title"}
+                  previewMode={previewMode}
                 />
                 {isExpanded && (
                   <button
@@ -502,10 +513,12 @@ const SpatialCard = React.memo(
             </>
           )}
 
-          {localStickies.map((sticky) => (
+          {!hideStickies &&
+            !reducedVisuals &&
+            localStickies.map((sticky) => (
             <div
               key={sticky.id}
-              className={`absolute w-28 h-28 p-3 shadow-md border z-[60] transition-transform hover:scale-105 hover:z-[70] group/sticky ${sticky.styleClass}`}
+              className={`absolute w-28 h-28 p-3 shadow-md border z-[60] transition-transform hover:scale-105 hover:z-[70] group/sticky canvas-heavy-ornament ${sticky.styleClass}`}
               onClick={(e) => e.stopPropagation()}
             >
               <button

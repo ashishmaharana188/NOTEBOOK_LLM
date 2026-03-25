@@ -50,7 +50,7 @@ const VideoSlidePlayer = ({
         onClick={handleTap}
       >
         {!isPlaying && (
-          <div className="w-16 h-16 bg-black/40 backdrop-blur-sm rounded-full flex items-center justify-center text-white border border-white/20 shadow-xl transition-transform hover:scale-110">
+          <div className="w-16 h-16 bg-black/40  -sm rounded-full flex items-center justify-center text-white border border-white/20 shadow-xl transition-transform hover:scale-110">
             <PlayIcon className="w-8 h-8 ml-1" />
           </div>
         )}
