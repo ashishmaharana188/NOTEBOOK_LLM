@@ -13,6 +13,7 @@ import {
   extractStickiesFromTags,
   stripStickyDataFromTags,
 } from "../utils/stickyData";
+import useIsTouchDevice from "../../../../hooks/appTools/useIsTouchDevice";
 
 const SpatialCard = React.memo(
   ({
@@ -45,6 +46,7 @@ const SpatialCard = React.memo(
   }: any) => {
     const [isLandscape, setIsLandscape] = useState(false);
     const [isDraggingCard, setIsDraggingCard] = useState(false);
+    const isTouchDevice = useIsTouchDevice();
     const role = getCardRole(index, chunk, canvasMode);
     const [qtText, setQtText] = useState(chunk.text || "");
 
@@ -333,6 +335,12 @@ const SpatialCard = React.memo(
       return 0;
     });
     const reducedVisuals = interactionReduced || isDraggingCard;
+    const stickyRemoveButtonVisibility = isTouchDevice
+      ? "opacity-100"
+      : "opacity-100 sm:opacity-0 sm:group-hover/sticky:opacity-100";
+    const addStickyButtonVisibility = isTouchDevice
+      ? "opacity-100"
+      : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100";
     const previewMode =
       reducedVisuals || canvasScale < 0.42
         ? "compact"
@@ -527,7 +535,9 @@ const SpatialCard = React.memo(
             >
               <button
                 onClick={(e) => handleRemoveSticky(e, sticky.id)}
-                className="absolute -top-2 -right-2 z-[80] flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-100 transition-opacity hover:text-red-500 sm:opacity-0 sm:group-hover/sticky:opacity-100"
+                className={`absolute z-[80] flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition-opacity hover:text-red-500 ${
+                  isTouchDevice ? "right-1 top-1" : "-right-2 -top-2"
+                } ${stickyRemoveButtonVisibility}`}
               >
                 <XMarkIcon className="w-3 h-3" />
               </button>
@@ -546,7 +556,9 @@ const SpatialCard = React.memo(
           {isExpanded && role !== "QUICK_THOUGHT" && (
             <button
               onClick={handleAddLocalSticky}
-              className="absolute -top-3 -right-3 z-[80] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-100 shadow-md transition-all hover:text-pink-500 active:scale-90 sm:opacity-0 sm:group-hover:opacity-100"
+              className={`absolute z-[80] flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-md transition-all hover:text-pink-500 active:scale-90 ${
+                isTouchDevice ? "right-14 top-3" : "-right-3 -top-3"
+              } ${addStickyButtonVisibility}`}
             >
               <PlusIcon className="w-4 h-4" />
             </button>

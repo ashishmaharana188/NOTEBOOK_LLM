@@ -153,7 +153,7 @@ export default function EchoDashboardUI(props: any) {
   return (
     <>
       <div className="relative h-full w-full">
-        <div className="absolute right-3 top-3 z-[2500] pointer-events-auto sm:left-6 sm:right-auto sm:top-6">
+        <div className="absolute left-1/2 top-[7.25rem] z-[2500] -translate-x-1/2 pointer-events-auto sm:top-[4.75rem]">
           <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
             <button
               type="button"

@@ -109,6 +109,7 @@ export default function SpatialCanvasUI({
         endClientX: number;
         endClientY: number;
     } | null>(null);
+    const [isTouchSelectionMode, setIsTouchSelectionMode] = useState(false);
     const touchMarqueeBoxRef = useRef<typeof touchMarqueeBox>(null);
     const suppressTouchClickUntilRef = useRef(0);
 
@@ -959,9 +960,24 @@ export default function SpatialCanvasUI({
         clearTouchShiftTimer();
         touchShiftSessionRef.current = null;
         setTouchMarqueeBox(null);
+        setIsTouchSelectionMode(false);
         setIsShiftDown(false);
         settleInteraction();
-    }, [clearTouchShiftTimer, settleInteraction, setIsShiftDown]);
+    }, [
+        clearTouchShiftTimer,
+        settleInteraction,
+        setIsShiftDown,
+        setIsTouchSelectionMode,
+    ]);
+
+    const handleClearSelectionToolbar = useCallback(() => {
+        setSelectedItemIds([]);
+        setIsMergeMode(false);
+        if (isTouchSelectionMode) {
+            exitTouchShiftMode();
+            return;
+        }
+    }, [exitTouchShiftMode, isTouchSelectionMode]);
 
     useEffect(() => {
         const handleWindowPointerMove = (event: PointerEvent) => {
@@ -976,6 +992,7 @@ export default function SpatialCanvasUI({
                 if (distance > TOUCH_SHIFT_MOVE_TOLERANCE) {
                     clearTouchShiftTimer();
                     touchShiftSessionRef.current = null;
+                    setIsTouchSelectionMode(false);
                 }
                 return;
             }
@@ -1111,6 +1128,7 @@ export default function SpatialCanvasUI({
                     if (!session || session.pointerId !== e.pointerId) return;
 
                     session.activated = true;
+                    setIsTouchSelectionMode(true);
                     setIsShiftDown(true);
                     setTouchMarqueeBox({
                         startX: session.startX,
@@ -1148,7 +1166,7 @@ export default function SpatialCanvasUI({
                 }
             }}
         >
-            <div className="absolute top-18 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200 sm:top-10">
+            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200 sm:top-14">
                 <button
                     onClick={() => {
                         setCanvasMode("ECHO");
@@ -1444,10 +1462,16 @@ export default function SpatialCanvasUI({
                             )}
                         </MotionConfig>
                         <div
-                            className={`absolute inset-0 z-[99999] ${isShiftDown ? "pointer-events-auto" : "pointer-events-none"}`}
+                            className={`absolute inset-0 z-[99999] ${
+                                isShiftDown && !isTouchSelectionMode
+                                    ? "pointer-events-auto"
+                                    : "pointer-events-none"
+                            }`}
                         >
                             <MarqueeSelector
-                                isShiftDown={isShiftDown}
+                                isShiftDown={
+                                    isShiftDown && !isTouchSelectionMode
+                                }
                                 canvasScale={canvasScale}
                                 cameraPositionX={cameraPositionX}
                                 cameraPositionY={cameraPositionY}
@@ -1517,7 +1541,7 @@ export default function SpatialCanvasUI({
                 onSuccess={() => {
                     refreshCanvasViews();
                 }}
-                onClear={() => setSelectedItemIds([])}
+                onClear={handleClearSelectionToolbar}
                 onSetGrid={async () => {
                     if (currentExpandedId) {
                         const currentLayout = activeOrbitLayoutRef.current;

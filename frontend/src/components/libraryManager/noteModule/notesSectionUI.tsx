@@ -81,7 +81,7 @@ const NotesSectionUI: React.FC = () => {
 
   return (
     <div className="relative w-full h-full bg-[#f8f9fa] overflow-hidden font-sans border border-border-subtle shadow-sm rounded-lg">
-      <div className="absolute right-3 top-3 z-[2000] pointer-events-auto sm:left-6 sm:right-auto sm:top-6">
+      <div className="absolute left-1/2 top-5 z-[2000] -translate-x-1/2 pointer-events-auto sm:top-8">
         <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
           <button
             type="button"
