@@ -48,7 +48,8 @@ export default function useCanvasCamera(
       const scale = ref.state.scale || 1;
       const x = ref.state.positionX ?? ref.state.x ?? 0;
       const y = ref.state.positionY ?? ref.state.y ?? 0;
-      const buffer = 2000;
+      const viewportSpan = Math.max(window.innerWidth, window.innerHeight);
+      const buffer = Math.max(900, Math.min(1400, viewportSpan * 0.6));
 
       setCullingRect({
         left: -x / scale - buffer,

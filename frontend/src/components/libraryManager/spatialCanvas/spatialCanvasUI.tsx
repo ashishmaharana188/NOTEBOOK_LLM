@@ -464,7 +464,6 @@ export default function SpatialCanvasUI({
         canvasScale,
         cameraPositionX,
         cameraPositionY,
-        setCanvasScale,
         cullingRect,
         updateCulling,
     } = useCanvasCamera(canvasMode, loopDataset, spatialMetadata);
@@ -477,6 +476,117 @@ export default function SpatialCanvasUI({
     const expandedRow =
         expandedIndex !== -1 ? Math.floor(expandedIndex / 3) : -1;
     const expandedCol = expandedIndex !== -1 ? expandedIndex % 3 : -1;
+    const animatingGridIdSet = useMemo(
+        () => new Set((animatingGridIds || []).map((id) => String(id))),
+        [animatingGridIds],
+    );
+    const animatingArchiveIdSet = useMemo(
+        () =>
+            new Set((animatingArchive?.sourceIds || []).map((id) =>
+                String(id),
+            )),
+        [animatingArchive],
+    );
+    const unarchivingSourceIdSet = useMemo(
+        () =>
+            new Set((unarchivingSource?.sourceIds || []).map((id) =>
+                String(id),
+            )),
+        [unarchivingSource],
+    );
+    const rootSceneItems = useMemo(
+        () =>
+            loopDataset.map((item: any, index: number) => {
+                const row = Math.floor(index / 3);
+                const col = index % 3;
+                const itemId = String(
+                    canvasMode === "ECHO" ? item.id : item.stack_id,
+                );
+                const savedMeta = spatialMetadata[itemId];
+                const draftMeta = draftGridCoordinates[itemId];
+                const defaultX = col * 600 + (row % 2 === 0 ? 0 : 300);
+                const defaultY = row * 650;
+
+                const baseX =
+                    draftMeta?.x ?? savedMeta?.x_coord ?? defaultX;
+                const baseY =
+                    draftMeta?.y ?? savedMeta?.y_coord ?? defaultY;
+
+                let gridOffsetX = 0;
+                let gridOffsetY = 0;
+
+                if (expandedIndex !== -1 && index !== expandedIndex) {
+                    const colDiff = col - expandedCol;
+                    const rowDiff = row - expandedRow;
+
+                    if (colDiff < 0) gridOffsetX = -1200;
+                    else if (colDiff > 0) gridOffsetX = 1200;
+
+                    if (rowDiff < 0) gridOffsetY = -900;
+                    else if (rowDiff > 0) gridOffsetY = 1600;
+                }
+
+                const worldX = baseX + gridOffsetX;
+                const worldY = baseY + gridOffsetY;
+                const isVisible =
+                    worldX > cullingRect.left &&
+                    worldX < cullingRect.right &&
+                    worldY > cullingRect.top &&
+                    worldY < cullingRect.bottom;
+
+                return {
+                    item,
+                    index,
+                    itemId,
+                    savedMeta,
+                    baseX,
+                    baseY,
+                    gridOffsetX,
+                    gridOffsetY,
+                    worldX,
+                    worldY,
+                    isVisible,
+                };
+            }),
+        [
+            canvasMode,
+            cullingRect,
+            draftGridCoordinates,
+            expandedCol,
+            expandedIndex,
+            expandedRow,
+            loopDataset,
+            spatialMetadata,
+        ],
+    );
+    const rootSceneItemById = useMemo(
+        () =>
+            new Map(
+                rootSceneItems.map((entry) => [String(entry.itemId), entry]),
+            ),
+        [rootSceneItems],
+    );
+    const renderedRootSceneItems = useMemo(
+        () =>
+            rootSceneItems.filter(({ itemId, isVisible }) => {
+                if (isVisible) return true;
+                if (selectedItemIdSet.has(itemId)) return true;
+                if (rootExpandedId && String(rootExpandedId) === itemId)
+                    return true;
+                if (animatingGridIdSet.has(itemId)) return true;
+                if (animatingArchiveIdSet.has(itemId)) return true;
+                if (unarchivingSourceIdSet.has(itemId)) return true;
+                return false;
+            }),
+        [
+            animatingArchiveIdSet,
+            animatingGridIdSet,
+            rootExpandedId,
+            rootSceneItems,
+            selectedItemIdSet,
+            unarchivingSourceIdSet,
+        ],
+    );
 
     // --- NEW ELIGIBILITY CHECK ---
     const selectedArchiveEligibleIds = selectedItemIds.filter((id) => {
@@ -769,20 +879,14 @@ export default function SpatialCanvasUI({
                     disabled: isShiftDown,
                     excluded: ["no-pan", "no-pan-resize"],
                 }}
-                onInit={(ref) => {
-                    setCanvasScale(ref.state.scale);
-                    updateCulling(ref);
-                }}
+                onInit={(ref) => updateCulling(ref)}
                 wheel={{
                     step: 0.1,
                     smoothStep: 0.0005,
                     excluded: ["no-pan", "no-pan-resize"],
                 }}
                 onPanningStop={(ref) => updateCulling(ref)}
-                onZoomStop={(ref) => {
-                    setCanvasScale(ref.state.scale);
-                    updateCulling(ref);
-                }}
+                onZoomStop={(ref) => updateCulling(ref)}
                 // THE FIX: Stop the canvas from hijacking double clicks!
                 doubleClick={{ disabled: true }}
             >
@@ -808,54 +912,18 @@ export default function SpatialCanvasUI({
                                 y: p.y / canvasScale,
                             })}
                         >
-                            {loopDataset.map((item: any, i: number) => {
-                                const row = Math.floor(i / 3);
-                                const col = i % 3;
-                                const itemId =
-                                    canvasMode === "ECHO"
-                                        ? item.id
-                                        : item.stack_id;
-
-                                const savedMeta = spatialMetadata[itemId];
-                                const draftMeta = draftGridCoordinates[itemId];
-
-                                const defaultX =
-                                    col * 600 + (row % 2 === 0 ? 0 : 300);
-                                const defaultY = row * 650;
-
-                                const baseX =
-                                    draftMeta?.x ??
-                                    savedMeta?.x_coord ??
-                                    defaultX;
-                                const baseY =
-                                    draftMeta?.y ??
-                                    savedMeta?.y_coord ??
-                                    defaultY;
-
-                                let gridOffsetX = 0;
-                                let gridOffsetY = 0;
-
-                                if (
-                                    expandedIndex !== -1 &&
-                                    i !== expandedIndex
-                                ) {
-                                    const colDiff = col - expandedCol;
-                                    const rowDiff = row - expandedRow;
-
-                                    if (colDiff < 0) gridOffsetX = -1200;
-                                    else if (colDiff > 0) gridOffsetX = 1200;
-
-                                    if (rowDiff < 0) gridOffsetY = -900;
-                                    else if (rowDiff > 0) gridOffsetY = 1600;
-                                }
-
-                                // THE FIX 1: Calculate boolean visibility here to prevent the Culling Cascade!
-                                const isVisible =
-                                    baseX + gridOffsetX > cullingRect.left &&
-                                    baseX + gridOffsetX < cullingRect.right &&
-                                    baseY + gridOffsetY > cullingRect.top &&
-                                    baseY + gridOffsetY < cullingRect.bottom;
-
+                            {renderedRootSceneItems.map(
+                                ({
+                                    item,
+                                    index,
+                                    itemId,
+                                    savedMeta,
+                                    baseX,
+                                    baseY,
+                                    gridOffsetX,
+                                    gridOffsetY,
+                                    isVisible,
+                                }) => {
                                 const isSelected =
                                     selectedItemIdSet.has(itemId);
 
@@ -872,7 +940,7 @@ export default function SpatialCanvasUI({
                                             gridOffsetY={gridOffsetY}
                                             isSelected={isSelected}
                                             isVisible={isVisible} // <-- Pass the boolean!
-                                            isBeingGridded={animatingGridIds.includes(
+                                            isBeingGridded={animatingGridIdSet.has(
                                                 itemId,
                                             )}
                                             gridAnimationTargets={
@@ -948,7 +1016,7 @@ export default function SpatialCanvasUI({
                                                         : null
                                                 }
                                                 allGroups={groups}
-                                                clusterIndex={i}
+                                                clusterIndex={index}
                                                 initialX={baseX}
                                                 initialY={baseY}
                                                 gridOffsetX={gridOffsetX}
@@ -971,7 +1039,7 @@ export default function SpatialCanvasUI({
                                                 currentNotes={currentNotes}
                                                 globalNotes={globalNotes}
                                                 allClusters={clusters}
-                                                isBeingArchived={animatingArchive?.sourceIds.includes(
+                                                isBeingArchived={animatingArchiveIdSet.has(
                                                     itemId,
                                                 )}
                                                 animatingArchive={
@@ -980,7 +1048,7 @@ export default function SpatialCanvasUI({
                                                 onToggleStack={
                                                     handleToggleStack
                                                 }
-                                                isBeingUnarchived={unarchivingSource?.sourceIds.includes(
+                                                isBeingUnarchived={unarchivingSourceIdSet.has(
                                                     itemId,
                                                 )}
                                                 unarchivingSource={
@@ -992,7 +1060,7 @@ export default function SpatialCanvasUI({
                                                 updateGridPosition={
                                                     updateGridPosition
                                                 }
-                                                isBeingGridded={animatingGridIds.includes(
+                                                isBeingGridded={animatingGridIdSet.has(
                                                     itemId,
                                                 )}
                                                 gridAnimationTargets={
@@ -1038,9 +1106,9 @@ export default function SpatialCanvasUI({
                                         </div>
                                     </div>
                                 );
-                            })}
+                                },
+                            )}
                         </MotionConfig>
-                        ///
                         <div
                             className={`absolute inset-0 z-[99999] ${isShiftDown ? "pointer-events-auto" : "pointer-events-none"}`}
                         >
@@ -1053,42 +1121,79 @@ export default function SpatialCanvasUI({
                                 onCancel={() => setIsShiftDown(false)}
                                 onSelectionComplete={async (bounds) => {
                                     if (currentExpandedId) {
-                                        const domSelectedIds = Array.from(
-                                            document.querySelectorAll<HTMLElement>(
-                                                '[data-selectable="true"][data-selection-id]',
-                                            ),
-                                        )
-                                            .map((node) => {
-                                                const rect =
-                                                    node.getBoundingClientRect();
-                                                const overlaps =
-                                                    rect.right >=
-                                                        bounds.screenLeft &&
-                                                    rect.left <=
-                                                        bounds.screenRight &&
-                                                    rect.bottom >=
-                                                        bounds.screenTop &&
-                                                    rect.top <=
-                                                        bounds.screenBottom;
-
-                                                if (!overlaps) return null;
-                                                return (
-                                                    node.dataset.selectionId ||
-                                                    null
-                                                );
-                                            })
-                                            .filter(Boolean);
-
-                                        setSelectedItemIds(
-                                            domSelectedIds as string[],
-                                        );
-                                        return;
-
                                         const safeRootExpandedId =
                                             rootExpandedId
                                                 ? String(rootExpandedId)
                                                 : "";
-                                        if (!safeRootExpandedId) return;
+                                        if (!safeRootExpandedId) {
+                                            setSelectedItemIds([]);
+                                            return;
+                                        }
+
+                                        const expandedRootItem =
+                                            rootSceneItemById.get(
+                                                safeRootExpandedId,
+                                            );
+                                        if (!expandedRootItem) {
+                                            setSelectedItemIds([]);
+                                            return;
+                                        }
+
+                                        const modelSpaceParentX =
+                                            expandedRootItem.baseX +
+                                            expandedRootItem.gridOffsetX;
+                                        const modelSpaceParentY =
+                                            expandedRootItem.baseY +
+                                            expandedRootItem.gridOffsetY;
+                                        const modelSpaceOrbitLayout =
+                                            activeOrbitLayoutRef.current || {};
+
+                                        const modelSpaceSelectedIds =
+                                            Object.entries(
+                                                modelSpaceOrbitLayout,
+                                            )
+                                                .map(
+                                                    ([cardId, layout]: [
+                                                        string,
+                                                        any,
+                                                    ]) => {
+                                                        if (!layout)
+                                                            return null;
+
+                                                        const cardLeft =
+                                                            modelSpaceParentX +
+                                                            layout.x;
+                                                        const cardRight =
+                                                            cardLeft +
+                                                            layout.w;
+                                                        const cardTop =
+                                                            modelSpaceParentY +
+                                                            layout.y;
+                                                        const cardBottom =
+                                                            cardTop + layout.h;
+
+                                                        if (
+                                                            cardRight >=
+                                                                bounds.left &&
+                                                            cardLeft <=
+                                                                bounds.right &&
+                                                            cardBottom >=
+                                                                bounds.top &&
+                                                            cardTop <=
+                                                                bounds.bottom
+                                                        ) {
+                                                            return cardId;
+                                                        }
+                                                        return null;
+                                                    },
+                                                )
+                                                .filter(Boolean);
+
+                                        setSelectedItemIds(
+                                            modelSpaceSelectedIds as string[],
+                                        );
+                                        return;
+                                        /*
 
                                         const expandedItemIndex =
                                             loopDataset.findIndex(
@@ -1161,45 +1266,19 @@ export default function SpatialCanvasUI({
                                         setSelectedItemIds(
                                             selectedIds as string[],
                                         );
+                                        */
                                     } else {
                                         // --- ORIGINAL ROOT CLUSTER SELECTION MODE ---
-                                        const selectedIds = loopDataset
-                                            .map((item: any, i: number) => {
-                                                const itemId =
-                                                    canvasMode === "ECHO"
-                                                        ? item.id
-                                                        : item.stack_id;
-                                                const draft =
-                                                    draftGridCoordinates[
-                                                        itemId
-                                                    ];
-                                                const saved =
-                                                    spatialMetadata[itemId];
-
-                                                const row = Math.floor(i / 3);
-                                                const col = i % 3;
-                                                const defX =
-                                                    col * 600 +
-                                                    (row % 2 === 0 ? 0 : 300);
-                                                const defY = row * 650;
-
-                                                const actualX =
-                                                    draft?.x ??
-                                                    saved?.x_coord ??
-                                                    defX;
-                                                const actualY =
-                                                    draft?.y ??
-                                                    saved?.y_coord ??
-                                                    defY;
-
+                                        const selectedIds = rootSceneItems
+                                            .map(({ itemId, worldX, worldY }) => {
                                                 if (
-                                                    actualX + 200 >=
+                                                    worldX + 200 >=
                                                         bounds.left &&
-                                                    actualX - 200 <=
+                                                    worldX - 200 <=
                                                         bounds.right &&
-                                                    actualY + 250 >=
+                                                    worldY + 250 >=
                                                         bounds.top &&
-                                                    actualY - 250 <=
+                                                    worldY - 250 <=
                                                         bounds.bottom
                                                 ) {
                                                     return itemId;

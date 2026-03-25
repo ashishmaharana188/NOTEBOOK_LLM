@@ -29,6 +29,7 @@ const SpatialStack = React.memo(
     ({
         itemId,
         cullingRect,
+        isVisible: isRootVisible,
         cluster,
         noteStack,
         allGroups,
@@ -278,6 +279,7 @@ const SpatialStack = React.memo(
         const currentWorldX = localPos.x + (gridOffsetX || 0);
         const currentWorldY = localPos.y + (gridOffsetY || 0);
         const isVisible =
+            isRootVisible ??
             currentWorldX > (cullingRect?.left || -5000) &&
             currentWorldX < (cullingRect?.right || 5000) &&
             currentWorldY > (cullingRect?.top || -5000) &&
