@@ -23,6 +23,9 @@ import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
 
+const TOUCH_SHIFT_HOLD_MS = 420;
+const TOUCH_SHIFT_MOVE_TOLERANCE = 14;
+
 export default function SpatialCanvasUI({
     clusters,
     notes: globalNotes = [],
@@ -85,6 +88,29 @@ export default function SpatialCanvasUI({
         sourceIds: string[];
     } | null>(null);
     const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+    const touchShiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+        null,
+    );
+    const touchShiftSessionRef = useRef<{
+        pointerId: number;
+        startClientX: number;
+        startClientY: number;
+        startX: number;
+        startY: number;
+        activated: boolean;
+    } | null>(null);
+    const [touchMarqueeBox, setTouchMarqueeBox] = useState<{
+        startX: number;
+        startY: number;
+        endX: number;
+        endY: number;
+        startClientX: number;
+        startClientY: number;
+        endClientX: number;
+        endClientY: number;
+    } | null>(null);
+    const touchMarqueeBoxRef = useRef<typeof touchMarqueeBox>(null);
+    const suppressTouchClickUntilRef = useRef(0);
 
     const handleToggleStack = useCallback((itemId: string) => {
         setDrillDownPath((prev) =>
@@ -471,6 +497,30 @@ export default function SpatialCanvasUI({
         updateCulling,
     } = useCanvasCamera(canvasMode, loopDataset, spatialMetadata);
 
+    useEffect(() => {
+        touchMarqueeBoxRef.current = touchMarqueeBox;
+    }, [touchMarqueeBox]);
+
+    const clearTouchShiftTimer = useCallback(() => {
+        if (touchShiftTimerRef.current) {
+            clearTimeout(touchShiftTimerRef.current);
+            touchShiftTimerRef.current = null;
+        }
+    }, []);
+
+    const getCanvasPointFromClient = useCallback(
+        (clientX: number, clientY: number) => {
+            const rect = canvasViewportRef.current?.getBoundingClientRect();
+            if (!rect) return null;
+
+            return {
+                x: (clientX - rect.left - cameraPositionX) / canvasScale,
+                y: (clientY - rect.top - cameraPositionY) / canvasScale,
+            };
+        },
+        [cameraPositionX, cameraPositionY, canvasScale],
+    );
+
     const expandedIndex = loopDataset.findIndex(
         (item: any) =>
             (canvasMode === "ECHO" ? item.id : item.stack_id) ===
@@ -825,6 +875,199 @@ export default function SpatialCanvasUI({
         }
     };
 
+    const handleMarqueeSelectionComplete = useCallback(
+        async (bounds: {
+            left: number;
+            right: number;
+            top: number;
+            bottom: number;
+            screenLeft: number;
+            screenRight: number;
+            screenTop: number;
+            screenBottom: number;
+        }) => {
+            if (currentExpandedId) {
+                const safeRootExpandedId = rootExpandedId
+                    ? String(rootExpandedId)
+                    : "";
+                if (!safeRootExpandedId) {
+                    setSelectedItemIds([]);
+                    return;
+                }
+
+                const expandedRootItem =
+                    rootSceneItemById.get(safeRootExpandedId);
+                if (!expandedRootItem) {
+                    setSelectedItemIds([]);
+                    return;
+                }
+
+                const modelSpaceParentX =
+                    expandedRootItem.baseX + expandedRootItem.gridOffsetX;
+                const modelSpaceParentY =
+                    expandedRootItem.baseY + expandedRootItem.gridOffsetY;
+                const modelSpaceOrbitLayout =
+                    activeOrbitLayoutRef.current || {};
+
+                const modelSpaceSelectedIds = Object.entries(
+                    modelSpaceOrbitLayout,
+                )
+                    .map(([cardId, layout]: [string, any]) => {
+                        if (!layout) return null;
+
+                        const cardLeft = modelSpaceParentX + layout.x;
+                        const cardRight = cardLeft + layout.w;
+                        const cardTop = modelSpaceParentY + layout.y;
+                        const cardBottom = cardTop + layout.h;
+
+                        if (
+                            cardRight >= bounds.left &&
+                            cardLeft <= bounds.right &&
+                            cardBottom >= bounds.top &&
+                            cardTop <= bounds.bottom
+                        ) {
+                            return cardId;
+                        }
+                        return null;
+                    })
+                    .filter(Boolean);
+
+                setSelectedItemIds(modelSpaceSelectedIds as string[]);
+                return;
+            }
+
+            const selectedIds = rootSceneItems
+                .map(({ itemId, worldX, worldY }) => {
+                    if (
+                        worldX + 200 >= bounds.left &&
+                        worldX - 200 <= bounds.right &&
+                        worldY + 250 >= bounds.top &&
+                        worldY - 250 <= bounds.bottom
+                    ) {
+                        return itemId;
+                    }
+                    return null;
+                })
+                .filter(Boolean);
+
+            setSelectedItemIds(selectedIds as string[]);
+        },
+        [currentExpandedId, rootExpandedId, rootSceneItemById, rootSceneItems],
+    );
+
+    const exitTouchShiftMode = useCallback(() => {
+        clearTouchShiftTimer();
+        touchShiftSessionRef.current = null;
+        setTouchMarqueeBox(null);
+        setIsShiftDown(false);
+        settleInteraction();
+    }, [clearTouchShiftTimer, settleInteraction, setIsShiftDown]);
+
+    useEffect(() => {
+        const handleWindowPointerMove = (event: PointerEvent) => {
+            const session = touchShiftSessionRef.current;
+            if (!session || event.pointerId !== session.pointerId) return;
+
+            if (!session.activated) {
+                const distance = Math.hypot(
+                    event.clientX - session.startClientX,
+                    event.clientY - session.startClientY,
+                );
+                if (distance > TOUCH_SHIFT_MOVE_TOLERANCE) {
+                    clearTouchShiftTimer();
+                    touchShiftSessionRef.current = null;
+                }
+                return;
+            }
+
+            event.preventDefault();
+            const point = getCanvasPointFromClient(
+                event.clientX,
+                event.clientY,
+            );
+            if (!point) return;
+
+            setTouchMarqueeBox((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          endX: point.x,
+                          endY: point.y,
+                          endClientX: event.clientX,
+                          endClientY: event.clientY,
+                      }
+                    : prev,
+            );
+        };
+
+        const finalizeTouchShift = async (
+            event: PointerEvent,
+            cancelSelection = false,
+        ) => {
+            const session = touchShiftSessionRef.current;
+            if (!session || event.pointerId !== session.pointerId) return;
+
+            const wasActivated = session.activated;
+            const marqueeBox = touchMarqueeBoxRef.current;
+
+            if (wasActivated && !cancelSelection && marqueeBox) {
+                await handleMarqueeSelectionComplete({
+                    left: Math.min(marqueeBox.startX, marqueeBox.endX),
+                    right: Math.max(marqueeBox.startX, marqueeBox.endX),
+                    top: Math.min(marqueeBox.startY, marqueeBox.endY),
+                    bottom: Math.max(marqueeBox.startY, marqueeBox.endY),
+                    screenLeft: Math.min(
+                        marqueeBox.startClientX,
+                        marqueeBox.endClientX,
+                    ),
+                    screenRight: Math.max(
+                        marqueeBox.startClientX,
+                        marqueeBox.endClientX,
+                    ),
+                    screenTop: Math.min(
+                        marqueeBox.startClientY,
+                        marqueeBox.endClientY,
+                    ),
+                    screenBottom: Math.max(
+                        marqueeBox.startClientY,
+                        marqueeBox.endClientY,
+                    ),
+                });
+                suppressTouchClickUntilRef.current = Date.now() + 350;
+            }
+
+            exitTouchShiftMode();
+        };
+
+        const handleWindowPointerUp = (event: PointerEvent) => {
+            void finalizeTouchShift(event);
+        };
+
+        const handleWindowPointerCancel = (event: PointerEvent) => {
+            void finalizeTouchShift(event, true);
+        };
+
+        window.addEventListener("pointermove", handleWindowPointerMove, {
+            passive: false,
+        });
+        window.addEventListener("pointerup", handleWindowPointerUp);
+        window.addEventListener("pointercancel", handleWindowPointerCancel);
+
+        return () => {
+            window.removeEventListener("pointermove", handleWindowPointerMove);
+            window.removeEventListener("pointerup", handleWindowPointerUp);
+            window.removeEventListener(
+                "pointercancel",
+                handleWindowPointerCancel,
+            );
+        };
+    }, [
+        clearTouchShiftTimer,
+        exitTouchShiftMode,
+        getCanvasPointFromClient,
+        handleMarqueeSelectionComplete,
+    ]);
+
     return (
         <div
             id="spatial-canvas-container"
@@ -838,9 +1081,74 @@ export default function SpatialCanvasUI({
                 ) {
                     (document.activeElement as HTMLElement).blur();
                 }
+
+                if (e.pointerType !== "touch" || isShiftDown) return;
+
+                const target = e.target as HTMLElement | null;
+                if (
+                    target?.closest(
+                        "button, input, textarea, select, option, a, label, [role='button'], [contenteditable='true']",
+                    )
+                ) {
+                    return;
+                }
+
+                const point = getCanvasPointFromClient(e.clientX, e.clientY);
+                if (!point) return;
+
+                clearTouchShiftTimer();
+                touchShiftSessionRef.current = {
+                    pointerId: e.pointerId,
+                    startClientX: e.clientX,
+                    startClientY: e.clientY,
+                    startX: point.x,
+                    startY: point.y,
+                    activated: false,
+                };
+
+                touchShiftTimerRef.current = setTimeout(() => {
+                    const session = touchShiftSessionRef.current;
+                    if (!session || session.pointerId !== e.pointerId) return;
+
+                    session.activated = true;
+                    setIsShiftDown(true);
+                    setTouchMarqueeBox({
+                        startX: session.startX,
+                        startY: session.startY,
+                        endX: session.startX,
+                        endY: session.startY,
+                        startClientX: session.startClientX,
+                        startClientY: session.startClientY,
+                        endClientX: session.startClientX,
+                        endClientY: session.startClientY,
+                    });
+                    suppressTouchClickUntilRef.current = Date.now() + 350;
+                    startInteraction();
+                }, TOUCH_SHIFT_HOLD_MS);
+            }}
+            onPointerMoveCapture={(e) => {
+                if (touchShiftSessionRef.current?.activated) {
+                    e.stopPropagation();
+                }
+            }}
+            onPointerUpCapture={(e) => {
+                if (touchShiftSessionRef.current?.activated) {
+                    e.stopPropagation();
+                }
+            }}
+            onPointerCancelCapture={(e) => {
+                if (touchShiftSessionRef.current?.activated) {
+                    e.stopPropagation();
+                }
+            }}
+            onClickCapture={(e) => {
+                if (Date.now() < suppressTouchClickUntilRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
             }}
         >
-            <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200">
+            <div className="absolute top-18 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200 sm:top-10">
                 <button
                     onClick={() => {
                         setCanvasMode("ECHO");

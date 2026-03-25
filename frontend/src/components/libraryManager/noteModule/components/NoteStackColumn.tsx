@@ -223,7 +223,9 @@ const NoteStackColumn = React.memo(
           top: 0,
           transform: `translate3d(${localPos.x}px, ${localPos.y}px, 0)`,
           willChange: "transform",
-          contain: "layout paint style",
+          // Keep layout/style containment for perf, but avoid paint containment
+          // because opened folders extend beyond the stack box.
+          contain: "layout style",
           backfaceVisibility: "hidden",
           zIndex: isDragging || isHighlighted ? 9999 : zIndex,
         }}
