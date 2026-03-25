@@ -38,11 +38,11 @@ export default function LibraryManager(
   } = props;
 
   return (
-    <div className="h-full overflow-y-auto bg-canvas p-8">
+    <div className="h-full overflow-y-auto bg-canvas p-4 sm:p-8">
       <div className="max-w-8xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-primary ml-10"></h1>
-          <div className="flex items-center gap-3 bg-surface p-1.5 px-3 rounded-full border border-border-subtle shadow-sm ml-10 transition-colors duration-300">
+        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <h1 className="ml-0 text-3xl font-bold text-primary sm:ml-10"></h1>
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border-subtle bg-surface p-1.5 px-3 shadow-sm transition-colors duration-300 sm:ml-10 sm:self-start xl:self-auto">
             <span className="text-[10px] font-bold text-muted uppercase tracking-widest mr-2">
               Theme
             </span>
@@ -80,7 +80,8 @@ export default function LibraryManager(
             />
           </div>
 
-          <div className="flex bg-surface rounded-lg p-1 shadow-sm border border-border-subtle">
+          <div className="overflow-x-auto rounded-lg border border-border-subtle bg-surface p-1 shadow-sm">
+            <div className="flex min-w-max">
             {[
               "LIBRARY",
               "BRAIN",
@@ -119,6 +120,7 @@ export default function LibraryManager(
                 {t === "DISCOVERY" && "Discover"}
               </button>
             ))}
+            </div>
           </div>
         </div>
 

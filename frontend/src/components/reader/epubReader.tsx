@@ -10,6 +10,7 @@ import {
 } from "./readerIcons";
 import ReaderAnnotationPanel from "./ReaderAnnotationPanel";
 import ReaderPanelSection from "./ReaderPanelSection";
+import useIsMobile from "../../hooks/appTools/useIsMobile";
 
 const FONT_OPTIONS = [
   { label: "Georgia", value: "Georgia, serif" },
@@ -61,6 +62,7 @@ export default function EpubReader({
   onDeleteAnnotation,
   onJumpToAnnotation,
 }: EpubReaderComponentProps) {
+  const isMobile = useIsMobile();
   const {
     settings,
     updateSetting,
@@ -78,7 +80,9 @@ export default function EpubReader({
   const [showPanel, setShowPanel] = useState(false);
   const isPaginated = settings.flow === "paginated";
   const readerMaxWidth =
-    isPaginated
+    isMobile
+      ? "100%"
+      : isPaginated
       ? settings.spread === "always"
         ? "1320px"
         : "860px"
@@ -96,7 +100,7 @@ export default function EpubReader({
     >
       <button
         onClick={() => setShowPanel((prev) => !prev)}
-        className={`absolute right-4 top-4 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all ${
+        className={`absolute right-3 top-3 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all sm:right-4 sm:top-4 ${
           showPanel || chromeVisible
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-2 pointer-events-none"
@@ -107,7 +111,7 @@ export default function EpubReader({
       </button>
 
       {showPanel ? (
-        <aside className="absolute right-20 top-4 bottom-4 z-40 flex w-[360px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl">
+        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
           <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
             <div>
               <div className="text-sm font-semibold text-primary">
@@ -334,8 +338,8 @@ export default function EpubReader({
           style={{
             maxWidth: readerMaxWidth,
             boxSizing: "border-box",
-            paddingLeft: isPaginated ? "0" : "24px",
-            paddingRight: isPaginated ? "0" : "24px",
+            paddingLeft: isPaginated ? "0" : isMobile ? "12px" : "24px",
+            paddingRight: isPaginated ? "0" : isMobile ? "12px" : "24px",
           }}
         >
           <EpubView

@@ -99,7 +99,7 @@ export default function Sidebar({
   };
 
   return (
-    <div className="w-72 bg-canvas text-primary flex flex-col border-r border-border-subtle flex-shrink-0 z-20 transition-all duration-300 font-sans">
+    <div className="h-full w-full bg-canvas text-primary flex flex-col border-r border-border-subtle flex-shrink-0 z-20 transition-all duration-300 font-sans sm:w-72">
       {/* Header */}
       <div className="p-5 pb-4">
         {/* Title & Close Row */}
@@ -231,7 +231,7 @@ export default function Sidebar({
                     e.stopPropagation();
                     onDeleteLibrary(filename);
                   }}
-                  className="p-1 opacity-0 group-hover:opacity-100 hover:text-red-600 transition-all ml-2"
+                  className="ml-2 p-1 opacity-100 transition-all hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100"
                   title="Delete File"
                 >
                   <TrashIcon className="w-4 h-4" />

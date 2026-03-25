@@ -71,8 +71,8 @@ export default function TheBrain({
     <div className="space-y-6 font-sans">
       {/* 1. HEADER / ACTIONS BAR */}
       <div className="bg-surface rounded-sm shadow-sm border border-border-subtle overflow-hidden">
-        <div className="p-4 border-b border-border-subtle bg-canvas flex justify-between items-center flex-wrap gap-4 min-h-[60px]">
-          <div className="flex items-center gap-4">
+        <div className="flex min-h-[60px] flex-col gap-4 border-b border-border-subtle bg-canvas p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-4">
             {/* SELECT ALL CHECKBOX */}
             <input
               type="checkbox"
@@ -107,13 +107,13 @@ export default function TheBrain({
           </div>
 
           {/* SEARCH INPUT */}
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <input
               type="text"
               placeholder="Filter networks..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 pr-4 py-1.5 text-xs bg-surface border border-border-subtle rounded-sm focus:border-slate-400 focus:ring-0 outline-none w-64 text-slate-700 font-mono placeholder:text-muted"
+              className="w-full rounded-sm border border-border-subtle bg-surface py-1.5 pl-8 pr-4 text-xs font-mono text-slate-700 outline-none placeholder:text-muted focus:border-slate-400 focus:ring-0 sm:w-64"
             />
             <svg
               className="w-4 h-4 text-muted absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -146,7 +146,7 @@ export default function TheBrain({
                 <div
                   key={book.filename || idx}
                   onClick={() => toggleSelection(book.filename)}
-                  className={`p-4 flex items-center justify-between transition-colors group cursor-pointer ${
+                  className={`group flex cursor-pointer flex-col gap-3 p-4 transition-colors sm:flex-row sm:items-center sm:justify-between ${
                     isSelected ? "bg-canvas" : "hover:bg-canvas/50"
                   }`}
                 >
@@ -181,7 +181,7 @@ export default function TheBrain({
                   </div>
 
                   <div
-                    className="flex items-center gap-3"
+                    className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:gap-3"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {onRead && (
@@ -194,7 +194,7 @@ export default function TheBrain({
                     )}
                     <button
                       onClick={() => onDelete(book.filename)}
-                      className="px-3 py-1.5 text-[9px] uppercase tracking-widest font-bold text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-sm transition-colors opacity-0 group-hover:opacity-100 flex items-center gap-1"
+                      className="flex items-center gap-1 rounded-sm border border-transparent px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-red-500 opacity-100 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 sm:opacity-0 sm:group-hover:opacity-100"
                     >
                       <TrashIcon className="w-3 h-3" /> Purge
                     </button>

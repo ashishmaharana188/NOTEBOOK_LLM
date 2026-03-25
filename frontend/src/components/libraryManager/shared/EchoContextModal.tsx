@@ -90,10 +90,10 @@ export default function EchoContextModal({
     }, [primarySource]);
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 md:p-8 pointer-events-auto">
-            <div className="w-full max-w-5xl h-[88vh] bg-[#f5f5f7] border border-white/80 shadow-[0_28px_100px_-30px_rgba(15,23,42,0.48)] rounded-[32px] overflow-hidden flex flex-col">
-                <div className="px-8 py-6 border-b border-black/5 flex items-start justify-between bg-[#fbfbfc]">
-                    <div className="min-w-0 pr-6">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-3 sm:p-4 md:p-8 pointer-events-auto">
+            <div className="flex h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-white/80 bg-[#f5f5f7] shadow-[0_28px_100px_-30px_rgba(15,23,42,0.48)] sm:h-[88vh] sm:rounded-[32px]">
+                <div className="flex flex-col gap-4 border-b border-black/5 bg-[#fbfbfc] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-8 sm:py-6">
+                    <div className="min-w-0 sm:pr-6">
                         <div className="flex items-center gap-3 mb-3">
                             <div className="p-2.5 rounded-2xl bg-white border border-black/5">
                                 <BookOpenIcon className="w-5 h-5 text-slate-700" />
@@ -102,10 +102,10 @@ export default function EchoContextModal({
                                 Echo Context
                             </span>
                         </div>
-                        <h2 className="text-[30px] font-semibold tracking-[-0.03em] text-slate-900 truncate">
+                        <h2 className="truncate text-[22px] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[30px]">
                             {echo?.title || echo?.ai_insight || "Saved Echo"}
                         </h2>
-                        <p className="text-sm text-slate-500 mt-2 max-w-3xl line-clamp-2">
+                        <p className="mt-2 max-w-3xl line-clamp-2 text-sm text-slate-500">
                             {echo?.ai_insight ||
                                 "Loading saved echo context..."}
                         </p>
@@ -128,7 +128,7 @@ export default function EchoContextModal({
                 ) : (
                     <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1.55fr_0.75fr]">
                         <div className="min-h-0 flex flex-col border-r border-black/5">
-                            <div className="px-8 py-4 border-b border-black/5 bg-[#fbfbfc]">
+                            <div className="border-b border-black/5 bg-[#fbfbfc] px-4 py-4 sm:px-8">
                                 <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-slate-500">
                                     <span className="px-3 py-1 rounded-full bg-white border border-black/5">
                                         {primarySource?.filename ||
@@ -141,14 +141,14 @@ export default function EchoContextModal({
                                     </span>
                                 </div>
                             </div>
-                            <div className="flex-1 min-h-0 overflow-y-auto px-8 py-7 bg-[#f8f8fa]">
+                            <div className="flex-1 min-h-0 overflow-y-auto bg-[#f8f8fa] px-4 py-5 sm:px-8 sm:py-7">
                                 {loadingContext ? (
                                     <div className="flex items-center gap-3 text-slate-500 text-sm">
                                         <div className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
                                         Stitching full context...
                                     </div>
                                 ) : (
-                                    <div className="whitespace-pre-wrap leading-8 text-[15px] text-slate-800 font-serif bg-white border border-black/5 rounded-[28px] px-6 py-6 shadow-[0_1px_0_rgba(255,255,255,0.7)]">
+                                    <div className="whitespace-pre-wrap rounded-[24px] border border-black/5 bg-white px-4 py-4 font-serif text-[15px] leading-7 text-slate-800 shadow-[0_1px_0_rgba(255,255,255,0.7)] sm:rounded-[28px] sm:px-6 sm:py-6 sm:leading-8">
                                         {fullContext ||
                                             primarySource?.highlight ||
                                             "No context available."}
@@ -157,7 +157,7 @@ export default function EchoContextModal({
                             </div>
                         </div>
 
-                        <div className="min-h-0 overflow-y-auto px-6 py-6 bg-[#f5f5f7]">
+                        <div className="min-h-0 overflow-y-auto bg-[#f5f5f7] px-4 py-5 sm:px-6 sm:py-6">
                             <div className="mb-6">
                                 <h3 className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500 mb-3">
                                     Linked Notes

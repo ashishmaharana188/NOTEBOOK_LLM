@@ -31,9 +31,9 @@ export default function FloatingEchoModal({
     const primarySource = echo.sources?.[0] || {};
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 pointer-events-auto font-sans p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 pointer-events-auto font-sans p-3 sm:p-4">
             {/* 1:1 DRAGGABLE COLUMN WRAPPER DESIGN */}
-            <div className="bg-surface/95   rounded-sm border border-border-subtle shadow-xl w-[400px] flex flex-col max-h-[750px] animate-in zoom-in-95 overflow-hidden">
+            <div className="flex max-h-[85vh] w-full max-w-[400px] flex-col overflow-hidden rounded-sm border border-border-subtle bg-surface/95 shadow-xl animate-in zoom-in-95">
                 {/* 1:1 COLUMN HEADER */}
                 <div className="p-4 border-b border-border-subtle flex items-center justify-between bg-canvas hover:bg-slate-100 transition-colors">
                     <div className="flex items-center gap-3 w-full pr-4">
@@ -41,7 +41,7 @@ export default function FloatingEchoModal({
                             <BookOpenIcon className="w-5 h-5 text-primary" />
                         </div>
                         <div className="overflow-hidden">
-                            <h3 className="text-sm font-bold text-primary font-sans tracking-tight leading-none truncate max-w-[260px]">
+                            <h3 className="max-w-[260px] truncate text-sm font-bold leading-none tracking-tight text-primary font-sans">
                                 {echo.column_name || "Saved Cluster"}
                             </h3>
                             <p className="text-[9px] font-mono font-bold text-muted mt-1.5 uppercase tracking-widest truncate">

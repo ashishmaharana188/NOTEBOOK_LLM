@@ -36,8 +36,8 @@ export default function FloatingEchoModal({
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 pointer-events-auto font-sans p-4">
-            <div className="relative w-[400px] h-fit max-h-[80vh]">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 pointer-events-auto font-sans p-3 sm:p-4">
+            <div className="relative h-fit max-h-[85vh] w-full max-w-[400px]">
                 <DraggableColumn
                     id="peek-modal"
                     title={echo.column_name || "Saved Cluster"}

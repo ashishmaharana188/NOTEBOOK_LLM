@@ -5,6 +5,7 @@ import {
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { useCanvasSnapshot } from "../system/CanvasSnapshotProvider";
+import useIsMobile from "../../hooks/appTools/useIsMobile";
 
 const EchoDashboardUI = React.lazy(() => import("./echoDashboard/echoDashboardUI"));
 const NotesSectionUI = React.lazy(() => import("./noteModule/notesSectionUI"));
@@ -20,7 +21,9 @@ export default function WorkspaceShellUI(props: any) {
     results = [],
     recommendations = [],
     currentView,
+    echoSearchVersion = 0,
   } = props;
+  const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<
     "ECHOES" | "NOTES" | "SPATIAL" | "SYSTEM"
@@ -58,6 +61,12 @@ export default function WorkspaceShellUI(props: any) {
       setIsMinimized(false);
     }
   }, [isOpen, currentView]);
+
+  useEffect(() => {
+    if (!echoSearchVersion) return;
+    setActiveTab("ECHOES");
+    setIsMinimized(false);
+  }, [echoSearchVersion]);
 
   const openNoteEditor = useCallback((node: any) => {
     const noteId = node.note_id || node.chunk_id || node.id;
@@ -145,7 +154,7 @@ export default function WorkspaceShellUI(props: any) {
           if (onOpen) onOpen();
           setIsMinimized(false);
         }}
-        className="fixed bottom-8 right-8 z-[150] w-14 h-14 bg-slate-900 rounded-full shadow-2xl flex items-center justify-center cursor-pointer hover:scale-110 transition-transform group border border-slate-700"
+        className="fixed bottom-4 right-4 z-[150] flex h-14 w-14 items-center justify-center rounded-full border border-slate-700 bg-slate-900 shadow-2xl transition-transform group cursor-pointer hover:scale-110 sm:bottom-8 sm:right-8"
         title="Open Workspace"
       >
         <SparklesIcon className="w-6 h-6 text-slate-300 group-hover:text-white transition-colors" />
@@ -165,9 +174,9 @@ export default function WorkspaceShellUI(props: any) {
         onClick={() => setIsMinimized(true)}
       ></div>
 
-      <div className="absolute inset-4 bg-[#f8fafc] shadow-2xl border border-slate-300 flex flex-col overflow-hidden text-primary animate-in zoom-in-95 duration-200">
-        <div className="absolute top-6 left-6 z-[2500] flex items-center gap-4 pointer-events-auto">
-          <div className="flex items-center gap-1 bg-surface/95   p-1 rounded-sm shadow-sm border border-border-subtle">
+      <div className={`absolute bg-[#f8fafc] shadow-2xl border border-slate-300 flex flex-col overflow-hidden text-primary animate-in zoom-in-95 duration-200 ${isMobile ? "inset-0 border-0 rounded-none" : "inset-4"}`}>
+        <div className={`absolute z-[2500] pointer-events-auto ${isMobile ? "inset-x-3 top-3 flex flex-col gap-3" : "top-6 left-6 flex items-center gap-4"}`}>
+          <div className="flex items-center gap-1 bg-surface/95 p-1 rounded-sm shadow-sm border border-border-subtle self-start">
             <button
               onClick={() => setIsMinimized(true)}
               className="p-2 text-muted hover:text-primary hover:bg-canvas rounded-sm transition-all"
@@ -182,7 +191,8 @@ export default function WorkspaceShellUI(props: any) {
             </button>
           </div>
 
-          <div className="bg-surface/95   p-1 rounded-sm shadow-sm border border-border-subtle flex gap-1">
+          <div className="max-w-full overflow-x-auto rounded-sm border border-border-subtle bg-surface/95 p-1 shadow-sm">
+            <div className="flex min-w-max gap-1">
             <button
               onClick={() => setActiveTab("ECHOES")}
               className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${
@@ -223,6 +233,7 @@ export default function WorkspaceShellUI(props: any) {
             >
               System
             </button>
+            </div>
           </div>
         </div>
 

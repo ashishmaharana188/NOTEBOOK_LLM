@@ -12,6 +12,7 @@ import {
 } from "./readerIcons";
 import ReaderAnnotationPanel from "./ReaderAnnotationPanel";
 import ReaderPanelSection from "./ReaderPanelSection";
+import useIsMobile from "../../hooks/appTools/useIsMobile";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -53,6 +54,7 @@ export default function PdfReader({
   onDeleteAnnotation,
   onJumpToAnnotation,
 }: PdfReaderComponentProps) {
+  const isMobile = useIsMobile();
   const {
     numPages,
     setNumPages,
@@ -78,11 +80,14 @@ export default function PdfReader({
   };
 
   const pageWidth = useMemo(() => {
+    if (isMobile) {
+      return viewMode === "double" ? 180 : 340;
+    }
     if (viewMode === "double") {
       return 460;
     }
     return 920;
-  }, [viewMode]);
+  }, [isMobile, viewMode]);
 
   const shellBg = themeStyles[settings.theme].body.background;
   const shellColor = themeStyles[settings.theme].body.color;
@@ -119,7 +124,7 @@ export default function PdfReader({
 
       <button
         onClick={() => setShowPanel((prev) => !prev)}
-        className={`absolute right-4 top-4 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all ${
+        className={`absolute right-3 top-3 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all sm:right-4 sm:top-4 ${
           showPanel || chromeVisible
             ? "translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-2 opacity-0"
@@ -130,7 +135,7 @@ export default function PdfReader({
       </button>
 
       {showPanel ? (
-        <aside className="absolute right-20 top-4 bottom-4 z-40 flex w-[360px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl">
+        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
           <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
             <div>
               <div className="text-sm font-semibold text-primary">
@@ -307,10 +312,10 @@ export default function PdfReader({
 
       <div
         className="reader-pdf-surface h-full w-full overflow-auto"
-        onMouseUp={handleMouseUp}
+        onPointerUp={handleMouseUp}
       >
         <div
-          className="mx-auto flex min-h-full max-w-[1680px] items-center justify-center px-6 py-10"
+          className="mx-auto flex min-h-full max-w-[1680px] items-center justify-center px-3 py-6 sm:px-6 sm:py-10"
           style={{
             paddingLeft: `${settings.pageMargin}%`,
             paddingRight: `${settings.pageMargin}%`,
@@ -353,7 +358,7 @@ export default function PdfReader({
       </div>
 
       <div
-        className={`pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-black/10 bg-surface/90 px-4 py-2 text-xs text-muted shadow transition-opacity ${
+        className={`pointer-events-none absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border border-black/10 bg-surface/90 px-3 py-2 text-[11px] text-muted shadow transition-opacity sm:bottom-4 sm:px-4 sm:text-xs ${
           showPanel || chromeVisible ? "opacity-100" : "opacity-0"
         }`}
         style={{ color: shellColor }}

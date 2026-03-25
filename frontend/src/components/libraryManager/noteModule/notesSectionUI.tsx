@@ -15,6 +15,7 @@ import axios from "axios";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
+import useIsMobile from "../../../hooks/appTools/useIsMobile";
 
 const NOTE_STACK_WIDTH = 650;
 const NOTE_STACK_HEIGHT = 2600;
@@ -22,8 +23,9 @@ const NOTE_STACK_HEIGHT = 2600;
 const NotesSectionUI: React.FC = () => {
     const state = useNotesSectionState();
     const { publish } = useRefreshBus();
+    const isMobile = useIsMobile();
     const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
-        "CANVAS",
+        isMobile ? "LIST" : "CANVAS",
     );
     const { canvasScale, syncViewport, isRectVisible } = useCanvasViewport({
         initialScale: 1,
@@ -68,9 +70,16 @@ const NotesSectionUI: React.FC = () => {
         [state.setCanvasScale, syncViewport],
     );
 
+    React.useEffect(() => {
+        if (isMobile && (state.stacks?.length || 0) > 0) {
+            setDashboardView("LIST");
+        }
+    }, [isMobile, state.stacks]);
+
     return (
         <div className="relative w-full h-full bg-[#f8f9fa] overflow-hidden font-sans border border-border-subtle shadow-sm rounded-lg">
-            <div className="absolute left-6 top-6 z-[2000] inline-flex rounded-full ml-150 border border-slate-200 bg-white/95 p-1 shadow-lg pointer-events-auto">
+            <div className="absolute left-3 right-3 top-3 z-[2000] flex justify-center pointer-events-auto sm:left-6 sm:right-auto sm:top-6 sm:block">
+                <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
                 <button
                     type="button"
                     onClick={() => setDashboardView("CANVAS")}
@@ -93,6 +102,7 @@ const NotesSectionUI: React.FC = () => {
                 >
                     List
                 </button>
+                </div>
             </div>
 
             {dashboardView === "CANVAS" ? (
@@ -221,7 +231,7 @@ const NotesSectionUI: React.FC = () => {
                                     </div>
                                 </div>
                             </TransformComponent>
-                            <div className="absolute bottom-6 left-6 z-[100] flex flex-col gap-1 bg-surface/95 backdrop-blur p-1.5 rounded-lg shadow-sm border border-border-subtle pointer-events-auto">
+                            <div className="absolute bottom-3 left-3 z-[100] flex flex-col gap-1 rounded-lg border border-border-subtle bg-surface/95 p-1.5 shadow-sm pointer-events-auto sm:bottom-6 sm:left-6">
                                 <button
                                     onClick={() => zoomIn(0.2)}
                                     className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
@@ -269,7 +279,7 @@ const NotesSectionUI: React.FC = () => {
                 </div>
             )}
 
-            <div className="absolute top-6 right-6 z-[2000] pointer-events-auto flex gap-4 items-start">
+            <div className="absolute right-3 top-16 z-[2000] pointer-events-auto flex gap-4 items-start sm:top-6 sm:right-6">
                 {state.isCreatingStack ? (
                     <div className="bg-surface/95 backdrop-blur p-4 rounded-lg shadow-xl border border-gray-400 flex flex-col gap-2">
                         <input

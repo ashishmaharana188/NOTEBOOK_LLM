@@ -62,14 +62,14 @@ export default function FloatingNoteModal({
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 pointer-events-auto p-4">
-            <div className="w-full max-w-xl bg-[#f5f5f7] border border-white/80 rounded-[32px] shadow-[0_24px_90px_-26px_rgba(15,23,42,0.42)] overflow-hidden">
-                <div className="px-7 py-6 border-b border-black/5 bg-[#fbfbfc] flex items-start justify-between">
-                    <div className="min-w-0 pr-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 pointer-events-auto p-3 sm:p-4">
+            <div className="w-full max-w-xl overflow-hidden rounded-[24px] border border-white/80 bg-[#f5f5f7] shadow-[0_24px_90px_-26px_rgba(15,23,42,0.42)] sm:rounded-[32px]">
+                <div className="flex flex-col gap-4 border-b border-black/5 bg-[#fbfbfc] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-7 sm:py-6">
+                    <div className="min-w-0 sm:pr-4">
                         <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500 mb-2">
                             Linked Notes
                         </p>
-                        <h3 className="text-[28px] font-semibold tracking-[-0.03em] text-slate-900 truncate">
+                        <h3 className="truncate text-[22px] font-semibold tracking-[-0.03em] text-slate-900 sm:text-[28px]">
                             {echo?.title || echo?.ai_insight || "Saved Echo"}
                         </h3>
                         <p className="text-sm text-slate-500 mt-2">
@@ -85,7 +85,7 @@ export default function FloatingNoteModal({
                     </button>
                 </div>
 
-                <div className="p-7 bg-[#f5f5f7]">
+                <div className="bg-[#f5f5f7] p-4 sm:p-7">
                     <button
                         onClick={handleAddLinkedNote}
                         disabled={!echo}
@@ -94,7 +94,7 @@ export default function FloatingNoteModal({
                         <PlusIcon className="w-4 h-4" /> Add Linked Note
                     </button>
 
-                    <div className="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar">
+                    <div className="custom-scrollbar max-h-[min(60vh,420px)] space-y-3 overflow-y-auto">
                         {!echo ? (
                             <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/85 px-4 py-6 text-center text-sm text-slate-500">
                                 Loading linked notes...

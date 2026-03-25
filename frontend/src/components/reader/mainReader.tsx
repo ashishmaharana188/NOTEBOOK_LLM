@@ -94,6 +94,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
       <div
         className="h-full w-full relative cursor-default"
         onMouseMove={revealChrome}
+        onTouchStart={revealChrome}
       >
         <EpubReader
           book={book}
@@ -117,6 +118,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
       <div
         className="h-full w-full relative cursor-default"
         onMouseMove={revealChrome}
+        onTouchStart={revealChrome}
       >
         <PdfReader
           book={book}
@@ -138,6 +140,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
     <div
       className="h-full w-full relative cursor-default"
       onMouseMove={revealChrome}
+      onTouchStart={revealChrome}
     >
       <TextReader
         book={book}

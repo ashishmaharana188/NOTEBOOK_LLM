@@ -47,6 +47,8 @@ export default function useCognition() {
     const [results, setResults] = useState([]);
     // NEW: Add state for recommendations
     const [recommendations, setRecommendations] = useState([]);
+    const [echoSearchVersion, setEchoSearchVersion] = useState(0);
+    const lastSearchTextRef = useRef("");
 
     const [triggerVisible, setTriggerVisible] = useState(false);
     const [selectedText, setSelectedText] = useState("");
@@ -215,9 +217,15 @@ export default function useCognition() {
     }, []);
 
     const searchEchoes = async (textOverride?: string) => {
-        const textToSearch = textOverride || selectedText;
+        const textToSearch = (
+            textOverride ||
+            selectedText ||
+            lastSearchTextRef.current
+        ).trim();
         if (!textToSearch) return;
 
+        lastSearchTextRef.current = textToSearch;
+        setEchoSearchVersion((prev) => prev + 1);
         setQuery(textToSearch);
         setTriggerVisible(false); // Hide Bubble
         setEchoOpen(true); // Open Sidebar
@@ -334,6 +342,7 @@ export default function useCognition() {
         query,
         results,
         recommendations, // Export recommendations!
+        echoSearchVersion,
         notifications,
         loadBook,
         handleSelection,

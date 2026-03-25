@@ -111,14 +111,14 @@ export default function TextReader({
   return (
     <div
       className="relative h-full w-full overflow-hidden"
-      onMouseUp={handleMouseUp}
+      onPointerUp={handleMouseUp}
       style={{
         backgroundColor: themeStyles[settings.theme].body.background,
       }}
     >
       <button
         onClick={() => setShowPanel((prev) => !prev)}
-        className={`absolute right-4 top-4 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all ${
+        className={`absolute right-3 top-3 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all sm:right-4 sm:top-4 ${
           showPanel || chromeVisible
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-2 pointer-events-none"
@@ -129,7 +129,7 @@ export default function TextReader({
       </button>
 
       {showPanel ? (
-        <aside className="absolute right-20 top-4 bottom-4 z-40 flex w-[360px] flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl">
+        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
           <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
             <div>
               <div className="text-sm font-semibold text-primary">
@@ -316,14 +316,14 @@ export default function TextReader({
         className="h-full overflow-y-auto"
       >
         <div
-          className="mx-auto max-w-[1280px] px-8 py-16 md:py-20"
+          className="mx-auto max-w-[1280px] px-4 py-10 sm:px-8 sm:py-16 md:py-20"
           style={{
             paddingLeft: `${settings.pageMargin}%`,
             paddingRight: `${settings.pageMargin}%`,
           }}
         >
           {isLoadingSection ? (
-            <div className="rounded-2xl border border-dashed border-black/10 bg-canvas p-8 text-sm text-muted">
+            <div className="rounded-2xl border border-dashed border-black/10 bg-canvas p-6 text-sm text-muted sm:p-8">
               Loading section...
             </div>
           ) : (

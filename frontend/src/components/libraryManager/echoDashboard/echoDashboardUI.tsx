@@ -25,6 +25,7 @@ import { useModelRuntime } from "../../system/ModelRuntimeProvider";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
+import useIsMobile from "../../../hooks/appTools/useIsMobile";
 
 const ECHO_COLUMN_WIDTH = 420;
 const ECHO_COLUMN_HEIGHT = 750;
@@ -32,8 +33,9 @@ const ECHO_COLUMN_HEIGHT = 750;
 export default function EchoDashboardUI(props: any) {
     const { runtime, loadRoles, unloadRoles } = useModelRuntime();
     const { publish } = useRefreshBus();
+    const isMobile = useIsMobile();
     const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
-        "CANVAS",
+        isMobile ? "LIST" : "CANVAS",
     );
     const state = useEchoDashboardState(props);
     const {
@@ -137,10 +139,22 @@ export default function EchoDashboardUI(props: any) {
         [state.setCanvasScale, syncViewport],
     );
 
+    React.useEffect(() => {
+        if (
+            isMobile &&
+            (query ||
+                state.unsavedEchoes.length > 0 ||
+                recommendations.length > 0)
+        ) {
+            setDashboardView("LIST");
+        }
+    }, [isMobile, query, recommendations.length, state.unsavedEchoes.length]);
+
     return (
         <>
             <div className="relative h-full w-full">
-                <div className="absolute left-6 top-6 z-[2500] ml-150 inline-flex rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg pointer-events-auto">
+                <div className="absolute left-3 right-3 top-3 z-[2500] flex justify-center pointer-events-auto sm:left-6 sm:right-auto sm:top-6 sm:block">
+                <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
                     <button
                         type="button"
                         onClick={() => setDashboardView("CANVAS")}
@@ -164,13 +178,14 @@ export default function EchoDashboardUI(props: any) {
                         List
                     </button>
                 </div>
+                </div>
 
-                <div className="absolute top-6 right-6 z-[2500] flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-xl pointer-events-auto">
-                    <div>
+                <div className="absolute left-3 right-3 top-16 z-[2500] flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-xl pointer-events-auto sm:left-auto sm:right-6 sm:top-6 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="min-w-0">
                         <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">
                             Reasoning Runtime
                         </p>
-                        <p className="mt-1 text-xs font-bold text-slate-700">
+                        <p className="mt-1 truncate text-xs font-bold text-slate-700">
                             {runtime?.roles?.reasoning?.loaded
                                 ? `Active: ${runtime?.roles?.reasoning?.profile || "reasoning"}`
                                 : runtime?.roles?.reasoning?.enabled
@@ -178,20 +193,22 @@ export default function EchoDashboardUI(props: any) {
                                   : "Not enabled"}
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => loadRoles(["reasoning"], true)}
-                        className="rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
-                    >
-                        Load
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => unloadRoles(["reasoning"])}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-700 transition-colors hover:bg-slate-50"
-                    >
-                        Unload
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => loadRoles(["reasoning"], true)}
+                            className="rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
+                        >
+                            Load
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => unloadRoles(["reasoning"])}
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-700 transition-colors hover:bg-slate-50"
+                        >
+                            Unload
+                        </button>
+                    </div>
                 </div>
 
                 {dashboardView === "CANVAS" ? (
@@ -220,7 +237,7 @@ export default function EchoDashboardUI(props: any) {
                                     zoomToElement={zoomToElement}
                                     onZoomed={() => state.setZoomTarget(null)}
                                 />
-                                <div className="absolute bottom-6 left-6 z-[2000] flex flex-col gap-1 bg-surface/95   p-1.5 rounded-sm shadow-sm border border-border-subtle pointer-events-auto">
+                                <div className="absolute bottom-3 left-3 z-[2000] flex flex-col gap-1 rounded-sm border border-border-subtle bg-surface/95 p-1.5 shadow-sm pointer-events-auto sm:bottom-6 sm:left-6">
                                     <button
                                         onClick={() => zoomIn(0.2)}
                                         className="p-2 text-slate-600 hover:text-primary hover:bg-slate-100 rounded-sm transition-colors"
@@ -680,7 +697,7 @@ export default function EchoDashboardUI(props: any) {
                         )}
                     </TransformWrapper>
                 ) : (
-                    <div className="h-full w-full overflow-hidden p-6 pt-24">
+                    <div className="h-full w-full overflow-hidden p-3 pt-28 sm:p-6 sm:pt-24">
                         <EchoDashboardListView
                             savedClusters={echoClusters}
                             globalNotes={state.globalNotes}

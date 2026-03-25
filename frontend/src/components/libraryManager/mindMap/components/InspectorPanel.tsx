@@ -111,7 +111,7 @@ const InspectorPanel = ({
     return (
         <div
             ref={panelRef}
-            className="absolute top-6 right-6 w-80 bg-surface/95 backdrop-blur-sm border border-gray-300 shadow-2xl z-40 rounded-none flex flex-col max-h-[90%] overflow-y-auto"
+            className="absolute left-3 right-3 top-16 z-40 flex max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto rounded-none border border-gray-300 bg-surface/95 shadow-2xl backdrop-blur-sm sm:left-auto sm:right-6 sm:top-6 sm:max-h-[90%] sm:w-80"
         >
             <div className="p-5 pb-4 relative border-b border-border-subtle">
                 <div className="flex justify-between items-start mb-2">

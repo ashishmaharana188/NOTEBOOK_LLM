@@ -6,6 +6,7 @@ import EchoTrigger from "./components/libraryManager/echoDashboard/echoTrigger";
 import LibraryManager from "./components/libraryManager/libraryManagerUI";
 import type { DownloadingBook } from "./types/readerBackendTypes";
 import { BACKEND_WS_URL } from "./lib/runtimeConfig";
+import useIsMobile from "./hooks/appTools/useIsMobile";
 
 const WorkspaceShellUI = React.lazy(
   () => import("./components/libraryManager/workspaceShellUI"),
@@ -49,6 +50,7 @@ function App() {
     deleteBrainBook,
     refreshAll,
     recommendations,
+    echoSearchVersion,
   } = useCognition();
 
   const [downloadingBooks, setDownloadingBooks] = useState<DownloadingBook[]>(
@@ -59,10 +61,12 @@ function App() {
   >("ECHOES");
 
   const socketRef = useRef<WebSocket | null>(null);
+  const isMobile = useIsMobile();
   const isReaderActive = view === "READER" && Boolean(currentBook);
   const shouldRenderWorkspaceShell =
     !isReaderActive ||
     echoOpen ||
+    loading ||
     results.length > 0 ||
     recommendations.length > 0;
 
@@ -97,8 +101,8 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface text-primary font-sans relative">
-      {libraryOpen ? (
+    <div className="flex h-[100dvh] w-full overflow-hidden bg-surface text-primary font-sans relative">
+      {libraryOpen && !isMobile ? (
         <Sidebar
           view={view}
           setView={setView}
@@ -111,11 +115,32 @@ function App() {
         />
       ) : null}
 
+      {libraryOpen && isMobile ? (
+        <div className="fixed inset-0 z-[120] sm:hidden">
+          <div
+            className="absolute inset-0 bg-slate-900/45 backdrop-blur-[1px]"
+            onClick={() => setLibraryOpen(false)}
+          />
+          <div className="absolute inset-y-0 left-0 w-[min(88vw,20rem)] max-w-full">
+            <Sidebar
+              view={view}
+              setView={setView}
+              libraryFiles={libraryFiles}
+              downloadingBooks={downloadingBooks}
+              currentBook={currentBook}
+              onReadLibrary={loadBook}
+              onDeleteLibrary={deleteLibraryFile}
+              onClose={() => setLibraryOpen(false)}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex-1 min-w-0 h-full relative overflow-hidden">
         {!libraryOpen ? (
           <button
             onClick={() => setLibraryOpen(true)}
-            className={`absolute top-4 left-4 z-[60] rounded-lg border p-2.5 shadow-sm transition-all ${
+            className={`absolute top-3 left-3 z-[60] rounded-lg border p-2.5 shadow-sm transition-all sm:top-4 sm:left-4 ${
               isReaderActive
                 ? "bg-surface/90 border-black/10 text-primary hover:bg-canvas"
                 : "bg-surface border-border-subtle text-gray-600 hover:bg-canvas"
@@ -173,7 +198,7 @@ function App() {
         visible={triggerVisible}
         text={selectedText}
         onSearch={() => {
-          searchEchoes();
+          searchEchoes(selectedText);
           setWorkspaceView("ECHOES");
           setEchoOpen(true);
           dismissTrigger();
@@ -195,6 +220,7 @@ function App() {
             activeBookTitle={currentBook?.title || "Current Focus"}
             activeBookAuthor={currentBook?.author || "Active Selection"}
             libraryId={currentBook?.lid || ""}
+            echoSearchVersion={echoSearchVersion}
           />
         </Suspense>
       ) : null}
