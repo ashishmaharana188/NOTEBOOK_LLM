@@ -60,6 +60,11 @@ function App() {
 
   const socketRef = useRef<WebSocket | null>(null);
   const isReaderActive = view === "READER" && Boolean(currentBook);
+  const shouldRenderWorkspaceShell =
+    !isReaderActive ||
+    echoOpen ||
+    results.length > 0 ||
+    recommendations.length > 0;
 
   useEffect(() => {
     refreshAll();
@@ -176,7 +181,7 @@ function App() {
         onDismiss={dismissTrigger}
       />
 
-      {!isReaderActive ? (
+      {shouldRenderWorkspaceShell ? (
         <Suspense fallback={null}>
           <WorkspaceShellUI
             isOpen={echoOpen}
