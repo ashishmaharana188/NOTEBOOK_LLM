@@ -11,3 +11,6 @@ beautifulsoup4
 EbookLib
 pymupdf
 gutenbergpy
+websockets
+wsproto
+uvicorn[standard]
