@@ -978,6 +978,39 @@ export default function SpatialCanvasUI({
             return;
         }
     }, [exitTouchShiftMode, isTouchSelectionMode]);
+    const touchMarqueeViewportBox = useMemo(() => {
+        if (!touchMarqueeBox) return null;
+
+        const rect = canvasViewportRef.current?.getBoundingClientRect();
+        if (!rect) return null;
+
+        return {
+            left:
+                Math.min(
+                    touchMarqueeBox.startClientX,
+                    touchMarqueeBox.endClientX,
+                ) - rect.left,
+            top:
+                Math.min(
+                    touchMarqueeBox.startClientY,
+                    touchMarqueeBox.endClientY,
+                ) - rect.top,
+            width: Math.max(
+                1,
+                Math.abs(
+                    touchMarqueeBox.endClientX -
+                        touchMarqueeBox.startClientX,
+                ),
+            ),
+            height: Math.max(
+                1,
+                Math.abs(
+                    touchMarqueeBox.endClientY -
+                        touchMarqueeBox.startClientY,
+                ),
+            ),
+        };
+    }, [touchMarqueeBox]);
 
     useEffect(() => {
         const handleWindowPointerMove = (event: PointerEvent) => {
@@ -1026,6 +1059,14 @@ export default function SpatialCanvasUI({
 
             const wasActivated = session.activated;
             const marqueeBox = touchMarqueeBoxRef.current;
+            const canvasViewport = canvasViewportRef.current;
+
+            if (
+                canvasViewport &&
+                canvasViewport.hasPointerCapture?.(event.pointerId)
+            ) {
+                canvasViewport.releasePointerCapture(event.pointerId);
+            }
 
             if (wasActivated && !cancelSelection && marqueeBox) {
                 await handleMarqueeSelectionComplete({
@@ -1128,6 +1169,13 @@ export default function SpatialCanvasUI({
                     if (!session || session.pointerId !== e.pointerId) return;
 
                     session.activated = true;
+                    try {
+                        canvasViewportRef.current?.setPointerCapture?.(
+                            session.pointerId,
+                        );
+                    } catch {
+                        // Mobile browsers can reject capture on some elements.
+                    }
                     setIsTouchSelectionMode(true);
                     setIsShiftDown(true);
                     setTouchMarqueeBox({
@@ -1146,16 +1194,33 @@ export default function SpatialCanvasUI({
             }}
             onPointerMoveCapture={(e) => {
                 if (touchShiftSessionRef.current?.activated) {
+                    e.preventDefault();
                     e.stopPropagation();
                 }
             }}
             onPointerUpCapture={(e) => {
+                if (
+                    canvasViewportRef.current?.hasPointerCapture?.(e.pointerId)
+                ) {
+                    canvasViewportRef.current.releasePointerCapture(
+                        e.pointerId,
+                    );
+                }
                 if (touchShiftSessionRef.current?.activated) {
+                    e.preventDefault();
                     e.stopPropagation();
                 }
             }}
             onPointerCancelCapture={(e) => {
+                if (
+                    canvasViewportRef.current?.hasPointerCapture?.(e.pointerId)
+                ) {
+                    canvasViewportRef.current.releasePointerCapture(
+                        e.pointerId,
+                    );
+                }
                 if (touchShiftSessionRef.current?.activated) {
+                    e.preventDefault();
                     e.stopPropagation();
                 }
             }}
@@ -1481,40 +1546,25 @@ export default function SpatialCanvasUI({
                                     handleMarqueeSelectionComplete
                                 }
                             />
-                            {touchMarqueeBox && (
-                                <div
-                                    className="absolute z-[10000] pointer-events-none rounded-sm border-[3px] border-blue-500 bg-blue-500/10"
-                                    style={{
-                                        boxSizing: "border-box",
-                                        left: Math.min(
-                                            touchMarqueeBox.startX,
-                                            touchMarqueeBox.endX,
-                                        ),
-                                        top: Math.min(
-                                            touchMarqueeBox.startY,
-                                            touchMarqueeBox.endY,
-                                        ),
-                                        width: Math.max(
-                                            1,
-                                            Math.abs(
-                                                touchMarqueeBox.endX -
-                                                    touchMarqueeBox.startX,
-                                            ),
-                                        ),
-                                        height: Math.max(
-                                            1,
-                                            Math.abs(
-                                                touchMarqueeBox.endY -
-                                                    touchMarqueeBox.startY,
-                                            ),
-                                        ),
-                                    }}
-                                />
-                            )}
                         </div>
                     </div>
                 </TransformComponent>
             </TransformWrapper>
+
+            {touchMarqueeViewportBox && (
+                <div className="absolute inset-0 z-[10000] pointer-events-none">
+                    <div
+                        className="absolute rounded-sm border-[3px] border-blue-500 bg-blue-500/10"
+                        style={{
+                            boxSizing: "border-box",
+                            left: touchMarqueeViewportBox.left,
+                            top: touchMarqueeViewportBox.top,
+                            width: touchMarqueeViewportBox.width,
+                            height: touchMarqueeViewportBox.height,
+                        }}
+                    />
+                </div>
+            )}
 
             <SelectionToolbar
                 selectedCount={selectedItemIds.length}
