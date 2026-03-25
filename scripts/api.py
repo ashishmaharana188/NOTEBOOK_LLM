@@ -124,7 +124,7 @@ def start_ollama_service():
 
 def warm_up_model():
     reasoning_profile = runtime_manager.get_runtime_snapshot()["config"].get(
-        "reasoning_profile", "qwen2.5:1.5b-instruct"
+        "reasoning_profile", "qwen2.5:0.5b-instruct"
     )
     logger.info(f"🔥 Warming up reasoning model ({reasoning_profile})...")
     try:

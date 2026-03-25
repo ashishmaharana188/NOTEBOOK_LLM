@@ -26,7 +26,7 @@ EMBEDDING_STORAGE_DIM = 1024
 DEFAULT_CONFIG: Dict[str, Any] = {
     "ollama_endpoint": "http://localhost:11434",
     "embedding_profile": "all-minilm-l6-v2",
-    "reasoning_profile": "qwen2.5:1.5b-instruct",
+    "reasoning_profile": "qwen2.5:0.5b-instruct",
     "embedding_timeout_minutes": 0,
     "reasoning_timeout_minutes": 0,
     "embedding_placement": "cpu",
@@ -290,6 +290,12 @@ class ModelRuntimeManager:
         if placement == "cuda" and torch.cuda.is_available():
             return "cuda"
         return "cpu"
+
+    def _uses_shared_cpu_runtime(self) -> bool:
+        return all(
+            self._placement_to_device(role) == "cpu"
+            for role in ("embedding", "reasoning")
+        )
 
     def _ensure_cuda_available(self, roles: Iterable[str]):
         if any(self._placement_to_device(role) == "cuda" for role in roles) and not torch.cuda.is_available():
@@ -610,7 +616,10 @@ class ModelRuntimeManager:
                     return
                 self.unload_embedding_model(reason="reload")
 
-            if self._role_state["reasoning"]["loaded"]:
+            if (
+                self._role_state["reasoning"]["loaded"]
+                and not self._uses_shared_cpu_runtime()
+            ):
                 self.unload_reasoning_model(reason="reasoning_switch")
 
             entry = self._get_catalog_entry("embedding", target_profile)
@@ -681,7 +690,10 @@ class ModelRuntimeManager:
             self._ensure_cuda_available(["reasoning"])
             if not self._ollama_is_reachable():
                 raise RuntimeLoadError("Ollama is not running or reachable.")
-            if self._role_state["embedding"]["loaded"]:
+            if (
+                self._role_state["embedding"]["loaded"]
+                and not self._uses_shared_cpu_runtime()
+            ):
                 self.unload_embedding_model(reason="embedding_switch")
             target_profile = profile or self._config["reasoning_profile"]
             keep_alive = (
@@ -760,27 +772,42 @@ class ModelRuntimeManager:
         for role in role_list:
             self._role_state[role]["enabled"] = True
 
-        active_role = next(
-            (
-                role
-                for role in ("embedding", "reasoning")
-                if self._role_state[role].get("loaded") and role in role_list
-            ),
-            None,
-        )
-        if active_role is None:
-            active_role = "embedding" if "embedding" in role_list else role_list[0]
-
-        profile = preflight["resolved_profiles"][active_role]
-        device = preflight["devices"][active_role]
-        if active_role == "embedding":
-            self.load_embedding_model(
-                profile=profile,
-                device=device,
-                precision=self._config["embedding_precision"],
+        if self._uses_shared_cpu_runtime():
+            for role in role_list:
+                profile = preflight["resolved_profiles"][role]
+                device = preflight["devices"][role]
+                if role == "embedding":
+                    self.load_embedding_model(
+                        profile=profile,
+                        device=device,
+                        precision=self._config["embedding_precision"],
+                    )
+                elif role == "reasoning":
+                    self.load_reasoning_model(profile=profile)
+        else:
+            active_role = next(
+                (
+                    role
+                    for role in ("embedding", "reasoning")
+                    if self._role_state[role].get("loaded") and role in role_list
+                ),
+                None,
             )
-        elif active_role == "reasoning":
-            self.load_reasoning_model(profile=profile)
+            if active_role is None:
+                active_role = (
+                    "embedding" if "embedding" in role_list else role_list[0]
+                )
+
+            profile = preflight["resolved_profiles"][active_role]
+            device = preflight["devices"][active_role]
+            if active_role == "embedding":
+                self.load_embedding_model(
+                    profile=profile,
+                    device=device,
+                    precision=self._config["embedding_precision"],
+                )
+            elif active_role == "reasoning":
+                self.load_reasoning_model(profile=profile)
 
         data = self.get_runtime_snapshot(preflight=preflight)
         self._emit({"type": "runtime_status", "data": data})
@@ -842,7 +869,7 @@ class ModelRuntimeManager:
                     self._placement_to_device(role) == "cuda"
                     for role in ("embedding", "reasoning")
                 ),
-                "single_active_role": True,
+                "single_active_role": not self._uses_shared_cpu_runtime(),
                 "embedding_requires_cuda": self._placement_to_device("embedding")
                 == "cuda",
                 "reasoning_requires_cuda": self._placement_to_device("reasoning")

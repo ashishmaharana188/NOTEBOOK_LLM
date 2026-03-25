@@ -211,8 +211,9 @@ export default function SystemConfigPanel() {
                           Runtime Policy
                         </p>
                         <p className="mt-2 font-semibold">
-                          The runtime keeps one active model role at a time to
-                          stay inside small-memory deployments.
+                          {policy.single_active_role
+                            ? "The runtime keeps one active model role at a time to stay inside the configured memory target."
+                            : "On CPU deployments, embeddings and reasoning can remain loaded together to avoid model reload churn."}
                         </p>
                       </div>
                     )}
@@ -356,7 +357,7 @@ export default function SystemConfigPanel() {
               <p className="mt-4 text-sm leading-6 text-slate-600">
                 {policy.single_active_role
                   ? `The runtime keeps only one model role active at a time on ${policy.execution_target || "the configured device"}. Loading embeddings unloads reasoning, and loading reasoning unloads embeddings.`
-                  : "Projected memory is based on the current runtime catalog."}
+                  : "CPU mode can keep both MiniLM embeddings and the active reasoning model resident together, so switching between retrieval and generation avoids extra reload latency."}
               </p>
             </div>
           </div>
