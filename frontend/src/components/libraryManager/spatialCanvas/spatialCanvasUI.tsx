@@ -1452,181 +1452,41 @@ export default function SpatialCanvasUI({
                                 cameraPositionX={cameraPositionX}
                                 cameraPositionY={cameraPositionY}
                                 viewportRef={canvasViewportRef}
-                                onCancel={() => setIsShiftDown(false)}
-                                onSelectionComplete={async (bounds) => {
-                                    if (currentExpandedId) {
-                                        const safeRootExpandedId =
-                                            rootExpandedId
-                                                ? String(rootExpandedId)
-                                                : "";
-                                        if (!safeRootExpandedId) {
-                                            setSelectedItemIds([]);
-                                            return;
-                                        }
-
-                                        const expandedRootItem =
-                                            rootSceneItemById.get(
-                                                safeRootExpandedId,
-                                            );
-                                        if (!expandedRootItem) {
-                                            setSelectedItemIds([]);
-                                            return;
-                                        }
-
-                                        const modelSpaceParentX =
-                                            expandedRootItem.baseX +
-                                            expandedRootItem.gridOffsetX;
-                                        const modelSpaceParentY =
-                                            expandedRootItem.baseY +
-                                            expandedRootItem.gridOffsetY;
-                                        const modelSpaceOrbitLayout =
-                                            activeOrbitLayoutRef.current || {};
-
-                                        const modelSpaceSelectedIds =
-                                            Object.entries(
-                                                modelSpaceOrbitLayout,
-                                            )
-                                                .map(
-                                                    ([cardId, layout]: [
-                                                        string,
-                                                        any,
-                                                    ]) => {
-                                                        if (!layout)
-                                                            return null;
-
-                                                        const cardLeft =
-                                                            modelSpaceParentX +
-                                                            layout.x;
-                                                        const cardRight =
-                                                            cardLeft +
-                                                            layout.w;
-                                                        const cardTop =
-                                                            modelSpaceParentY +
-                                                            layout.y;
-                                                        const cardBottom =
-                                                            cardTop + layout.h;
-
-                                                        if (
-                                                            cardRight >=
-                                                                bounds.left &&
-                                                            cardLeft <=
-                                                                bounds.right &&
-                                                            cardBottom >=
-                                                                bounds.top &&
-                                                            cardTop <=
-                                                                bounds.bottom
-                                                        ) {
-                                                            return cardId;
-                                                        }
-                                                        return null;
-                                                    },
-                                                )
-                                                .filter(Boolean);
-
-                                        setSelectedItemIds(
-                                            modelSpaceSelectedIds as string[],
-                                        );
-                                        return;
-                                        /*
-
-                                        const expandedItemIndex =
-                                            loopDataset.findIndex(
-                                                (item: any) =>
-                                                    (canvasMode === "ECHO"
-                                                        ? item.id
-                                                        : item.stack_id) ===
-                                                    safeRootExpandedId,
-                                            );
-                                        if (expandedItemIndex === -1) return;
-
-                                        const row = Math.floor(
-                                            expandedItemIndex / 3,
-                                        );
-                                        const col = expandedItemIndex % 3;
-                                        const defX =
-                                            col * 600 +
-                                            (row % 2 === 0 ? 0 : 300);
-                                        const defY = row * 650;
-
-                                        const draft =
-                                            draftGridCoordinates[
-                                                safeRootExpandedId
-                                            ];
-                                        const saved =
-                                            spatialMetadata[safeRootExpandedId];
-
-                                        const parentX =
-                                            draft?.x ?? saved?.x_coord ?? defX;
-                                        const parentY =
-                                            draft?.y ?? saved?.y_coord ?? defY;
-
-                                        // ✨ THE FIX: Read from the REF instead of the stale state!
-                                        const currentOrbitLayout =
-                                            activeOrbitLayoutRef.current;
-
-                                        const selectedIds = Object.entries(
-                                            currentOrbitLayout,
-                                        )
-                                            .map(
-                                                ([cardId, layout]: [
-                                                    string,
-                                                    any,
-                                                ]) => {
-                                                    const cardLeft =
-                                                        parentX + layout.x;
-                                                    const cardRight =
-                                                        cardLeft + layout.w;
-                                                    const cardTop =
-                                                        parentY + layout.y;
-                                                    const cardBottom =
-                                                        cardTop + layout.h;
-
-                                                    if (
-                                                        cardRight >=
-                                                            bounds.left &&
-                                                        cardLeft <=
-                                                            bounds.right &&
-                                                        cardBottom >=
-                                                            bounds.top &&
-                                                        cardTop <= bounds.bottom
-                                                    ) {
-                                                        return cardId;
-                                                    }
-                                                    return null;
-                                                },
-                                            )
-                                            .filter(Boolean);
-
-                                        setSelectedItemIds(
-                                            selectedIds as string[],
-                                        );
-                                        */
-                                    } else {
-                                        // --- ORIGINAL ROOT CLUSTER SELECTION MODE ---
-                                        const selectedIds = rootSceneItems
-                                            .map(({ itemId, worldX, worldY }) => {
-                                                if (
-                                                    worldX + 200 >=
-                                                        bounds.left &&
-                                                    worldX - 200 <=
-                                                        bounds.right &&
-                                                    worldY + 250 >=
-                                                        bounds.top &&
-                                                    worldY - 250 <=
-                                                        bounds.bottom
-                                                ) {
-                                                    return itemId;
-                                                }
-                                                return null;
-                                            })
-                                            .filter(Boolean);
-
-                                        setSelectedItemIds(
-                                            selectedIds as string[],
-                                        );
-                                    }
-                                }}
+                                onCancel={exitTouchShiftMode}
+                                onSelectionComplete={
+                                    handleMarqueeSelectionComplete
+                                }
                             />
+                            {touchMarqueeBox && (
+                                <div
+                                    className="absolute z-[10000] pointer-events-none rounded-sm border-[3px] border-blue-500 bg-blue-500/10"
+                                    style={{
+                                        boxSizing: "border-box",
+                                        left: Math.min(
+                                            touchMarqueeBox.startX,
+                                            touchMarqueeBox.endX,
+                                        ),
+                                        top: Math.min(
+                                            touchMarqueeBox.startY,
+                                            touchMarqueeBox.endY,
+                                        ),
+                                        width: Math.max(
+                                            1,
+                                            Math.abs(
+                                                touchMarqueeBox.endX -
+                                                    touchMarqueeBox.startX,
+                                            ),
+                                        ),
+                                        height: Math.max(
+                                            1,
+                                            Math.abs(
+                                                touchMarqueeBox.endY -
+                                                    touchMarqueeBox.startY,
+                                            ),
+                                        ),
+                                    }}
+                                />
+                            )}
                         </div>
                     </div>
                 </TransformComponent>
