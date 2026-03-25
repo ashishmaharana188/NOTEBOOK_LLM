@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   BookOpenIcon,
   PencilSquareIcon, // <--- ADDED ICON
@@ -37,15 +37,52 @@ const DraggableColumn = React.memo(
     const [dragState, setDragState] = useState({ active: false, shift: false });
     const dragRef = useRef({ startX: 0, startY: 0, x: 0, y: 0 });
     const currentPos = useRef(initialPos);
+    const shellRef = useRef<HTMLDivElement | null>(null);
+    const positionFrameRef = useRef<number | null>(null);
     const resizeRef = useRef({
       startX: 0,
       startY: 0,
       width: DEFAULT_COLUMN_WIDTH,
       height: DEFAULT_COLUMN_HEIGHT,
     });
+    const currentSize = useRef({
+      width: DEFAULT_COLUMN_WIDTH,
+      height: DEFAULT_COLUMN_HEIGHT,
+    });
+    const sizeFrameRef = useRef<number | null>(null);
     const [isResizing, setIsResizing] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editTitle, setEditTitle] = useState(title);
+
+    const applyPosition = useCallback((nextPos: { x: number; y: number }) => {
+      if (!shellRef.current) return;
+      shellRef.current.style.transform = `translate3d(${nextPos.x}px, ${nextPos.y}px, 0)`;
+    }, []);
+
+    const schedulePosition = useCallback(() => {
+      if (positionFrameRef.current !== null) return;
+      positionFrameRef.current = window.requestAnimationFrame(() => {
+        positionFrameRef.current = null;
+        applyPosition(currentPos.current);
+      });
+    }, [applyPosition]);
+
+    const applySize = useCallback(
+      (nextSize: { width: number; height: number }) => {
+        if (!shellRef.current) return;
+        shellRef.current.style.width = `${nextSize.width}px`;
+        shellRef.current.style.height = `${nextSize.height}px`;
+      },
+      [],
+    );
+
+    const scheduleSize = useCallback(() => {
+      if (sizeFrameRef.current !== null) return;
+      sizeFrameRef.current = window.requestAnimationFrame(() => {
+        sizeFrameRef.current = null;
+        applySize(currentSize.current);
+      });
+    }, [applySize]);
 
     useEffect(() => {
       setEditTitle(title);
@@ -56,7 +93,24 @@ const DraggableColumn = React.memo(
     useEffect(() => {
       setLocalPos(initialPos);
       currentPos.current = initialPos;
-    }, [initialPos?.x, initialPos?.y]);
+      applyPosition(initialPos);
+    }, [applyPosition, initialPos?.x, initialPos?.y]);
+
+    useEffect(() => {
+      currentSize.current = localSize;
+      applySize(localSize);
+    }, [applySize, localSize]);
+
+    useEffect(() => {
+      return () => {
+        if (positionFrameRef.current !== null) {
+          window.cancelAnimationFrame(positionFrameRef.current);
+        }
+        if (sizeFrameRef.current !== null) {
+          window.cancelAnimationFrame(sizeFrameRef.current);
+        }
+      };
+    }, []);
 
     const handleMouseDown = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -77,14 +131,14 @@ const DraggableColumn = React.memo(
           const dy = (e.clientY - dragRef.current.startY) / scale;
           const newPos = { x: dragRef.current.x + dx, y: dragRef.current.y + dy };
           currentPos.current = newPos;
-          setLocalPos(newPos);
+          schedulePosition();
           return;
         }
 
         if (isResizing) {
           const dx = (e.clientX - resizeRef.current.startX) / scale;
           const dy = (e.clientY - resizeRef.current.startY) / scale;
-          setLocalSize({
+          currentSize.current = {
             width: Math.max(
               MIN_COLUMN_WIDTH,
               Math.round(resizeRef.current.width + dx),
@@ -93,17 +147,20 @@ const DraggableColumn = React.memo(
               MIN_COLUMN_HEIGHT,
               Math.round(resizeRef.current.height + dy),
             ),
-          });
+          };
+          scheduleSize();
         }
       };
 
       const handleMouseUp = () => {
         if (dragState.active) {
           setDragState({ active: false, shift: false });
+          setLocalPos(currentPos.current);
           onDragEnd(id, currentPos.current, dragState.shift);
         }
         if (isResizing) {
           setIsResizing(false);
+          setLocalSize(currentSize.current);
         }
       };
 
@@ -115,10 +172,20 @@ const DraggableColumn = React.memo(
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
       };
-    }, [dragState.active, dragState.shift, isResizing, scale, id, onDragEnd]);
+    }, [
+      dragState.active,
+      dragState.shift,
+      id,
+      isResizing,
+      onDragEnd,
+      scale,
+      schedulePosition,
+      scheduleSize,
+    ]);
 
     return (
       <div
+        ref={shellRef}
         id={id}
         onMouseEnter={() => setIsCanvasWheelDisabled?.(true)}
         onMouseLeave={() => setIsCanvasWheelDisabled?.(false)}
@@ -132,7 +199,9 @@ const DraggableColumn = React.memo(
           left: 0,
           top: 0,
           transform: `translate3d(${localPos.x}px, ${localPos.y}px, 0)`,
-          willChange: "transform",
+          willChange: isResizing ? "transform, width, height" : "transform",
+          contain: "layout paint style",
+          backfaceVisibility: "hidden",
           width: `${localSize.width}px`,
           height: `${localSize.height}px`,
           zIndex: isHighlighted ? 9999 : zIndex,

@@ -337,6 +337,7 @@ const SpatialCard = React.memo(
         data-selection-id={cardId}
         data-selectable={isExpanded ? "true" : "false"}
         drag={isExpanded}
+        dragElastic={0}
         dragMomentum={false}
         whileDrag={{ zIndex: 99999 }}
         onPointerDownCapture={(e) => {
@@ -384,8 +385,8 @@ const SpatialCard = React.memo(
         }}
         transition={{
           type: "spring",
-          stiffness: 220,
-          damping: 25,
+          stiffness: 260,
+          damping: 32,
           ...(isSelected
             ? {
                 x: { duration: 0, type: "tween" },
@@ -399,6 +400,7 @@ const SpatialCard = React.memo(
           borderRadius: `${finalRadius}px`,
           width: finalWidth,
           height: finalHeight,
+          willChange: "transform",
         }}
         onClick={(e) => {
           e.stopPropagation();

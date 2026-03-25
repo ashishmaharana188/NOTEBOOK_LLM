@@ -60,6 +60,8 @@ const NoteStackColumn = React.memo(
         const [localPos, setLocalPos] = useState(initialPos || { x: 0, y: 0 });
         const [isDragging, setIsDragging] = useState(false);
         const dragRef = useRef({ startX: 0, startY: 0, x: 0, y: 0 });
+        const stackRef = useRef<HTMLDivElement | null>(null);
+        const positionFrameRef = useRef<number | null>(null);
 
         // THE FIX 1: Create a ref to track the absolute latest position without triggering re-renders
         const currentPos = useRef(initialPos || { x: 0, y: 0 });
@@ -68,12 +70,37 @@ const NoteStackColumn = React.memo(
         const [isRenamingStack, setIsRenamingStack] = useState(false);
         const [editStackTitle, setEditStackTitle] = useState(stack.title);
 
+        const applyPosition = React.useCallback(
+            (nextPos: { x: number; y: number }) => {
+                if (!stackRef.current) return;
+                stackRef.current.style.transform = `translate3d(${nextPos.x}px, ${nextPos.y}px, 0)`;
+            },
+            [],
+        );
+
+        const schedulePosition = React.useCallback(() => {
+            if (positionFrameRef.current !== null) return;
+            positionFrameRef.current = window.requestAnimationFrame(() => {
+                positionFrameRef.current = null;
+                applyPosition(currentPos.current);
+            });
+        }, [applyPosition]);
+
         useEffect(() => {
             if (initialPos) {
                 setLocalPos(initialPos);
                 currentPos.current = initialPos; // Keep ref in sync when parent forces an update
+                applyPosition(initialPos);
             }
-        }, [initialPos]);
+        }, [applyPosition, initialPos]);
+
+        useEffect(() => {
+            return () => {
+                if (positionFrameRef.current !== null) {
+                    window.cancelAnimationFrame(positionFrameRef.current);
+                }
+            };
+        }, []);
 
         const handleMouseDown = (e: React.MouseEvent) => {
             e.stopPropagation();
@@ -98,11 +125,12 @@ const NoteStackColumn = React.memo(
                 };
 
                 currentPos.current = newPos; // THE FIX 2: Seamlessly update the ref during drag
-                setLocalPos(newPos);
+                schedulePosition();
             };
             const handleMouseUp = () => {
                 if (isDragging) {
                     setIsDragging(false);
+                    setLocalPos(currentPos.current);
                     // THE FIX 3: Pass the ref to the parent, completely bypassing the stale closure!
                     onDragEnd(stack.stack_id, currentPos.current);
                 }
@@ -115,7 +143,7 @@ const NoteStackColumn = React.memo(
                 window.removeEventListener("mousemove", handleMouseMove);
                 window.removeEventListener("mouseup", handleMouseUp);
             };
-        }, [isDragging, scale, stack.stack_id, onDragEnd]);
+        }, [isDragging, onDragEnd, scale, schedulePosition, stack.stack_id]);
 
         const groupMap = new Map<string, NoteGroup[]>();
         [...groups]
@@ -181,10 +209,11 @@ const NoteStackColumn = React.memo(
 
         return (
             <div
+                ref={stackRef}
                 id={stack.stack_id}
                 className={`no-pan absolute flex flex-col items-center w-[650px] pb-32 ${
                     !isDragging
-                        ? "transition-all duration-500"
+                        ? "transition-transform duration-300"
                         : "transition-none"
                 } ${isDragging ? "z-[9999]" : ""} ${isHighlighted ? "z-[9999]" : ""}`}
                 style={{
@@ -193,6 +222,8 @@ const NoteStackColumn = React.memo(
                     top: 0,
                     transform: `translate3d(${localPos.x}px, ${localPos.y}px, 0)`,
                     willChange: "transform",
+                    contain: "layout paint style",
+                    backfaceVisibility: "hidden",
                     zIndex: isDragging || isHighlighted ? 9999 : zIndex,
                 }}
                 onMouseDown={(e) => {
@@ -201,7 +232,7 @@ const NoteStackColumn = React.memo(
                 }}
             >
                 <div
-                    className={`group w-[600px] mb-8 bg-surface/80 backdrop-blur border rounded-xl p-4 flex flex-col gap-4 relative transition-all duration-500 ${
+                    className={`group relative mb-8 flex w-[600px] flex-col gap-4 rounded-xl border bg-surface/80 p-4 backdrop-blur transition-[box-shadow,border-color,transform] duration-300 ${
                         isHighlighted
                             ? "border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.4)] scale-[1.03]"
                             : "border-gray-300 shadow-sm"

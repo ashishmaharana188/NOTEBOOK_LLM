@@ -141,6 +141,7 @@ const SpatialArchiveFolder = React.memo(
         return (
             <motion.div
                 drag
+                dragElastic={0}
                 dragMomentum={false}
                 initial={{ x: baseX, y: baseY, scale: 0 }}
                 animate={animate}
@@ -252,6 +253,7 @@ const SpatialArchiveFolder = React.memo(
                                                     key={childId}
                                                     className="absolute top-0 left-0 pointer-events-auto cursor-pointer"
                                                     drag={isMergeMode}
+                                                    dragElastic={0}
                                                     dragMomentum={false}
                                                     initial={{
                                                         x: 0,

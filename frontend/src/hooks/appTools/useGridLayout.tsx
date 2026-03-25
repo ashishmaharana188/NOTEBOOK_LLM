@@ -240,8 +240,8 @@ export const getGridAnimationProps = (
         animate: { x: currentX, y: currentY, scale: 1, opacity: 1 },
         transition: {
             type: "spring",
-            stiffness: 220,
-            damping: isFolder ? 25 : 30,
+            stiffness: 240,
+            damping: isFolder ? 30 : 34,
         },
     };
 };

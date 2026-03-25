@@ -67,13 +67,13 @@ const GroupCard = React.memo(
         onOpen();
         await controls.start({
           y: -MAX_EXTENSION,
-          transition: { type: "spring", stiffness: 250, damping: 25 },
+          transition: { type: "spring", stiffness: 320, damping: 32 },
         });
       } else {
         setIsLockedOpen(false);
         await controls.start({
           y: 0,
-          transition: { type: "spring", stiffness: 400, damping: 30 },
+          transition: { type: "spring", stiffness: 520, damping: 38 },
         });
       }
     };
@@ -87,14 +87,13 @@ const GroupCard = React.memo(
         onOpen();
         controls.start({
           y: -MAX_EXTENSION,
-          transition: { type: "spring", stiffness: 250, damping: 25 },
+          transition: { type: "spring", stiffness: 320, damping: 32 },
         });
       }
     };
 
     return (
       <motion.div
-        drag="y"
         className="no-pan relative flex justify-center"
         style={{
           width: "100%",
@@ -107,14 +106,16 @@ const GroupCard = React.memo(
         <motion.div
           drag="y"
           dragConstraints={{ top: -MAX_EXTENSION, bottom: 0 }}
-          dragElastic={0.1}
+          dragElastic={0}
           dragMomentum={false}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
           animate={controls}
-          style={{ y }}
+          style={{ y, willChange: "transform" }}
           className={`relative ${
-            !isDragging ? "transition-all duration-20" : "transition-none"
+            !isDragging
+              ? "transition-[filter,transform] duration-75"
+              : "transition-none"
           } ${
             isHighlighted
               ? "drop-shadow-[0_0_25px_rgba(59,130,246,0.8)] scale-[1.02] z-50"

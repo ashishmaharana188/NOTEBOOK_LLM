@@ -119,6 +119,7 @@ const SpatialFolderCard = React.memo(
                 }
                 data-selectable={isExpanded ? "true" : "false"}
                 drag={isExpanded}
+                dragElastic={0}
                 dragMomentum={false}
                 whileDrag={{ zIndex: 99999 }}
                 onPointerDownCapture={(e) => {

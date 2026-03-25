@@ -465,6 +465,7 @@ const SpatialStack = React.memo(
         return (
             <motion.div
                 drag={!isExpanded}
+                dragElastic={0}
                 dragMomentum={false}
                 onDragStart={() => {
                     isDraggingRef.current = true;
@@ -512,7 +513,10 @@ const SpatialStack = React.memo(
                 animate={animate}
                 transition={transition as any}
                 className="absolute no-pan"
-                style={{ zIndex: isExpanded ? 5000 : 10 }}
+                style={{
+                    zIndex: isExpanded ? 5000 : 10,
+                    willChange: "transform",
+                }}
             >
                 {isVisible && (
                     <>
