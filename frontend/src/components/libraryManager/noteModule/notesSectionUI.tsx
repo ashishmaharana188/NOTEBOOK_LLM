@@ -8,7 +8,6 @@ import {
 
 import NotesFormUI from "./notesFormUI";
 import AutoZoomTrigger from "./components/AutoZoomTrigger";
-import NotesDashboardListView from "./components/NotesDashboardListView";
 import NoteStackColumn from "./components/NoteStackColumn";
 import useNotesSectionState from "./hooks/useNotesSectionState";
 import axios from "axios";
@@ -16,7 +15,6 @@ import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
 import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
-import useIsMobile from "../../../hooks/appTools/useIsMobile";
 
 const NOTE_STACK_WIDTH = 650;
 const NOTE_STACK_HEIGHT = 2600;
@@ -24,10 +22,6 @@ const NOTE_STACK_HEIGHT = 2600;
 const NotesSectionUI: React.FC = () => {
   const state = useNotesSectionState();
   const { publish } = useRefreshBus();
-  const isMobile = useIsMobile();
-  const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
-    isMobile ? "LIST" : "CANVAS",
-  );
   const { isInteracting, startInteraction, settleInteraction } =
     useCanvasInteractionMode(140);
   const { canvasScale, syncViewport, isRectVisible } = useCanvasViewport({
@@ -73,43 +67,9 @@ const NotesSectionUI: React.FC = () => {
     [state.setCanvasScale, syncViewport],
   );
 
-  React.useEffect(() => {
-    if (isMobile && (state.stacks?.length || 0) > 0) {
-      setDashboardView("LIST");
-    }
-  }, [isMobile, state.stacks]);
-
   return (
     <div className="relative w-full h-full bg-[#f8f9fa] overflow-hidden font-sans border border-border-subtle shadow-sm rounded-lg">
-      <div className="absolute left-1/2 top-5 z-[2000] -translate-x-1/2 pointer-events-auto sm:top-8">
-        <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
-          <button
-            type="button"
-            onClick={() => setDashboardView("CANVAS")}
-            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${
-              dashboardView === "CANVAS"
-                ? "bg-slate-900 text-white"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            Canvas
-          </button>
-          <button
-            type="button"
-            onClick={() => setDashboardView("LIST")}
-            className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${
-              dashboardView === "LIST"
-                ? "bg-slate-900 text-white"
-                : "text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            List
-          </button>
-        </div>
-      </div>
-
-      {dashboardView === "CANVAS" ? (
-        <TransformWrapper
+      <TransformWrapper
           initialScale={1}
           initialPositionX={0}
           initialPositionY={0}
@@ -235,21 +195,6 @@ const NotesSectionUI: React.FC = () => {
             </React.Fragment>
           )}
         </TransformWrapper>
-      ) : (
-        <div className="h-full w-full overflow-hidden p-6 pt-24">
-          <NotesDashboardListView
-            stacks={state.stacks}
-            groups={state.groups}
-            notesByGroup={state.notesByGroup}
-            activeGroupId={state.activeGroupId}
-            highlightedGroupId={state.highlightId}
-            onOpenGroup={state.handleOpenGroup}
-            onOpenNote={state.handleOpenNote}
-            onInitiateCreateNote={state.handleInitiateCreateNote}
-            fetchNotesForGroup={state.fetchNotesForGroup}
-          />
-        </div>
-      )}
 
       <div className="absolute right-3 top-16 z-[2000] pointer-events-auto flex gap-4 items-start sm:top-6 sm:right-6">
         {state.isCreatingStack ? (

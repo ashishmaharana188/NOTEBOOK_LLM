@@ -92,7 +92,7 @@ export default function SpatialCanvasUI({
         null,
     );
     const touchShiftSessionRef = useRef<{
-        pointerId: number;
+        touchId: number;
         startClientX: number;
         startClientY: number;
         startX: number;
@@ -1013,14 +1013,30 @@ export default function SpatialCanvasUI({
     }, [touchMarqueeBox]);
 
     useEffect(() => {
-        const handleWindowPointerMove = (event: PointerEvent) => {
+        const findTrackedTouch = (
+            touchList: TouchList,
+            touchId: number,
+        ) => {
+            for (let index = 0; index < touchList.length; index += 1) {
+                const touch = touchList.item(index);
+                if (touch && touch.identifier === touchId) {
+                    return touch;
+                }
+            }
+            return null;
+        };
+
+        const handleWindowTouchMove = (event: TouchEvent) => {
             const session = touchShiftSessionRef.current;
-            if (!session || event.pointerId !== session.pointerId) return;
+            if (!session) return;
+
+            const trackedTouch = findTrackedTouch(event.touches, session.touchId);
+            if (!trackedTouch) return;
 
             if (!session.activated) {
                 const distance = Math.hypot(
-                    event.clientX - session.startClientX,
-                    event.clientY - session.startClientY,
+                    trackedTouch.clientX - session.startClientX,
+                    trackedTouch.clientY - session.startClientY,
                 );
                 if (distance > TOUCH_SHIFT_MOVE_TOLERANCE) {
                     clearTouchShiftTimer();
@@ -1032,8 +1048,8 @@ export default function SpatialCanvasUI({
 
             event.preventDefault();
             const point = getCanvasPointFromClient(
-                event.clientX,
-                event.clientY,
+                trackedTouch.clientX,
+                trackedTouch.clientY,
             );
             if (!point) return;
 
@@ -1043,30 +1059,24 @@ export default function SpatialCanvasUI({
                           ...prev,
                           endX: point.x,
                           endY: point.y,
-                          endClientX: event.clientX,
-                          endClientY: event.clientY,
+                          endClientX: trackedTouch.clientX,
+                          endClientY: trackedTouch.clientY,
                       }
                     : prev,
             );
         };
 
         const finalizeTouchShift = async (
-            event: PointerEvent,
+            trackedTouch: Touch | null,
             cancelSelection = false,
         ) => {
             const session = touchShiftSessionRef.current;
-            if (!session || event.pointerId !== session.pointerId) return;
+            if (!session || !trackedTouch || trackedTouch.identifier !== session.touchId) {
+                return;
+            }
 
             const wasActivated = session.activated;
             const marqueeBox = touchMarqueeBoxRef.current;
-            const canvasViewport = canvasViewportRef.current;
-
-            if (
-                canvasViewport &&
-                canvasViewport.hasPointerCapture?.(event.pointerId)
-            ) {
-                canvasViewport.releasePointerCapture(event.pointerId);
-            }
 
             if (wasActivated && !cancelSelection && marqueeBox) {
                 await handleMarqueeSelectionComplete({
@@ -1097,27 +1107,42 @@ export default function SpatialCanvasUI({
             exitTouchShiftMode();
         };
 
-        const handleWindowPointerUp = (event: PointerEvent) => {
-            void finalizeTouchShift(event);
+        const handleWindowTouchEnd = (event: TouchEvent) => {
+            const session = touchShiftSessionRef.current;
+            if (!session) return;
+
+            const trackedTouch = findTrackedTouch(
+                event.changedTouches,
+                session.touchId,
+            );
+            void finalizeTouchShift(trackedTouch);
         };
 
-        const handleWindowPointerCancel = (event: PointerEvent) => {
-            void finalizeTouchShift(event, true);
+        const handleWindowTouchCancel = (event: TouchEvent) => {
+            const session = touchShiftSessionRef.current;
+            if (!session) return;
+
+            const trackedTouch = findTrackedTouch(
+                event.changedTouches,
+                session.touchId,
+            );
+            void finalizeTouchShift(trackedTouch, true);
         };
 
-        window.addEventListener("pointermove", handleWindowPointerMove, {
+        window.addEventListener("touchmove", handleWindowTouchMove, {
             passive: false,
         });
-        window.addEventListener("pointerup", handleWindowPointerUp);
-        window.addEventListener("pointercancel", handleWindowPointerCancel);
+        window.addEventListener("touchend", handleWindowTouchEnd, {
+            passive: false,
+        });
+        window.addEventListener("touchcancel", handleWindowTouchCancel, {
+            passive: false,
+        });
 
         return () => {
-            window.removeEventListener("pointermove", handleWindowPointerMove);
-            window.removeEventListener("pointerup", handleWindowPointerUp);
-            window.removeEventListener(
-                "pointercancel",
-                handleWindowPointerCancel,
-            );
+            window.removeEventListener("touchmove", handleWindowTouchMove);
+            window.removeEventListener("touchend", handleWindowTouchEnd);
+            window.removeEventListener("touchcancel", handleWindowTouchCancel);
         };
     }, [
         clearTouchShiftTimer,
@@ -1131,7 +1156,7 @@ export default function SpatialCanvasUI({
             id="spatial-canvas-container"
             ref={canvasViewportRef}
             className="absolute inset-0 bg-[#f4f4f5] overflow-hidden pointer-events-auto"
-            onPointerDownCapture={(e) => {
+            onTouchStartCapture={(e) => {
                 if (
                     document.activeElement &&
                     document.activeElement.tagName === "TEXTAREA" &&
@@ -1140,7 +1165,7 @@ export default function SpatialCanvasUI({
                     (document.activeElement as HTMLElement).blur();
                 }
 
-                if (e.pointerType !== "touch" || isShiftDown) return;
+                if (isShiftDown || e.touches.length !== 1) return;
 
                 const target = e.target as HTMLElement | null;
                 if (
@@ -1151,14 +1176,20 @@ export default function SpatialCanvasUI({
                     return;
                 }
 
-                const point = getCanvasPointFromClient(e.clientX, e.clientY);
+                const touch = e.touches[0];
+                if (!touch) return;
+
+                const point = getCanvasPointFromClient(
+                    touch.clientX,
+                    touch.clientY,
+                );
                 if (!point) return;
 
                 clearTouchShiftTimer();
                 touchShiftSessionRef.current = {
-                    pointerId: e.pointerId,
-                    startClientX: e.clientX,
-                    startClientY: e.clientY,
+                    touchId: touch.identifier,
+                    startClientX: touch.clientX,
+                    startClientY: touch.clientY,
                     startX: point.x,
                     startY: point.y,
                     activated: false,
@@ -1166,16 +1197,9 @@ export default function SpatialCanvasUI({
 
                 touchShiftTimerRef.current = setTimeout(() => {
                     const session = touchShiftSessionRef.current;
-                    if (!session || session.pointerId !== e.pointerId) return;
+                    if (!session || session.touchId !== touch.identifier) return;
 
                     session.activated = true;
-                    try {
-                        canvasViewportRef.current?.setPointerCapture?.(
-                            session.pointerId,
-                        );
-                    } catch {
-                        // Mobile browsers can reject capture on some elements.
-                    }
                     setIsTouchSelectionMode(true);
                     setIsShiftDown(true);
                     setTouchMarqueeBox({
@@ -1192,33 +1216,19 @@ export default function SpatialCanvasUI({
                     startInteraction();
                 }, TOUCH_SHIFT_HOLD_MS);
             }}
-            onPointerMoveCapture={(e) => {
+            onTouchMoveCapture={(e) => {
                 if (touchShiftSessionRef.current?.activated) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
             }}
-            onPointerUpCapture={(e) => {
-                if (
-                    canvasViewportRef.current?.hasPointerCapture?.(e.pointerId)
-                ) {
-                    canvasViewportRef.current.releasePointerCapture(
-                        e.pointerId,
-                    );
-                }
+            onTouchEndCapture={(e) => {
                 if (touchShiftSessionRef.current?.activated) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
             }}
-            onPointerCancelCapture={(e) => {
-                if (
-                    canvasViewportRef.current?.hasPointerCapture?.(e.pointerId)
-                ) {
-                    canvasViewportRef.current.releasePointerCapture(
-                        e.pointerId,
-                    );
-                }
+            onTouchCancelCapture={(e) => {
                 if (touchShiftSessionRef.current?.activated) {
                     e.preventDefault();
                     e.stopPropagation();

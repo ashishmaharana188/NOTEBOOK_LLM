@@ -15,29 +15,21 @@ import type { EchoChunk, EchoRecommendation } from "./echoTypes";
 import NotesFormUI from "../noteModule/notesFormUI";
 import AutoZoomTrigger from "./components/AutoZoomTrigger";
 import DraggableColumn from "./components/DraggableColumn";
-import EchoDashboardListView from "./components/EchoDashboardListView";
 import InteractiveChunkCard from "./components/InteractiveChunkCard";
 import MaximizedColumnView from "./components/MaximizedColumnView";
 import SavedClusterColumn from "./components/SavedClusterColumn";
 import FloatingNoteModal from "./modals/FloatingNoteModal";
 import useEchoDashboardState from "./hooks/useEchoDashboardState";
-import { useModelRuntime } from "../../system/ModelRuntimeProvider";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
 import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
-import useIsMobile from "../../../hooks/appTools/useIsMobile";
 
 const ECHO_COLUMN_WIDTH = 420;
 const ECHO_COLUMN_HEIGHT = 750;
 
 export default function EchoDashboardUI(props: any) {
-  const { runtime, loadRoles, unloadRoles } = useModelRuntime();
   const { publish } = useRefreshBus();
-  const isMobile = useIsMobile();
-  const [dashboardView, setDashboardView] = React.useState<"CANVAS" | "LIST">(
-    isMobile ? "LIST" : "CANVAS",
-  );
   const { isInteracting, startInteraction, settleInteraction } =
     useCanvasInteractionMode(140);
   const state = useEchoDashboardState(props);
@@ -141,78 +133,10 @@ export default function EchoDashboardUI(props: any) {
     [state.setCanvasScale, syncViewport],
   );
 
-  React.useEffect(() => {
-    if (
-      isMobile &&
-      (query || state.unsavedEchoes.length > 0 || recommendations.length > 0)
-    ) {
-      setDashboardView("LIST");
-    }
-  }, [isMobile, query, recommendations.length, state.unsavedEchoes.length]);
-
   return (
     <>
       <div className="relative h-full w-full">
-        <div className="absolute left-1/2 top-[7.25rem] z-[2500] -translate-x-1/2 pointer-events-auto sm:top-[4.75rem]">
-          <div className="inline-flex max-w-full overflow-x-auto rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
-            <button
-              type="button"
-              onClick={() => setDashboardView("CANVAS")}
-              className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${
-                dashboardView === "CANVAS"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              Canvas
-            </button>
-            <button
-              type="button"
-              onClick={() => setDashboardView("LIST")}
-              className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${
-                dashboardView === "LIST"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              List
-            </button>
-          </div>
-        </div>
-
-        <div className="absolute left-3 right-3 top-16 z-[2500] flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-xl pointer-events-auto sm:left-auto sm:right-6 sm:top-6 sm:flex-row sm:items-center sm:gap-3">
-          <div className="min-w-0">
-            <p className="text-[9px] font-black uppercase tracking-[0.22em] text-slate-400">
-              Reasoning Runtime
-            </p>
-            <p className="mt-1 truncate text-xs font-bold text-slate-700">
-              {runtime?.roles?.reasoning?.loaded
-                ? `Active: ${runtime?.roles?.reasoning?.profile || "reasoning"}`
-                : runtime?.roles?.reasoning?.enabled
-                  ? `Standby: ${runtime?.roles?.reasoning?.profile || "reasoning"}`
-                  : "Not enabled"}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => loadRoles(["reasoning"], true)}
-              className="rounded-xl bg-slate-900 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition-opacity hover:opacity-90"
-            >
-              Load
-            </button>
-            <button
-              type="button"
-              onClick={() => unloadRoles(["reasoning"])}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              Unload
-            </button>
-          </div>
-        </div>
-
-        {dashboardView === "CANVAS" ? (
-          <TransformWrapper
+        <TransformWrapper
             initialScale={0.6}
             initialPositionX={0}
             initialPositionY={0}
@@ -579,38 +503,6 @@ export default function EchoDashboardUI(props: any) {
               </>
             )}
           </TransformWrapper>
-        ) : (
-          <div className="h-full w-full overflow-hidden p-3 pt-28 sm:p-6 sm:pt-24">
-            <EchoDashboardListView
-              savedClusters={echoClusters}
-              globalNotes={state.globalNotes}
-              localLinkedNotes={state.localLinkedNotes}
-              unsavedEchoes={state.unsavedEchoes}
-              recommendations={recommendations}
-              loading={loading}
-              query={query}
-              activeBookTitle={activeBookTitle}
-              viewMode={state.viewMode}
-              setViewMode={state.setViewMode}
-              handleToggleActive={state.handleToggleActive}
-              handleSpawnCluster={state.handleSpawnCluster}
-              onCreateNoteFromEcho={handleCreateNoteFromEcho}
-              onManageNotes={(echoId: string) =>
-                state.setViewingEchoNotes({ echoId })
-              }
-              onOpenLinkedNote={(note: any) =>
-                state.setEchoNoteState({
-                  isOpen: true,
-                  groupId: note.group_id,
-                  prefill: "",
-                  prefillTitle: "",
-                  echoId: null,
-                  initialNote: note,
-                })
-              }
-            />
-          </div>
-        )}
       </div>
 
       {state.echoNoteState.isOpen && (
