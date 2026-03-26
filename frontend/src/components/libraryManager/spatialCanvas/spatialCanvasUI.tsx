@@ -26,6 +26,12 @@ import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteracti
 const TOUCH_SHIFT_HOLD_MS = 420;
 const TOUCH_SHIFT_MOVE_TOLERANCE = 14;
 
+type TouchPointLike = {
+    identifier: number;
+    clientX: number;
+    clientY: number;
+};
+
 export default function SpatialCanvasUI({
     clusters,
     notes: globalNotes = [],
@@ -978,6 +984,108 @@ export default function SpatialCanvasUI({
             return;
         }
     }, [exitTouchShiftMode, isTouchSelectionMode]);
+    const findTrackedTouch = useCallback(
+        (
+            touchList: {
+                length: number;
+                item(index: number): TouchPointLike | null;
+            },
+            touchId: number,
+        ) => {
+            for (let index = 0; index < touchList.length; index += 1) {
+                const touch = touchList.item(index);
+                if (touch && touch.identifier === touchId) {
+                    return touch;
+                }
+            }
+            return null;
+        },
+        [],
+    );
+    const syncTouchSelectionFromTouch = useCallback(
+        (trackedTouch: TouchPointLike) => {
+            const session = touchShiftSessionRef.current;
+            if (!session || trackedTouch.identifier !== session.touchId) {
+                return;
+            }
+
+            if (!session.activated) {
+                const distance = Math.hypot(
+                    trackedTouch.clientX - session.startClientX,
+                    trackedTouch.clientY - session.startClientY,
+                );
+                if (distance > TOUCH_SHIFT_MOVE_TOLERANCE) {
+                    clearTouchShiftTimer();
+                    touchShiftSessionRef.current = null;
+                    setIsTouchSelectionMode(false);
+                }
+                return;
+            }
+
+            const point = getCanvasPointFromClient(
+                trackedTouch.clientX,
+                trackedTouch.clientY,
+            );
+            if (!point) return;
+
+            setTouchMarqueeBox((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          endX: point.x,
+                          endY: point.y,
+                          endClientX: trackedTouch.clientX,
+                          endClientY: trackedTouch.clientY,
+                      }
+                    : prev,
+            );
+        },
+        [clearTouchShiftTimer, getCanvasPointFromClient],
+    );
+    const finalizeTouchSelection = useCallback(
+        async (trackedTouch: TouchPointLike | null, cancelSelection = false) => {
+            const session = touchShiftSessionRef.current;
+            if (
+                !session ||
+                !trackedTouch ||
+                trackedTouch.identifier !== session.touchId
+            ) {
+                return;
+            }
+
+            const wasActivated = session.activated;
+            const marqueeBox = touchMarqueeBoxRef.current;
+
+            if (wasActivated && !cancelSelection && marqueeBox) {
+                await handleMarqueeSelectionComplete({
+                    left: Math.min(marqueeBox.startX, marqueeBox.endX),
+                    right: Math.max(marqueeBox.startX, marqueeBox.endX),
+                    top: Math.min(marqueeBox.startY, marqueeBox.endY),
+                    bottom: Math.max(marqueeBox.startY, marqueeBox.endY),
+                    screenLeft: Math.min(
+                        marqueeBox.startClientX,
+                        marqueeBox.endClientX,
+                    ),
+                    screenRight: Math.max(
+                        marqueeBox.startClientX,
+                        marqueeBox.endClientX,
+                    ),
+                    screenTop: Math.min(
+                        marqueeBox.startClientY,
+                        marqueeBox.endClientY,
+                    ),
+                    screenBottom: Math.max(
+                        marqueeBox.startClientY,
+                        marqueeBox.endClientY,
+                    ),
+                });
+                suppressTouchClickUntilRef.current = Date.now() + 140;
+            }
+
+            exitTouchShiftMode();
+        },
+        [exitTouchShiftMode, handleMarqueeSelectionComplete],
+    );
     const touchMarqueeViewportBox = useMemo(() => {
         if (!touchMarqueeBox) return null;
 
@@ -1013,19 +1121,6 @@ export default function SpatialCanvasUI({
     }, [touchMarqueeBox]);
 
     useEffect(() => {
-        const findTrackedTouch = (
-            touchList: TouchList,
-            touchId: number,
-        ) => {
-            for (let index = 0; index < touchList.length; index += 1) {
-                const touch = touchList.item(index);
-                if (touch && touch.identifier === touchId) {
-                    return touch;
-                }
-            }
-            return null;
-        };
-
         const handleWindowTouchMove = (event: TouchEvent) => {
             const session = touchShiftSessionRef.current;
             if (!session) return;
@@ -1033,78 +1128,8 @@ export default function SpatialCanvasUI({
             const trackedTouch = findTrackedTouch(event.touches, session.touchId);
             if (!trackedTouch) return;
 
-            if (!session.activated) {
-                const distance = Math.hypot(
-                    trackedTouch.clientX - session.startClientX,
-                    trackedTouch.clientY - session.startClientY,
-                );
-                if (distance > TOUCH_SHIFT_MOVE_TOLERANCE) {
-                    clearTouchShiftTimer();
-                    touchShiftSessionRef.current = null;
-                    setIsTouchSelectionMode(false);
-                }
-                return;
-            }
-
             event.preventDefault();
-            const point = getCanvasPointFromClient(
-                trackedTouch.clientX,
-                trackedTouch.clientY,
-            );
-            if (!point) return;
-
-            setTouchMarqueeBox((prev) =>
-                prev
-                    ? {
-                          ...prev,
-                          endX: point.x,
-                          endY: point.y,
-                          endClientX: trackedTouch.clientX,
-                          endClientY: trackedTouch.clientY,
-                      }
-                    : prev,
-            );
-        };
-
-        const finalizeTouchShift = async (
-            trackedTouch: Touch | null,
-            cancelSelection = false,
-        ) => {
-            const session = touchShiftSessionRef.current;
-            if (!session || !trackedTouch || trackedTouch.identifier !== session.touchId) {
-                return;
-            }
-
-            const wasActivated = session.activated;
-            const marqueeBox = touchMarqueeBoxRef.current;
-
-            if (wasActivated && !cancelSelection && marqueeBox) {
-                await handleMarqueeSelectionComplete({
-                    left: Math.min(marqueeBox.startX, marqueeBox.endX),
-                    right: Math.max(marqueeBox.startX, marqueeBox.endX),
-                    top: Math.min(marqueeBox.startY, marqueeBox.endY),
-                    bottom: Math.max(marqueeBox.startY, marqueeBox.endY),
-                    screenLeft: Math.min(
-                        marqueeBox.startClientX,
-                        marqueeBox.endClientX,
-                    ),
-                    screenRight: Math.max(
-                        marqueeBox.startClientX,
-                        marqueeBox.endClientX,
-                    ),
-                    screenTop: Math.min(
-                        marqueeBox.startClientY,
-                        marqueeBox.endClientY,
-                    ),
-                    screenBottom: Math.max(
-                        marqueeBox.startClientY,
-                        marqueeBox.endClientY,
-                    ),
-                });
-                suppressTouchClickUntilRef.current = Date.now() + 350;
-            }
-
-            exitTouchShiftMode();
+            syncTouchSelectionFromTouch(trackedTouch);
         };
 
         const handleWindowTouchEnd = (event: TouchEvent) => {
@@ -1115,7 +1140,7 @@ export default function SpatialCanvasUI({
                 event.changedTouches,
                 session.touchId,
             );
-            void finalizeTouchShift(trackedTouch);
+            void finalizeTouchSelection(trackedTouch);
         };
 
         const handleWindowTouchCancel = (event: TouchEvent) => {
@@ -1126,7 +1151,7 @@ export default function SpatialCanvasUI({
                 event.changedTouches,
                 session.touchId,
             );
-            void finalizeTouchShift(trackedTouch, true);
+            void finalizeTouchSelection(trackedTouch, true);
         };
 
         window.addEventListener("touchmove", handleWindowTouchMove, {
@@ -1145,10 +1170,9 @@ export default function SpatialCanvasUI({
             window.removeEventListener("touchcancel", handleWindowTouchCancel);
         };
     }, [
-        clearTouchShiftTimer,
-        exitTouchShiftMode,
-        getCanvasPointFromClient,
-        handleMarqueeSelectionComplete,
+        findTrackedTouch,
+        finalizeTouchSelection,
+        syncTouchSelectionFromTouch,
     ]);
 
     return (
@@ -1212,29 +1236,67 @@ export default function SpatialCanvasUI({
                         endClientX: session.startClientX,
                         endClientY: session.startClientY,
                     });
-                    suppressTouchClickUntilRef.current = Date.now() + 350;
+                    suppressTouchClickUntilRef.current = Date.now() + 140;
                     startInteraction();
                 }, TOUCH_SHIFT_HOLD_MS);
             }}
             onTouchMoveCapture={(e) => {
-                if (touchShiftSessionRef.current?.activated) {
+                const session = touchShiftSessionRef.current;
+                if (!session) return;
+
+                const trackedTouch = findTrackedTouch(
+                    e.touches,
+                    session.touchId,
+                );
+                if (!trackedTouch) return;
+
+                syncTouchSelectionFromTouch(trackedTouch);
+                if (session.activated) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
             }}
             onTouchEndCapture={(e) => {
-                if (touchShiftSessionRef.current?.activated) {
+                const session = touchShiftSessionRef.current;
+                if (!session) return;
+
+                const trackedTouch = findTrackedTouch(
+                    e.changedTouches,
+                    session.touchId,
+                );
+                if (!trackedTouch) return;
+
+                if (session.activated) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
+                void finalizeTouchSelection(trackedTouch);
             }}
             onTouchCancelCapture={(e) => {
-                if (touchShiftSessionRef.current?.activated) {
+                const session = touchShiftSessionRef.current;
+                if (!session) return;
+
+                const trackedTouch = findTrackedTouch(
+                    e.changedTouches,
+                    session.touchId,
+                );
+                if (!trackedTouch) return;
+
+                if (session.activated) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
+                void finalizeTouchSelection(trackedTouch, true);
             }}
             onClickCapture={(e) => {
+                const target = e.target as HTMLElement | null;
+                if (
+                    target?.closest(
+                        "button, input, textarea, select, option, a, label, [role='button'], [contenteditable='true']",
+                    )
+                ) {
+                    return;
+                }
                 if (Date.now() < suppressTouchClickUntilRef.current) {
                     e.preventDefault();
                     e.stopPropagation();
