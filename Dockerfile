@@ -7,10 +7,13 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     sqlite3 \
     zstd \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
+RUN curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/bin/ollama && \
+    chmod +x /usr/bin/ollama
 
 # Set the working directory to the root of your app
 WORKDIR /app

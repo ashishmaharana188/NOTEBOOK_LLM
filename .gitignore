@@ -12,3 +12,5 @@ cognitivegraph-mobile
 cognition.index
 models/cognition.index
 models/*.index
+.env
+.env.local

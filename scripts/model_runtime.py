@@ -26,6 +26,10 @@ RUNTIME_PRESET_CLOUD_CPU = "cloud_cpu"
 RUNTIME_PRESET_LOCAL_CUDA_TEST = "local_cuda_test"
 ENV_RUNTIME_PRESET = "COGNITIVE_RUNTIME_PRESET"
 ENV_LOCAL_REASONING_OLLAMA_TAG = "COGNITIVE_LOCAL_REASONING_OLLAMA_TAG"
+ENV_FILES = (
+    os.path.join(BASE_DIR, ".env"),
+    os.path.join(BASE_DIR, ".env.local"),
+)
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "runtime_preset": RUNTIME_PRESET_CLOUD_CPU,
@@ -175,6 +179,32 @@ class RuntimeLoadError(RuntimeError):
     pass
 
 
+def _load_env_file(path: str) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    if not os.path.exists(path):
+        return values
+
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            if key:
+                values[key] = value
+    return values
+
+
+def _build_runtime_env(base_env: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    merged = dict(base_env if base_env is not None else os.environ)
+    for env_file in ENV_FILES:
+        for key, value in _load_env_file(env_file).items():
+            merged.setdefault(key, value)
+    return merged
+
+
 class ModelRuntimeManager:
     def __init__(
         self,
@@ -184,7 +214,7 @@ class ModelRuntimeManager:
         config_path: Optional[str] = None,
         start_sweeper: bool = True,
     ):
-        self._env = env if env is not None else os.environ
+        self._env = _build_runtime_env(env)
         self._data_dir = data_dir or DATA_DIR
         self._config_path = config_path or CONFIG_PATH
         self._env_runtime_preset: Optional[str] = None

@@ -42,6 +42,8 @@ Environment variables:
 - `COGNITIVE_RUNTIME_PRESET=local_cuda_test`
 - `COGNITIVE_LOCAL_REASONING_OLLAMA_TAG=<your exact local Ollama Phi-3.5 tag>`
 
+The backend now reads `.env` and `.env.local` from the repo root automatically. For local development, edit `.env.local` instead of exporting variables manually.
+
 Example local startup:
 
 ```bash
