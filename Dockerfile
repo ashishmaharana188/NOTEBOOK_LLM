@@ -11,8 +11,16 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Ollama
-RUN curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/bin/ollama && \
+# Install Ollama using the official Linux package format
+RUN ARCH="$(dpkg --print-architecture)" && \
+    case "$ARCH" in \
+        amd64) OLLAMA_ARCH="amd64" ;; \
+        arm64) OLLAMA_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://ollama.com/download/ollama-linux-${OLLAMA_ARCH}.tar.zst" -o /tmp/ollama.tar.zst && \
+    tar --zstd -xf /tmp/ollama.tar.zst -C /usr && \
+    rm -f /tmp/ollama.tar.zst && \
     chmod +x /usr/bin/ollama
 
 # Set the working directory to the root of your app
