@@ -781,7 +781,33 @@ class ModelRuntimeManager:
                 names.append(name.strip())
         return names
 
-    def _resolve_ollama_model_name(self, requested_model: str) -> str:
+    def _pull_ollama_model(self, requested_model: str):
+        logger.info(f"Pulling missing Ollama model '{requested_model}'...")
+        try:
+            result = subprocess.run(
+                ["ollama", "pull", requested_model],
+                capture_output=True,
+                text=True,
+                timeout=1800,
+            )
+        except FileNotFoundError as error:
+            raise RuntimeLoadError(
+                "Ollama is not installed in the current environment."
+            ) from error
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeLoadError(
+                f"Ollama model pull timed out for '{requested_model}'."
+            ) from error
+
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeLoadError(
+                f"Failed to pull Ollama model '{requested_model}'. {detail}".strip()
+            )
+
+    def _resolve_ollama_model_name(
+        self, requested_model: str, allow_pull: bool = False
+    ) -> str:
         names = self._get_ollama_model_names()
         if requested_model in names:
             return requested_model
@@ -796,6 +822,10 @@ class ModelRuntimeManager:
         if candidates:
             latest = next((name for name in candidates if name.endswith(":latest")), None)
             return latest or sorted(candidates)[0]
+
+        if allow_pull:
+            self._pull_ollama_model(requested_model)
+            return self._resolve_ollama_model_name(requested_model, allow_pull=False)
 
         installed = ", ".join(names[:8]) if names else "none"
         raise RuntimeLoadError(
@@ -963,7 +993,8 @@ class ModelRuntimeManager:
             resolved_model = self._resolve_ollama_model_name(
                 self.get_resolved_reasoning_model_tag(
                     profile=target_profile, require_env=True
-                )
+                ),
+                allow_pull=True,
             )
             self._ollama_generate(
                 {
