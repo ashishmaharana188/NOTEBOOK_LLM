@@ -15,6 +15,7 @@ const roleTitles = {
 const runtimePresetPayloads = {
   cloud_cpu: {
     runtime_preset: "cloud_cpu",
+    local_reasoning_ollama_tag: "phi3.5:latest",
     embedding_profile: "all-minilm-l6-v2",
     reasoning_profile: "qwen2.5:0.5b-instruct",
     embedding_timeout_minutes: 0,
@@ -28,6 +29,7 @@ const runtimePresetPayloads = {
   },
   local_cuda_test: {
     runtime_preset: "local_cuda_test",
+    local_reasoning_ollama_tag: "phi3.5:latest",
     embedding_profile: "bge-m3",
     reasoning_profile: "phi3.5-local-q4",
     embedding_timeout_minutes: 5,
@@ -96,7 +98,13 @@ export default function SystemConfigPanel() {
   };
 
   const applyPreset = async (presetId: keyof typeof runtimePresetPayloads) => {
-    await persist(runtimePresetPayloads[presetId]);
+    const nextPreset = runtimePresetPayloads[presetId];
+    await persist({
+      ...nextPreset,
+      local_reasoning_ollama_tag:
+        draft?.local_reasoning_ollama_tag ||
+        nextPreset.local_reasoning_ollama_tag,
+    });
   };
 
   const statusPill =
@@ -145,7 +153,7 @@ export default function SystemConfigPanel() {
 
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                  Runtime Preset
+                  Runtime Mode
                 </p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <button
@@ -173,9 +181,32 @@ export default function SystemConfigPanel() {
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-600">
                   {isLocalCudaPreset
-                    ? "Sequential single-role CUDA mode with eager embedding unload and 5-minute idle eviction."
+                    ? "CUDA mode is active. The runtime will use BGE-M3 + your local Phi Ollama tag with sequential GPU switching."
                     : "Cloud-safe CPU mode keeps the current small-model production defaults."}
                 </p>
+                {isLocalCudaPreset && (
+                  <label className="mt-4 block text-sm font-bold text-slate-700">
+                    Local Phi Ollama Tag
+                    <input
+                      type="text"
+                      value={draft.local_reasoning_ollama_tag || ""}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          local_reasoning_ollama_tag: e.target.value,
+                        })
+                      }
+                      onBlur={() =>
+                        persist({
+                          local_reasoning_ollama_tag:
+                            draft.local_reasoning_ollama_tag || "phi3.5:latest",
+                        })
+                      }
+                      placeholder="phi3.5:latest"
+                      className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400"
+                    />
+                  </label>
+                )}
                 {preset?.env_override && (
                   <p className="mt-2 text-xs font-semibold text-amber-700">
                     Startup override active: {preset.env_override}
@@ -461,7 +492,7 @@ export default function SystemConfigPanel() {
               </p>
               <p className="mt-4 text-sm leading-6 text-slate-600">
                 {isLocalCudaPreset
-                  ? `Local CUDA test mode runs ${draft.embedding_profile} and the configured Phi-3.5 Ollama tag sequentially on ${policy.execution_target || "cuda"}. Embeddings unload after each task and both roles auto-evict after ${(policy.idle_unload_seconds?.reasoning || 0) / 60 || 5} idle minutes.`
+                  ? `CUDA mode runs ${draft.embedding_profile} and ${draft.local_reasoning_ollama_tag || resolved.reasoning_model_tag || "your configured Phi tag"} sequentially on ${policy.execution_target || "cuda"}. Embeddings unload after each task and both roles auto-evict after ${(policy.idle_unload_seconds?.reasoning || 0) / 60 || 5} idle minutes.`
                   : policy.single_active_role
                     ? `The runtime keeps only one model role active at a time on ${policy.execution_target || "the configured device"}. Loading embeddings unloads reasoning, and loading reasoning unloads embeddings.`
                     : "CPU mode can keep both MiniLM embeddings and the active reasoning model resident together, so switching between retrieval and generation avoids extra reload latency."}

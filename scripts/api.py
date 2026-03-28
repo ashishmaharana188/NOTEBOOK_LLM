@@ -236,6 +236,7 @@ class CancelIngestRequest(BaseModel):
 class RuntimeConfigRequest(BaseModel):
     runtime_preset: Optional[str] = None
     ollama_endpoint: Optional[str] = None
+    local_reasoning_ollama_tag: Optional[str] = None
     embedding_profile: Optional[str] = None
     reasoning_profile: Optional[str] = None
     embedding_timeout_minutes: Optional[int] = None

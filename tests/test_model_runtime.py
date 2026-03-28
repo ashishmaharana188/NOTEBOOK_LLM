@@ -50,6 +50,7 @@ class ModelRuntimeManagerTests(unittest.TestCase):
         )
         self.assertEqual(manager.get_runtime_snapshot()["config"]["embedding_profile"], "all-minilm-l6-v2")
         self.assertEqual(manager.get_runtime_snapshot()["config"]["reasoning_profile"], "qwen2.5:0.5b-instruct")
+        self.assertEqual(manager.get_runtime_snapshot()["config"]["local_reasoning_ollama_tag"], "phi3.5:latest")
         self.assertFalse(manager.get_runtime_snapshot()["config"]["embedding_eager_unload"])
 
     def test_local_cuda_env_preset_applies_local_defaults(self):
@@ -71,15 +72,16 @@ class ModelRuntimeManagerTests(unittest.TestCase):
         self.assertTrue(config["embedding_eager_unload"])
         self.assertEqual(snapshot["resolved"]["reasoning_model_tag"], "phi3.5-mini-q4-test")
 
-    def test_local_cuda_startup_requires_reasoning_tag_env(self):
-        with self.assertRaises(model_runtime.RuntimeLoadError) as error:
-            self.make_manager(
-                env={
-                    model_runtime.ENV_RUNTIME_PRESET: model_runtime.RUNTIME_PRESET_LOCAL_CUDA_TEST,
-                }
-            )
+    def test_local_cuda_uses_configured_reasoning_tag_without_env(self):
+        manager = self.make_manager()
 
-        self.assertIn(model_runtime.ENV_LOCAL_REASONING_OLLAMA_TAG, str(error.exception))
+        snapshot = manager.update_config(
+            {"runtime_preset": model_runtime.RUNTIME_PRESET_LOCAL_CUDA_TEST}
+        )
+
+        self.assertEqual(snapshot["config"]["runtime_preset"], model_runtime.RUNTIME_PRESET_LOCAL_CUDA_TEST)
+        self.assertEqual(snapshot["config"]["local_reasoning_ollama_tag"], "phi3.5:latest")
+        self.assertEqual(snapshot["resolved"]["reasoning_model_tag"], "phi3.5:latest")
 
     def test_embedding_eager_unload_runs_after_embedding_task(self):
         with mock.patch.object(

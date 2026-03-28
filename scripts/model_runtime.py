@@ -34,6 +34,7 @@ ENV_FILES = (
 DEFAULT_CONFIG: Dict[str, Any] = {
     "runtime_preset": RUNTIME_PRESET_CLOUD_CPU,
     "ollama_endpoint": "http://localhost:11434",
+    "local_reasoning_ollama_tag": "phi3.5:latest",
     "embedding_profile": "all-minilm-l6-v2",
     "reasoning_profile": "qwen2.5:0.5b-instruct",
     "embedding_timeout_minutes": 0,
@@ -49,6 +50,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 RUNTIME_PRESET_OVERRIDES: Dict[str, Dict[str, Any]] = {
     RUNTIME_PRESET_CLOUD_CPU: {
         "runtime_preset": RUNTIME_PRESET_CLOUD_CPU,
+        "local_reasoning_ollama_tag": "phi3.5:latest",
         "embedding_profile": "all-minilm-l6-v2",
         "reasoning_profile": "qwen2.5:0.5b-instruct",
         "embedding_timeout_minutes": 0,
@@ -62,6 +64,7 @@ RUNTIME_PRESET_OVERRIDES: Dict[str, Dict[str, Any]] = {
     },
     RUNTIME_PRESET_LOCAL_CUDA_TEST: {
         "runtime_preset": RUNTIME_PRESET_LOCAL_CUDA_TEST,
+        "local_reasoning_ollama_tag": "phi3.5:latest",
         "embedding_profile": "bge-m3",
         "reasoning_profile": "phi3.5-local-q4",
         "embedding_timeout_minutes": 5,
@@ -138,6 +141,7 @@ MODEL_CATALOG: Dict[str, Dict[str, Dict[str, Any]]] = {
             "label": "Phi-3.5 Mini Instruct (Local Ollama Q4)",
             "provider": "ollama",
             "model_id": "",
+            "config_model_key": "local_reasoning_ollama_tag",
             "env_model_var": ENV_LOCAL_REASONING_OLLAMA_TAG,
             "est_ram_gb": 3.2,
             "est_vram_gb": 2.7,
@@ -303,14 +307,28 @@ class ModelRuntimeManager:
         return {**payload, **RUNTIME_PRESET_OVERRIDES[preset]}
 
     def _resolve_model_id(
-        self, role: str, profile: str, require_env: bool = True
+        self,
+        role: str,
+        profile: str,
+        require_env: bool = True,
+        config: Optional[Mapping[str, Any]] = None,
     ) -> Optional[str]:
         entry = self._get_catalog_entry(role, profile)
+        active_config = config or getattr(self, "_config", {}) or {}
+
         env_model_var = entry.get("env_model_var")
         if env_model_var:
             env_value = self._get_env_value(str(env_model_var))
             if env_value:
                 return env_value
+
+        config_model_key = str(entry.get("config_model_key") or "").strip()
+        if config_model_key:
+            configured_model = str(active_config.get(config_model_key) or "").strip()
+            if configured_model:
+                return configured_model
+
+        if env_model_var:
             if require_env:
                 raise RuntimeLoadError(
                     f"{role.title()} profile '{profile}' requires the "
@@ -326,11 +344,18 @@ class ModelRuntimeManager:
         return model_id or None
 
     def get_resolved_reasoning_model_tag(
-        self, profile: Optional[str] = None, require_env: bool = False
+        self,
+        profile: Optional[str] = None,
+        require_env: bool = False,
+        config: Optional[Mapping[str, Any]] = None,
     ) -> Optional[str]:
-        target_profile = profile or self._config["reasoning_profile"]
+        active_config = config or self._config
+        target_profile = profile or active_config["reasoning_profile"]
         return self._resolve_model_id(
-            "reasoning", target_profile, require_env=require_env
+            "reasoning",
+            target_profile,
+            require_env=require_env,
+            config=active_config,
         )
 
     def _validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
@@ -342,6 +367,7 @@ class ModelRuntimeManager:
                     "env_model_var"
                 )
             ),
+            config=config,
         )
         return config
 
@@ -390,6 +416,10 @@ class ModelRuntimeManager:
         if runtime_preset not in RUNTIME_PRESET_OVERRIDES:
             runtime_preset = RUNTIME_PRESET_CLOUD_CPU
         normalized["runtime_preset"] = runtime_preset
+        normalized["local_reasoning_ollama_tag"] = str(
+            normalized.get("local_reasoning_ollama_tag")
+            or DEFAULT_CONFIG["local_reasoning_ollama_tag"]
+        ).strip()
         normalized["embedding_eager_unload"] = self._normalize_bool(
             normalized.get("embedding_eager_unload"), default=False
         )

@@ -23,6 +23,8 @@ From the repo root, start the local backend with:
 npm run backend:dev
 ```
 
+`backend:dev` is CPU by default.
+
 Start the frontend dev server with:
 
 ```bash
@@ -31,18 +33,18 @@ npm run frontend:dev
 
 ## Local CUDA Runtime
 
-For local testing you can switch the backend from the default cloud-safe CPU runtime to the `local_cuda_test` preset.
+For local testing you can switch the backend from the default cloud-safe CPU runtime to the `local_cuda_test` preset from the System menu.
 
 Prerequisites:
 - Run `ollama serve`
 - Install a local Phi-3.5 Mini Instruct Q4 Ollama model
 - Start the backend with CUDA available for PyTorch
 
-Environment variables:
+CPU is the default mode. In the System menu, switch to `Local CUDA Test` and set the `Local Phi Ollama Tag` field to the exact tag from `ollama list`.
+
+Optional startup overrides still exist:
 - `COGNITIVE_RUNTIME_PRESET=local_cuda_test`
 - `COGNITIVE_LOCAL_REASONING_OLLAMA_TAG=<your exact local Ollama Phi-3.5 tag>`
-
-The backend now reads `.env` and `.env.local` from the repo root automatically. For local development, edit `.env.local` instead of exporting variables manually.
 
 Example local startup:
 

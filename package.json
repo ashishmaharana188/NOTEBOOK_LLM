@@ -2,7 +2,7 @@
   "name": "cognitiveGraph",
   "private": true,
   "scripts": {
-    "backend:dev": "python -m uvicorn scripts.api:app --reload --host 127.0.0.1 --port 8000",
+    "backend:dev": "cognition_env/Scripts/python.exe -m uvicorn scripts.api:app --reload --host 127.0.0.1 --port 8000",
     "frontend:dev": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build"
   }
