@@ -1,10 +1,12 @@
 source cognition_env/Scripts/activate
 uvicorn scripts.api:app --reload
 python -m uvicorn scripts.api:app --reload
+npm run backend:dev
+npm run frontend:dev
 
 
 git rm -r --cached .
 git add .
 git commit -am 'git cache cleared'
 git push
- git push origin main:hf-deploy2 --force
+git push origin main:hf-deploy2 --force

@@ -123,15 +123,17 @@ def start_ollama_service():
 
 
 def warm_up_model():
-    reasoning_profile = runtime_manager.get_runtime_snapshot()["config"].get(
+    runtime_snapshot = runtime_manager.get_runtime_snapshot()
+    reasoning_profile = runtime_snapshot["config"].get(
         "reasoning_profile", "qwen2.5:0.5b-instruct"
     )
+    resolved_model = runtime_snapshot.get("resolved", {}).get("reasoning_model_tag")
     logger.info(f"🔥 Warming up reasoning model ({reasoning_profile})...")
     try:
         requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": reasoning_profile,
+                "model": resolved_model or reasoning_profile,
                 "prompt": "Hi",
                 "stream": False,
                 "options": {"num_ctx": 128},
@@ -232,6 +234,7 @@ class CancelIngestRequest(BaseModel):
 
 
 class RuntimeConfigRequest(BaseModel):
+    runtime_preset: Optional[str] = None
     ollama_endpoint: Optional[str] = None
     embedding_profile: Optional[str] = None
     reasoning_profile: Optional[str] = None
@@ -240,6 +243,7 @@ class RuntimeConfigRequest(BaseModel):
     embedding_placement: Optional[str] = None
     reasoning_placement: Optional[str] = None
     embedding_precision: Optional[str] = None
+    embedding_eager_unload: Optional[bool] = None
     embedding_low_memory_profile: Optional[str] = None
     reasoning_low_memory_profile: Optional[str] = None
 

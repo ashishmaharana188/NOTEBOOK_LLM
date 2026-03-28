@@ -12,6 +12,35 @@ const roleTitles = {
   reasoning: "Reasoning Model",
 } as const;
 
+const runtimePresetPayloads = {
+  cloud_cpu: {
+    runtime_preset: "cloud_cpu",
+    embedding_profile: "all-minilm-l6-v2",
+    reasoning_profile: "qwen2.5:0.5b-instruct",
+    embedding_timeout_minutes: 0,
+    reasoning_timeout_minutes: 0,
+    embedding_placement: "cpu",
+    reasoning_placement: "cpu",
+    embedding_precision: "fp32",
+    embedding_eager_unload: false,
+    embedding_low_memory_profile: "paraphrase-multilingual-minilm-l12-v2",
+    reasoning_low_memory_profile: "qwen2.5:0.5b-instruct",
+  },
+  local_cuda_test: {
+    runtime_preset: "local_cuda_test",
+    embedding_profile: "bge-m3",
+    reasoning_profile: "phi3.5-local-q4",
+    embedding_timeout_minutes: 5,
+    reasoning_timeout_minutes: 5,
+    embedding_placement: "cuda",
+    reasoning_placement: "cuda",
+    embedding_precision: "fp16",
+    embedding_eager_unload: true,
+    embedding_low_memory_profile: "bge-m3",
+    reasoning_low_memory_profile: "phi3.5-local-q4",
+  },
+} as const;
+
 export default function SystemConfigPanel() {
   const {
     runtime,
@@ -36,6 +65,10 @@ export default function SystemConfigPanel() {
   const catalog = runtime?.catalog || {};
   const service = runtime?.service || {};
   const policy = runtime?.policy || {};
+  const resolved = runtime?.resolved || {};
+  const preset = runtime?.preset || {};
+  const activePreset = draft?.runtime_preset || preset?.active || "cloud_cpu";
+  const isLocalCudaPreset = activePreset === "local_cuda_test";
 
   const profileOptions = useMemo(
     () => ({
@@ -62,6 +95,10 @@ export default function SystemConfigPanel() {
     await saveConfig(updates);
   };
 
+  const applyPreset = async (presetId: keyof typeof runtimePresetPayloads) => {
+    await persist(runtimePresetPayloads[presetId]);
+  };
+
   const statusPill =
     service.state === "running_managed"
       ? "bg-emerald-100 text-emerald-700"
@@ -76,33 +113,75 @@ export default function SystemConfigPanel() {
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="rounded-[28px] mt-15 border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <span
-                className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] ${statusPill}`}
-              >
-                {service.state || "unknown"}
-              </span>
-              <button
-                type="button"
-                onClick={() => connectOllama()}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                Connect
-              </button>
-              <button
-                type="button"
-                onClick={() => startOllama()}
-                className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
-              >
-                Start Service
-              </button>
-              <button
-                type="button"
-                onClick={() => stopOllama()}
-                className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100"
-              >
-                Stop Managed
-              </button>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em] ${statusPill}`}
+                >
+                  {service.state || "unknown"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => connectOllama()}
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Connect
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startOllama()}
+                  className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
+                >
+                  Start Service
+                </button>
+                <button
+                  type="button"
+                  onClick={() => stopOllama()}
+                  className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100"
+                >
+                  Stop Managed
+                </button>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  Runtime Preset
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("cloud_cpu")}
+                    className={`rounded-2xl px-4 py-2 text-sm font-bold transition-colors ${
+                      activePreset === "cloud_cpu"
+                        ? "bg-slate-900 text-white"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    Cloud CPU
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("local_cuda_test")}
+                    className={`rounded-2xl px-4 py-2 text-sm font-bold transition-colors ${
+                      activePreset === "local_cuda_test"
+                        ? "bg-emerald-600 text-white"
+                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    Local CUDA Test
+                  </button>
+                </div>
+                <p className="mt-3 text-sm font-semibold text-slate-600">
+                  {isLocalCudaPreset
+                    ? "Sequential single-role CUDA mode with eager embedding unload and 5-minute idle eviction."
+                    : "Cloud-safe CPU mode keeps the current small-model production defaults."}
+                </p>
+                {preset?.env_override && (
+                  <p className="mt-2 text-xs font-semibold text-amber-700">
+                    Startup override active: {preset.env_override}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -211,9 +290,11 @@ export default function SystemConfigPanel() {
                           Runtime Policy
                         </p>
                         <p className="mt-2 font-semibold">
-                          {policy.single_active_role
-                            ? "The runtime keeps one active model role at a time to stay inside the configured memory target."
-                            : "On CPU deployments, embeddings and reasoning can remain loaded together to avoid model reload churn."}
+                          {isLocalCudaPreset
+                            ? "Local CUDA mode keeps reasoning and embeddings on a single active GPU slot. Loading one role unloads the other."
+                            : policy.single_active_role
+                              ? "The runtime keeps one active model role at a time to stay inside the configured memory target."
+                              : "On CPU deployments, embeddings and reasoning can remain loaded together to avoid model reload churn."}
                         </p>
                       </div>
                     )}
@@ -253,10 +334,26 @@ export default function SystemConfigPanel() {
                         </span>
                       </p>
                       {role === "embedding" && (
+                        <>
+                          <p className="mt-1 font-semibold">
+                            Precision:{" "}
+                            <span className="font-black text-slate-900">
+                              {state.precision || draft[precisionKey] || "fp32"}
+                            </span>
+                          </p>
+                          <p className="mt-1 font-semibold">
+                            Eager Unload:{" "}
+                            <span className="font-black text-slate-900">
+                              {resolved.embedding_eager_unload ? "enabled" : "disabled"}
+                            </span>
+                          </p>
+                        </>
+                      )}
+                      {role === "reasoning" && (
                         <p className="mt-1 font-semibold">
-                          Precision:{" "}
-                          <span className="font-black text-slate-900">
-                            {state.precision || draft[precisionKey] || "fp32"}
+                          Resolved Ollama Tag:{" "}
+                          <span className="font-black text-slate-900 break-all">
+                            {resolved.reasoning_model_tag || "not configured"}
                           </span>
                         </p>
                       )}
@@ -269,9 +366,11 @@ export default function SystemConfigPanel() {
                       <p className="mt-1 font-semibold">
                         Policy:{" "}
                         <span className="font-black text-slate-900">
-                          {policy.single_active_role
-                            ? "single active role, memory-optimized"
-                            : "shared role loading"}
+                          {policy.cuda_role_strategy === "single_active_sequential"
+                            ? "sequential single-role"
+                            : policy.single_active_role
+                              ? "single active role, memory-optimized"
+                              : "shared role loading"}
                         </span>
                       </p>
                     </div>
@@ -354,10 +453,18 @@ export default function SystemConfigPanel() {
                   {preflight?.projected?.vram_gb ?? 0} GB
                 </span>
               </p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                Peak Sequential VRAM:{" "}
+                <span className="font-black text-slate-900">
+                  {preflight?.projected?.peak_sequential_vram_gb ?? 0} GB
+                </span>
+              </p>
               <p className="mt-4 text-sm leading-6 text-slate-600">
-                {policy.single_active_role
-                  ? `The runtime keeps only one model role active at a time on ${policy.execution_target || "the configured device"}. Loading embeddings unloads reasoning, and loading reasoning unloads embeddings.`
-                  : "CPU mode can keep both MiniLM embeddings and the active reasoning model resident together, so switching between retrieval and generation avoids extra reload latency."}
+                {isLocalCudaPreset
+                  ? `Local CUDA test mode runs ${draft.embedding_profile} and the configured Phi-3.5 Ollama tag sequentially on ${policy.execution_target || "cuda"}. Embeddings unload after each task and both roles auto-evict after ${(policy.idle_unload_seconds?.reasoning || 0) / 60 || 5} idle minutes.`
+                  : policy.single_active_role
+                    ? `The runtime keeps only one model role active at a time on ${policy.execution_target || "the configured device"}. Loading embeddings unloads reasoning, and loading reasoning unloads embeddings.`
+                    : "CPU mode can keep both MiniLM embeddings and the active reasoning model resident together, so switching between retrieval and generation avoids extra reload latency."}
               </p>
             </div>
           </div>

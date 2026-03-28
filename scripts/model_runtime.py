@@ -5,7 +5,7 @@ import os
 import subprocess
 import threading
 import time
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
 
 import requests
 import torch
@@ -22,8 +22,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 CONFIG_PATH = os.path.join(DATA_DIR, "system_runtime_config.json")
 EMBEDDING_STORAGE_DIM = 1024
+RUNTIME_PRESET_CLOUD_CPU = "cloud_cpu"
+RUNTIME_PRESET_LOCAL_CUDA_TEST = "local_cuda_test"
+ENV_RUNTIME_PRESET = "COGNITIVE_RUNTIME_PRESET"
+ENV_LOCAL_REASONING_OLLAMA_TAG = "COGNITIVE_LOCAL_REASONING_OLLAMA_TAG"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    "runtime_preset": RUNTIME_PRESET_CLOUD_CPU,
     "ollama_endpoint": "http://localhost:11434",
     "embedding_profile": "all-minilm-l6-v2",
     "reasoning_profile": "qwen2.5:0.5b-instruct",
@@ -32,8 +37,38 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "embedding_placement": "cpu",
     "reasoning_placement": "cpu",
     "embedding_precision": "fp32",
+    "embedding_eager_unload": False,
     "embedding_low_memory_profile": "paraphrase-multilingual-minilm-l12-v2",
     "reasoning_low_memory_profile": "qwen2.5:0.5b-instruct",
+}
+
+RUNTIME_PRESET_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    RUNTIME_PRESET_CLOUD_CPU: {
+        "runtime_preset": RUNTIME_PRESET_CLOUD_CPU,
+        "embedding_profile": "all-minilm-l6-v2",
+        "reasoning_profile": "qwen2.5:0.5b-instruct",
+        "embedding_timeout_minutes": 0,
+        "reasoning_timeout_minutes": 0,
+        "embedding_placement": "cpu",
+        "reasoning_placement": "cpu",
+        "embedding_precision": "fp32",
+        "embedding_eager_unload": False,
+        "embedding_low_memory_profile": "paraphrase-multilingual-minilm-l12-v2",
+        "reasoning_low_memory_profile": "qwen2.5:0.5b-instruct",
+    },
+    RUNTIME_PRESET_LOCAL_CUDA_TEST: {
+        "runtime_preset": RUNTIME_PRESET_LOCAL_CUDA_TEST,
+        "embedding_profile": "bge-m3",
+        "reasoning_profile": "phi3.5-local-q4",
+        "embedding_timeout_minutes": 5,
+        "reasoning_timeout_minutes": 5,
+        "embedding_placement": "cuda",
+        "reasoning_placement": "cuda",
+        "embedding_precision": "fp16",
+        "embedding_eager_unload": True,
+        "embedding_low_memory_profile": "bge-m3",
+        "reasoning_low_memory_profile": "phi3.5-local-q4",
+    },
 }
 
 MODEL_CATALOG: Dict[str, Dict[str, Dict[str, Any]]] = {
@@ -64,6 +99,19 @@ MODEL_CATALOG: Dict[str, Dict[str, Dict[str, Any]]] = {
             "supports_bf16": False,
             "dual_vram_profile": "all-minilm-l6-v2",
         },
+        "bge-m3": {
+            "label": "BGE-M3",
+            "provider": "native",
+            "model_id": "BAAI/bge-m3",
+            "embedding_dim": 1024,
+            "est_ram_gb": 2.8,
+            "est_vram_gb_fp32": 2.7,
+            "est_vram_gb_bf16": 1.45,
+            "est_vram_gb_fp16": 1.35,
+            "supports_fp16": True,
+            "supports_bf16": True,
+            "dual_vram_profile": "bge-m3",
+        },
     },
     "reasoning": {
         "qwen2.5:1.5b-instruct": {
@@ -81,6 +129,15 @@ MODEL_CATALOG: Dict[str, Dict[str, Dict[str, Any]]] = {
             "est_ram_gb": 1.2,
             "est_vram_gb": 0.45,
             "dual_vram_profile": "qwen2.5:0.5b-instruct",
+        },
+        "phi3.5-local-q4": {
+            "label": "Phi-3.5 Mini Instruct (Local Ollama Q4)",
+            "provider": "ollama",
+            "model_id": "",
+            "env_model_var": ENV_LOCAL_REASONING_OLLAMA_TAG,
+            "est_ram_gb": 3.2,
+            "est_vram_gb": 2.7,
+            "dual_vram_profile": "phi3.5-local-q4",
         },
     },
 }
@@ -119,8 +176,19 @@ class RuntimeLoadError(RuntimeError):
 
 
 class ModelRuntimeManager:
-    def __init__(self):
-        os.makedirs(DATA_DIR, exist_ok=True)
+    def __init__(
+        self,
+        *,
+        env: Optional[Mapping[str, str]] = None,
+        data_dir: Optional[str] = None,
+        config_path: Optional[str] = None,
+        start_sweeper: bool = True,
+    ):
+        self._env = env if env is not None else os.environ
+        self._data_dir = data_dir or DATA_DIR
+        self._config_path = config_path or CONFIG_PATH
+        self._env_runtime_preset: Optional[str] = None
+        os.makedirs(self._data_dir, exist_ok=True)
         self._lock = threading.RLock()
         self._embedding_execution_lock = threading.RLock()
         self._broadcast: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -153,12 +221,14 @@ class ModelRuntimeManager:
                 "device": None,
             },
         }
-        self._sweeper = threading.Thread(
-            target=self._sweeper_loop,
-            name="model-runtime-sweeper",
-            daemon=True,
-        )
-        self._sweeper.start()
+        self._sweeper: Optional[threading.Thread] = None
+        if start_sweeper:
+            self._sweeper = threading.Thread(
+                target=self._sweeper_loop,
+                name="model-runtime-sweeper",
+                daemon=True,
+            )
+            self._sweeper.start()
 
     def set_broadcaster(self, callback: Callable[[Dict[str, Any]], None]):
         self._broadcast = callback
@@ -170,26 +240,129 @@ class ModelRuntimeManager:
             except Exception as error:  # pragma: no cover - best effort
                 logger.warning(f"Runtime broadcast failed: {error}")
 
+    def _get_env_value(self, key: str) -> str:
+        value = self._env.get(key, "")
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _normalize_bool(self, value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
+    def _normalize_timeout(self, value: Any, default: int) -> int:
+        try:
+            return max(0, int(value))
+        except Exception:
+            return max(0, int(default))
+
+    def _apply_runtime_preset(
+        self, payload: Dict[str, Any], runtime_preset: str
+    ) -> Dict[str, Any]:
+        preset = str(runtime_preset or "").strip()
+        if preset not in RUNTIME_PRESET_OVERRIDES:
+            raise RuntimeLoadError(
+                f"Unknown runtime preset '{runtime_preset}'. Expected one of: "
+                f"{', '.join(sorted(RUNTIME_PRESET_OVERRIDES))}."
+            )
+        return {**payload, **RUNTIME_PRESET_OVERRIDES[preset]}
+
+    def _resolve_model_id(
+        self, role: str, profile: str, require_env: bool = True
+    ) -> Optional[str]:
+        entry = self._get_catalog_entry(role, profile)
+        env_model_var = entry.get("env_model_var")
+        if env_model_var:
+            env_value = self._get_env_value(str(env_model_var))
+            if env_value:
+                return env_value
+            if require_env:
+                raise RuntimeLoadError(
+                    f"{role.title()} profile '{profile}' requires the "
+                    f"{env_model_var} environment variable to be set."
+                )
+            return None
+
+        model_id = str(entry.get("model_id") or "").strip()
+        if not model_id and require_env:
+            raise RuntimeLoadError(
+                f"{role.title()} profile '{profile}' does not define a model id."
+            )
+        return model_id or None
+
+    def get_resolved_reasoning_model_tag(
+        self, profile: Optional[str] = None, require_env: bool = False
+    ) -> Optional[str]:
+        target_profile = profile or self._config["reasoning_profile"]
+        return self._resolve_model_id(
+            "reasoning", target_profile, require_env=require_env
+        )
+
+    def _validate_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        self._resolve_model_id(
+            "reasoning",
+            config["reasoning_profile"],
+            require_env=bool(
+                self._get_catalog_entry("reasoning", config["reasoning_profile"]).get(
+                    "env_model_var"
+                )
+            ),
+        )
+        return config
+
     def _load_config(self) -> Dict[str, Any]:
-        if os.path.exists(CONFIG_PATH):
+        if os.path.exists(self._config_path):
             try:
-                with open(CONFIG_PATH, "r", encoding="utf-8") as handle:
+                with open(self._config_path, "r", encoding="utf-8") as handle:
                     saved = json.load(handle)
                 normalized = self._normalize_config({**DEFAULT_CONFIG, **saved})
                 if normalized != saved:
                     self._write_config(normalized)
-                return normalized
+                env_runtime_preset = self._get_env_value(ENV_RUNTIME_PRESET)
+                self._env_runtime_preset = env_runtime_preset or None
+                if env_runtime_preset:
+                    return self._validate_config(
+                        self._normalize_config(
+                            self._apply_runtime_preset(normalized, env_runtime_preset)
+                        )
+                    )
+                return self._validate_config(normalized)
+            except RuntimeLoadError:
+                raise
             except Exception as error:
                 logger.warning(f"Failed to read runtime config: {error}")
         self._write_config(DEFAULT_CONFIG)
-        return dict(DEFAULT_CONFIG)
+        env_runtime_preset = self._get_env_value(ENV_RUNTIME_PRESET)
+        self._env_runtime_preset = env_runtime_preset or None
+        if env_runtime_preset:
+            return self._validate_config(
+                self._normalize_config(
+                    self._apply_runtime_preset(dict(DEFAULT_CONFIG), env_runtime_preset)
+                )
+            )
+        return self._validate_config(dict(DEFAULT_CONFIG))
 
     def _write_config(self, payload: Dict[str, Any]):
-        with open(CONFIG_PATH, "w", encoding="utf-8") as handle:
+        os.makedirs(os.path.dirname(self._config_path), exist_ok=True)
+        with open(self._config_path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2)
 
     def _normalize_config(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         normalized = {**DEFAULT_CONFIG, **payload}
+        runtime_preset = str(
+            normalized.get("runtime_preset") or RUNTIME_PRESET_CLOUD_CPU
+        ).strip()
+        if runtime_preset not in RUNTIME_PRESET_OVERRIDES:
+            runtime_preset = RUNTIME_PRESET_CLOUD_CPU
+        normalized["runtime_preset"] = runtime_preset
+        normalized["embedding_eager_unload"] = self._normalize_bool(
+            normalized.get("embedding_eager_unload"), default=False
+        )
 
         for role in ("embedding", "reasoning"):
             profile_key = f"{role}_profile"
@@ -210,9 +383,11 @@ class ModelRuntimeManager:
             elif placement not in {"cpu", "cuda"}:
                 placement = "cpu"
 
-            if placement == "cuda" and not torch.cuda.is_available():
-                placement = "cpu"
             normalized[placement_key] = placement
+            timeout_key = f"{role}_timeout_minutes"
+            normalized[timeout_key] = self._normalize_timeout(
+                normalized.get(timeout_key), DEFAULT_CONFIG[timeout_key]
+            )
 
         precision = str(normalized.get("embedding_precision") or "fp32").lower()
         if precision not in {"fp32", "bf16", "fp16"}:
@@ -224,7 +399,15 @@ class ModelRuntimeManager:
 
     def update_config(self, updates: Dict[str, Any]) -> Dict[str, Any]:
         with self._lock:
-            next_config = self._normalize_config({**self._config, **updates})
+            base_payload = dict(self._config)
+            requested_runtime_preset = updates.get("runtime_preset")
+            if requested_runtime_preset is not None:
+                base_payload = self._apply_runtime_preset(
+                    base_payload, str(requested_runtime_preset)
+                )
+            next_config = self._validate_config(
+                self._normalize_config({**base_payload, **updates})
+            )
             embedding_reconfigure = any(
                 next_config[key] != self._config.get(key)
                 for key in (
@@ -287,7 +470,7 @@ class ModelRuntimeManager:
 
     def _placement_to_device(self, role: str) -> str:
         placement = str(self._config.get(f"{role}_placement") or "cpu").lower()
-        if placement == "cuda" and torch.cuda.is_available():
+        if placement == "cuda":
             return "cuda"
         return "cpu"
 
@@ -298,7 +481,9 @@ class ModelRuntimeManager:
         )
 
     def _ensure_cuda_available(self, roles: Iterable[str]):
-        if any(self._placement_to_device(role) == "cuda" for role in roles) and not torch.cuda.is_available():
+        if any(
+            self._placement_to_device(role) == "cuda" for role in roles
+        ) and not torch.cuda.is_available():
             raise RuntimeLoadError(
                 "CUDA was requested for the active runtime profile, but no CUDA device is available."
             )
@@ -372,6 +557,13 @@ class ModelRuntimeManager:
             for role in unique_roles
         }
         snapshot = self._memory_snapshot()
+        per_role_gpu_need = {
+            role: round(
+                self._estimate_load(resolved_profiles[role], role, devices[role]), 2
+            )
+            for role in unique_roles
+            if devices[role] == "cuda"
+        }
 
         ram_need = (
             max(
@@ -391,6 +583,7 @@ class ModelRuntimeManager:
             if any(devices[role] == "cuda" for role in unique_roles)
             else 0.0
         )
+        sequential_cuda_roles = len(per_role_gpu_need) > 1
 
         ram_ok = (
             snapshot["available_ram_gb"] is None
@@ -422,8 +615,14 @@ class ModelRuntimeManager:
             "devices": devices,
             "resolved_profiles": resolved_profiles,
             "memory": snapshot,
-            "projected": {"ram_gb": round(ram_need, 2), "vram_gb": round(vram_need, 2)},
+            "projected": {
+                "ram_gb": round(ram_need, 2),
+                "vram_gb": round(vram_need, 2),
+                "peak_sequential_vram_gb": round(vram_need, 2),
+                "per_role_vram_gb": per_role_gpu_need,
+            },
             "single_gpu_mode": any(device == "cuda" for device in devices.values()),
+            "sequential_cuda_roles": sequential_cuda_roles,
         }
 
     def _ollama_is_reachable(self) -> bool:
@@ -702,7 +901,9 @@ class ModelRuntimeManager:
                 else "24h"
             )
             resolved_model = self._resolve_ollama_model_name(
-                self._get_catalog_entry("reasoning", target_profile)["model_id"]
+                self.get_resolved_reasoning_model_tag(
+                    profile=target_profile, require_env=True
+                )
             )
             self._ollama_generate(
                 {
@@ -729,7 +930,9 @@ class ModelRuntimeManager:
             if self._ollama_is_reachable():
                 try:
                     resolved_model = self._resolve_ollama_model_name(
-                        self._get_catalog_entry("reasoning", profile)["model_id"]
+                        self.get_resolved_reasoning_model_tag(
+                            profile=profile, require_env=True
+                        )
                     )
                     self._ollama_generate(
                         {
@@ -860,6 +1063,18 @@ class ModelRuntimeManager:
                     and self._managed_ollama_process.poll() is None
                 ),
             },
+            "preset": {
+                "active": self._config.get("runtime_preset", RUNTIME_PRESET_CLOUD_CPU),
+                "env_override": self._env_runtime_preset,
+            },
+            "resolved": {
+                "reasoning_model_tag": self.get_resolved_reasoning_model_tag(
+                    require_env=False
+                ),
+                "embedding_eager_unload": bool(
+                    self._config.get("embedding_eager_unload")
+                ),
+            },
             "roles": self._role_state,
             "memory": self._memory_snapshot(),
             "catalog": MODEL_CATALOG,
@@ -882,6 +1097,26 @@ class ModelRuntimeManager:
                     )
                     else "cpu"
                 ),
+                "runtime_preset": self._config.get(
+                    "runtime_preset", RUNTIME_PRESET_CLOUD_CPU
+                ),
+                "cuda_role_strategy": (
+                    "single_active_sequential"
+                    if any(
+                        self._placement_to_device(role) == "cuda"
+                        for role in ("embedding", "reasoning")
+                    )
+                    else "shared_cpu"
+                ),
+                "embedding_eager_unload": bool(
+                    self._config.get("embedding_eager_unload")
+                ),
+                "idle_unload_seconds": {
+                    "embedding": int(self._config.get("embedding_timeout_minutes", 0))
+                    * 60,
+                    "reasoning": int(self._config.get("reasoning_timeout_minutes", 0))
+                    * 60,
+                },
             },
         }
 
@@ -908,6 +1143,8 @@ class ModelRuntimeManager:
                 return self._normalize_embedding_vector(vector[0])
             finally:
                 self._end_use("embedding")
+                if self._config.get("embedding_eager_unload"):
+                    self.unload_embedding_model(reason="task_complete")
 
     def get_embeddings_batch(
         self,
@@ -962,6 +1199,8 @@ class ModelRuntimeManager:
                 return [self._normalize_embedding_vector(vector) for vector in vectors]
             finally:
                 self._end_use("embedding")
+                if self._config.get("embedding_eager_unload"):
+                    self.unload_embedding_model(reason="task_complete")
 
     def analyze_relations_batch(self, highlight_text: str, chunks_list: List[str]):
         if not chunks_list:
@@ -971,11 +1210,15 @@ class ModelRuntimeManager:
             self.load_reasoning_model(profile=self._config["reasoning_profile"])
         self._begin_use("reasoning")
         try:
+            resolved_model = self._resolve_ollama_model_name(
+                self.get_resolved_reasoning_model_tag(
+                    profile=self._role_state["reasoning"]["profile"],
+                    require_env=True,
+                )
+            )
             return self._ollama_generate(
                 {
-                    "model": self._get_catalog_entry(
-                        "reasoning", self._role_state["reasoning"]["profile"]
-                    )["model_id"],
+                    "model": resolved_model,
                     "prompt": self._build_reasoning_prompt(highlight_text, chunks_list),
                     "stream": False,
                     "format": "json",
