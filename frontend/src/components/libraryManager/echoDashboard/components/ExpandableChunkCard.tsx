@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
-import { BookOpenIcon } from "@heroicons/react/24/outline";
 import type { EchoChunk } from "../echoTypes";
-import { API_BASE_URL } from "../../../../lib/runtimeConfig";
+import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -20,8 +19,8 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
             return;
         }
 
-        const chunkId = (chunk as any).chunk_id;
-        const filename = (chunk as any).filename;
+        const chunkId = String((chunk as any).chunk_id || "");
+        const filename = String((chunk as any).filename || "");
 
         if (!filename || !chunkId) {
             setIsExpanded(true);
@@ -30,15 +29,12 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
 
         setLoadingContext(true);
         try {
-            const API = axios.create({
-                baseURL: API_BASE_URL,
-            });
-            const res = await API.post("/echo/expand_context", {
-                filename: filename,
+            const res = await axios.post(buildApiUrl("/echo/expand_context"), {
+                filename,
                 chunk_id: chunkId,
                 window: 4,
             });
-            if (res.data.status === "success" && res.data.text) {
+            if (res.data?.status === "success" && res.data?.text) {
                 setFullText(res.data.text);
             }
         } catch (error) {
@@ -50,47 +46,28 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
     };
 
     return (
-        <div className="mt-4 border-t border-slate-100 pt-3">
-            <div className="flex justify-between items-center mb-2">
-                <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
-                    <BookOpenIcon className="w-3 h-3" /> Context View
-                </span>
-                <span className="text-[9px] font-mono text-muted truncate max-w-[150px] text-right">
-                    {chunk.chapter || "Unknown Chapter"}
-                </span>
-            </div>
-            <div
-                className={`bg-canvas border border-slate-100 rounded-sm p-3 transition-all duration-300 ${
-                    isExpanded
-                        ? "max-h-[30vh] overflow-y-auto custom-scrollbar"
-                        : ""
-                }`}
-            >
-                {isExpanded ? (
-                    <div className="text-sm text-primary leading-relaxed font-serif whitespace-pre-wrap">
-                        {fullText}
-                    </div>
-                ) : (
-                    <p className="text-xs text-slate-600 leading-relaxed italic line-clamp-4">
-                        "{chunk.text}"
-                    </p>
-                )}
-            </div>
+        <div className="mt-4">
             <button
                 onClick={handleExpand}
-                className="mt-3 text-[9px] font-bold text-muted hover:text-primary uppercase tracking-widest flex items-center gap-1.5 transition-colors"
+                className="px-0 py-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900"
             >
-                {loadingContext ? (
-                    <span className="animate-pulse flex items-center gap-1">
-                        <div className="w-2 h-2 rounded-full border border-slate-500 border-t-transparent animate-spin"></div>
-                        Stitching Pages...
-                    </span>
-                ) : isExpanded ? (
-                    "Collapse Context"
-                ) : (
-                    "Read Full Context"
-                )}
+                {loadingContext
+                    ? "Stitching Context..."
+                    : isExpanded
+                      ? "Collapse Context"
+                      : "Read Full Context"}
             </button>
+
+            {isExpanded && (
+                <div className="mt-3 overflow-hidden bg-white px-0 py-0">
+                    <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                        {chunk.chapter || "Unknown Chapter"}
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 custom-scrollbar">
+                        {fullText}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

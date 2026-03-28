@@ -2,18 +2,16 @@ import React from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import axios from "axios";
 import {
-  BookOpenIcon,
   LinkIcon,
   MagnifyingGlassPlusIcon,
   MagnifyingGlassMinusIcon,
   ViewfinderCircleIcon,
-  XMarkIcon,
-  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 
 import type { EchoChunk, EchoRecommendation } from "./echoTypes";
 import NotesFormUI from "../noteModule/notesFormUI";
 import AutoZoomTrigger from "./components/AutoZoomTrigger";
+import DraftBranchColumn from "./components/DraftBranchColumn";
 import DraggableColumn from "./components/DraggableColumn";
 import InteractiveChunkCard from "./components/InteractiveChunkCard";
 import MaximizedColumnView from "./components/MaximizedColumnView";
@@ -25,8 +23,10 @@ import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
 import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
 
-const ECHO_COLUMN_WIDTH = 420;
-const ECHO_COLUMN_HEIGHT = 750;
+const INCOMING_COLUMN_WIDTH = 560;
+const SAVED_COLUMN_WIDTH = 470;
+const DRAFT_COLUMN_WIDTH = 560;
+const ECHO_COLUMN_HEIGHT = 780;
 
 export default function EchoDashboardUI(props: any) {
   const { publish } = useRefreshBus();
@@ -62,13 +62,17 @@ export default function EchoDashboardUI(props: any) {
   // --- FIX 2: Hide Note Stacks from rendering as Echo Clusters! ---
   const echoClusters = React.useMemo(
     () =>
-      (state.savedGlobalClusters || []).filter((cluster: any) => {
+      (state.visibleSavedClusters || []).filter((cluster: any) => {
         const isNoteStack = state.stacks?.some(
           (stack: any) => String(stack.stack_id) === String(cluster.id),
         );
         return !isNoteStack;
       }),
-    [state.savedGlobalClusters, state.stacks],
+    [state.stacks, state.visibleSavedClusters],
+  );
+  const draftBranches = React.useMemo(
+    () => state.visibleDraftBranches || [],
+    [state.visibleDraftBranches],
   );
   const activeColumnPos = state.positions[state.activeColumnId] || {
     x: 0,
@@ -77,7 +81,7 @@ export default function EchoDashboardUI(props: any) {
   const activeColumnVisible = isRectVisible({
     x: activeColumnPos.x,
     y: activeColumnPos.y,
-    width: ECHO_COLUMN_WIDTH,
+    width: INCOMING_COLUMN_WIDTH,
     height: ECHO_COLUMN_HEIGHT,
   });
   const visibleEchoClusters = React.useMemo(
@@ -90,40 +94,86 @@ export default function EchoDashboardUI(props: any) {
         return isRectVisible({
           x: position.x,
           y: position.y,
-          width: ECHO_COLUMN_WIDTH,
+          width: SAVED_COLUMN_WIDTH,
           height: ECHO_COLUMN_HEIGHT,
         });
       }),
     [echoClusters, isRectVisible, state.positions],
   );
+  const visibleDraftBranchColumns = React.useMemo(
+    () =>
+      draftBranches.filter((draft: any) => {
+        const position = state.positions[draft.id] || { x: 1000, y: 100 };
+        return isRectVisible({
+          x: position.x,
+          y: position.y,
+          width: DRAFT_COLUMN_WIDTH,
+          height: ECHO_COLUMN_HEIGHT,
+        });
+      }),
+    [draftBranches, isRectVisible, state.positions],
+  );
   const visibleEchoClusterIds = React.useMemo(
     () =>
-      new Set(visibleEchoClusters.map((cluster: any) => String(cluster.id))),
-    [visibleEchoClusters],
+      new Set([
+        ...visibleEchoClusters.map((cluster: any) => String(cluster.id)),
+        ...visibleDraftBranchColumns.map((draft: any) => String(draft.id)),
+      ]),
+    [visibleDraftBranchColumns, visibleEchoClusters],
   );
   const visibleEchoEdges = React.useMemo(
-    () =>
-      echoClusters.filter((cluster: any) => {
-        if (!cluster.parent_cluster_id) return false;
-        const start = state.positions[cluster.parent_cluster_id];
+    () => {
+      const branchColumns = [
+        ...echoClusters.map((cluster: any) => ({
+          id: String(cluster.id),
+          parentId: String(cluster.parent_cluster_id || ""),
+        })),
+        ...draftBranches.map((draft: any) => ({
+          id: String(draft.id),
+          parentId: String(draft.parentClusterId || ""),
+        })),
+      ];
+
+      return branchColumns.filter((cluster: any) => {
+        if (!cluster.parentId) return false;
+        const start = state.positions[cluster.parentId];
         const end = state.positions[cluster.id];
         if (!start || !end) return false;
         if (
           visibleEchoClusterIds.has(String(cluster.id)) ||
-          visibleEchoClusterIds.has(String(cluster.parent_cluster_id))
+          visibleEchoClusterIds.has(String(cluster.parentId))
         ) {
           return true;
         }
-        const edgeLeft = Math.min(start.x + ECHO_COLUMN_WIDTH, end.x);
+        const edgeLeft = Math.min(start.x + SAVED_COLUMN_WIDTH, end.x);
         const edgeTop = Math.min(start.y, end.y);
         return isRectVisible({
           x: edgeLeft,
           y: edgeTop,
-          width: Math.abs(end.x - (start.x + ECHO_COLUMN_WIDTH)) || 1,
+          width: Math.abs(end.x - (start.x + SAVED_COLUMN_WIDTH)) || 1,
           height: Math.abs(end.y - start.y) + 160,
         });
-      }),
-    [echoClusters, isRectVisible, state.positions, visibleEchoClusterIds],
+      });
+    },
+    [
+      draftBranches,
+      echoClusters,
+      isRectVisible,
+      state.positions,
+      visibleEchoClusterIds,
+    ],
+  );
+  const branchCountByEchoId = React.useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(state.branchesBySourceEchoId || {}).map(
+          ([echoId, branches]) => [
+            echoId,
+            Array.isArray(branches) ? branches.length : 0,
+          ],
+        ),
+      ),
+    [state.branchesBySourceEchoId],
   );
   const handleViewportUpdate = React.useCallback(
     (ref: any) => {
@@ -217,7 +267,8 @@ export default function EchoDashboardUI(props: any) {
                         width: "30000px",
                         height: "30000px",
                         backgroundImage:
-                          "radial-gradient(#cbd5e1 1.5px, transparent 1.5px)",
+                          "radial-gradient(#d9dde4 1.1px, transparent 1.1px)",
+                        backgroundColor: "#ffffff",
                         backgroundSize: "24px 24px",
                         zIndex: 0,
                       }}
@@ -228,7 +279,7 @@ export default function EchoDashboardUI(props: any) {
                       style={{
                         left: activeColumnPos.x - 50,
                         top: activeColumnPos.y - 50,
-                        width: 500,
+                        width: INCOMING_COLUMN_WIDTH + 80,
                         height: 800,
                       }}
                     />
@@ -245,10 +296,10 @@ export default function EchoDashboardUI(props: any) {
                     >
                       <g transform="translate(15000, 15000)">
                         {visibleEchoEdges.map((c) => {
-                          const start = state.positions[c.parent_cluster_id];
+                          const start = state.positions[c.parentId];
                           const end = state.positions[c.id];
                           if (!start || !end) return null;
-                          const startX = start.x + 400;
+                          const startX = start.x + SAVED_COLUMN_WIDTH;
                           const startY = start.y + 80;
                           const endX = end.x;
                           const endY = end.y + 80;
@@ -275,10 +326,10 @@ export default function EchoDashboardUI(props: any) {
                       <DraggableColumn
                         id={state.activeColumnId}
                         title={activeBookTitle}
-                        author="Incoming Signal"
+                        author="Incoming Echoes"
                         initialPos={
                           state.positions[state.activeColumnId] || {
-                            x: 550,
+                            x: 120,
                             y: 100,
                           }
                         }
@@ -287,19 +338,21 @@ export default function EchoDashboardUI(props: any) {
                         bringToFront={state.bringToFront}
                         scale={canvasScale}
                         interactionReduced={isInteracting}
+                        defaultWidth={INCOMING_COLUMN_WIDTH}
+                        defaultHeight={ECHO_COLUMN_HEIGHT}
                       >
-                        <div className="p-4 bg-canvas/50 min-h-full">
-                          <div className="sticky top-0 bg-canvas/95 z-30 pb-3 border-b border-border-subtle mb-4">
-                            <div className="flex bg-slate-200 p-0.5 rounded-sm">
+                        <div className="min-h-full bg-white p-4">
+                          <div className="sticky top-0 z-30 mb-4 border-b border-slate-200 bg-white/95 pb-3">
+                            <div className="flex bg-white">
                               <button
                                 onClick={() => state.setViewMode("ECHOES")}
-                                className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-sm transition-all ${state.viewMode === "ECHOES" ? "bg-surface shadow-sm text-primary" : "text-muted hover:text-primary"}`}
+                                className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-all ${state.viewMode === "ECHOES" ? "text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
                               >
                                 Inbox ({state.unsavedEchoes.length || 0})
                               </button>
                               <button
                                 onClick={() => state.setViewMode("RECS")}
-                                className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-sm transition-all ${state.viewMode === "RECS" ? "bg-surface shadow-sm text-primary" : "text-muted hover:text-primary"}`}
+                                className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-all ${state.viewMode === "RECS" ? "text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
                               >
                                 Recs ({recommendations?.length || 0})
                               </button>
@@ -354,43 +407,42 @@ export default function EchoDashboardUI(props: any) {
                                             {stackCount > 2 && (
                                               <div className="absolute inset-0 bg-surface border border-slate-300 rounded-sm shadow-sm z-[-1] translate-x-3 -translate-y-3"></div>
                                             )}
-                                            <div className="relative z-10 bg-surface border border-border-subtle group-hover:border-slate-400 rounded-sm shadow-sm p-4 transition-all">
-                                              <div className="flex justify-between items-center mb-1">
-                                                <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
-                                                  <LinkIcon className="w-3 h-3" />{" "}
-                                                  Connects To
-                                                </span>
-                                                <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-sm">
+                                            <div className="relative z-10 border border-slate-200 bg-white p-4 shadow-sm transition-all group-hover:border-slate-300">
+                                              <div className="mb-2 flex items-center justify-between gap-3">
+                                                <h4 className="truncate pr-4 text-sm font-semibold tracking-[-0.02em] text-slate-900">
+                                                  {bookGroup.title}
+                                                </h4>
+                                                <span className="text-[10px] font-bold text-slate-500">
                                                   {stackCount} Nodes
                                                 </span>
                                               </div>
-                                              <h4 className="font-bold text-primary text-sm truncate">
-                                                {bookGroup.title}
-                                              </h4>
+                                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                                                Open source stack
+                                              </p>
                                             </div>
                                           </div>
                                         ) : (
-                                          <div className="bg-surface border border-slate-300 rounded-sm shadow-md overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+                                          <div className="overflow-hidden border border-slate-200 bg-white shadow-md animate-in fade-in slide-in-from-top-2 duration-300">
                                             <div
                                               onClick={() =>
                                                 state.toggleStack(stackId)
                                               }
-                                              className="bg-canvas border-b border-border-subtle p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors"
+                                              className="flex cursor-pointer items-center justify-between border-b border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50"
                                             >
                                               <div className="overflow-hidden pr-4">
-                                                <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1 mb-1">
-                                                  <LinkIcon className="w-3 h-3" />{" "}
-                                                  Connections With
+                                                <span className="mb-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                                  <LinkIcon className="h-3 w-3" />
+                                                  Incoming echoes from
                                                 </span>
-                                                <h4 className="font-bold text-primary text-sm truncate">
+                                                <h4 className="truncate text-sm font-semibold tracking-[-0.02em] text-slate-900">
                                                   {bookGroup.title}
                                                 </h4>
                                               </div>
-                                              <span className="text-[10px] font-bold uppercase tracking-widest text-muted hover:text-primary transition-colors">
+                                              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 transition-colors hover:text-slate-900">
                                                 Close
                                               </span>
                                             </div>
-                                            <div className="p-4 space-y-4 bg-canvas/50">
+                                            <div className="space-y-4 bg-white p-4">
                                               {bookGroup.chunks?.map(
                                                 (
                                                   chunk: EchoChunk,
@@ -472,11 +524,36 @@ export default function EchoDashboardUI(props: any) {
                       </DraggableColumn>
                     )}
 
+                    {visibleDraftBranchColumns.map((draft: any) => (
+                      <DraftBranchColumn
+                        key={draft.id}
+                        draft={draft}
+                        initialPos={state.positions[draft.id] || { x: 1320, y: 100 }}
+                        zIndex={state.zIndexes[draft.id] || 1}
+                        updatePosition={state.updatePosition}
+                        bringToFront={state.bringToFront}
+                        canvasScale={canvasScale}
+                        setPendingEchoForNote={handleCreateNoteFromEcho}
+                        setViewingEchoNotes={state.setViewingEchoNotes}
+                        refreshGlobalCanvas={state.refreshGlobalCanvas}
+                        localLinkedNotes={state.localLinkedNotes}
+                        setIsCanvasWheelDisabled={
+                          state.setIsCanvasWheelDisabled
+                        }
+                        interactionReduced={isInteracting}
+                        ensureDraftBranchCluster={state.ensureDraftBranchCluster}
+                        handleDraftBranchSaved={state.handleDraftBranchSaved}
+                        closeDraftBranch={state.closeDraftBranch}
+                        isHighlighted={state.highlightedBranchClusterIds?.has?.(
+                          String(draft.id),
+                        )}
+                      />
+                    ))}
+
                     {visibleEchoClusters.map((cluster: any) => (
                       <SavedClusterColumn
                         key={cluster.id}
                         cluster={cluster}
-                        positions={state.positions}
                         updatePosition={state.updatePosition}
                         initialPos={
                           state.positions[cluster.id] || { x: 1000, y: 100 }
@@ -486,7 +563,6 @@ export default function EchoDashboardUI(props: any) {
                         canvasScale={canvasScale}
                         handleToggleActive={state.handleToggleActive}
                         handleSpawnCluster={state.handleSpawnCluster}
-                        setPendingEchoForNote={handleCreateNoteFromEcho}
                         setViewingEchoNotes={state.setViewingEchoNotes}
                         refreshGlobalCanvas={state.refreshGlobalCanvas}
                         localLinkedNotes={state.localLinkedNotes}
@@ -496,6 +572,18 @@ export default function EchoDashboardUI(props: any) {
                         handleRenameCluster={state.handleRenameCluster}
                         handleDeleteCluster={state.handleDeleteCluster}
                         interactionReduced={isInteracting}
+                        expandedEchoId={
+                          state.expandedEchoByCluster?.[cluster.id] || null
+                        }
+                        onToggleEchoExpand={state.toggleSavedEchoExpansion}
+                        branchCountByEchoId={branchCountByEchoId}
+                        onCreateBranchFromHighlight={
+                          state.createDraftBranchFromHighlight
+                        }
+                        onShowBranches={state.focusBranchesForEcho}
+                        isHighlighted={state.highlightedBranchClusterIds?.has?.(
+                          String(cluster.id),
+                        )}
                       />
                     ))}
                   </div>

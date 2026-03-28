@@ -396,6 +396,7 @@ class NoteSaveRequest(BaseModel):
 class EchoSaveRequest(BaseModel):
     book_id: str  # The fallback display string
     library_id: str = ""  # NEW: The indestructible ID!
+    cluster_id: str = ""
     highlight: str
     context: str
     ai_insight: str
@@ -427,6 +428,9 @@ class ClusterSpawnRequest(BaseModel):
     book_id: str
     library_id: str = ""
     parent_cluster_id: str
+    source_echo_id: str = ""
+    title: str = ""
+    make_active: bool = True
 
 
 class ClusterActivateRequest(BaseModel):
@@ -773,7 +777,11 @@ def get_brain_books():
 
 
 @app.get("/reader/books/{filename}/bootstrap")
-def reader_bootstrap_endpoint(filename: str, lid: Optional[str] = Query(default=None)):
+def reader_bootstrap_endpoint(
+    filename: str,
+    request: Request,
+    lid: Optional[str] = Query(default=None),
+):
     identity = resolve_reader_identity(filename, lid)
     session = graph_db.get_reader_session(identity["filename"], identity["lid"])
 
@@ -821,6 +829,13 @@ def reader_bootstrap_endpoint(filename: str, lid: Optional[str] = Query(default=
         "updated_at": (manifest or {}).get("updated_at"),
     }
 
+    file_url = request.url_for(
+        "get_reader_file_endpoint",
+        filename=identity["filename"],
+    ).include_query_params(v=identity["file_fingerprint"])
+    if identity["lid"]:
+        file_url = file_url.include_query_params(lid=identity["lid"])
+
     return {
         "status": "success",
         "data": {
@@ -830,7 +845,7 @@ def reader_bootstrap_endpoint(filename: str, lid: Optional[str] = Query(default=
                 "title": identity["title"],
                 "author": identity["author"],
                 "extension": identity["format"],
-                "url": f"https://doomprompting123-space.hf.space/reader/files/{identity['filename']}?v={identity['file_fingerprint']}",
+                "url": str(file_url),
                 "file_fingerprint": identity["file_fingerprint"],
             },
             "session": session,
@@ -1610,7 +1625,11 @@ def save_echo_endpoint(request: EchoSaveRequest):
         # --------------------------------------
 
         # Check for active cluster using the newly resolved ID
-        cluster_id = graph_db.get_active_cluster(resolved_library_id, request.book_id)
+        cluster_id = (request.cluster_id or "").strip()
+        if not cluster_id:
+            cluster_id = graph_db.get_active_cluster(
+                resolved_library_id, request.book_id
+            )
         if not cluster_id:
             cluster_id = f"cluster_{uuid.uuid4().hex[:8]}"
             logger.info(f"🌱 Spawning new Thought Cluster: {cluster_id}")
@@ -1620,15 +1639,10 @@ def save_echo_endpoint(request: EchoSaveRequest):
             )
 
         c = graph_db.conn.cursor()
-        c.execute("PRAGMA table_info(user_echoes)")
-        has_title = any(row[1] == "title" for row in c.fetchall())
-
-        query_str = (
-            "SELECT echo_id, ai_insight FROM user_echoes WHERE cluster_id = ?"
-            if has_title
-            else "SELECT echo_id, ai_insight FROM user_echoes WHERE cluster_id = ?"
+        c.execute(
+            "SELECT echo_id, ai_insight FROM user_echoes WHERE cluster_id = ?",
+            (cluster_id,),
         )
-        c.execute(query_str, (cluster_id,))
         existing_echoes = [dict(row) for row in c.fetchall()]
 
         new_vec = get_embedding(request.ai_insight)
@@ -1769,7 +1783,13 @@ def spawn_cluster_endpoint(request: ClusterSpawnRequest):
 
         new_id = f"cluster_{uuid.uuid4().hex[:8]}"
         graph_db.create_cluster(
-            new_id, request.book_id, request.parent_cluster_id, request.library_id
+            new_id,
+            request.book_id,
+            request.parent_cluster_id,
+            request.library_id,
+            source_echo_id=(request.source_echo_id or "").strip() or None,
+            title=(request.title or "").strip() or None,
+            is_active=bool(request.make_active),
         )
         return {"status": "success", "cluster_id": new_id}
     except Exception as e:

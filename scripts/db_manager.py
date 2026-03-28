@@ -236,6 +236,7 @@ class GraphDBManager:
                 book_id TEXT, -- Legacy display fallback
                 is_active INTEGER DEFAULT 1,
                 parent_cluster_id TEXT,
+                source_echo_id TEXT,
                 archive_group_id TEXT,
                 archive_group_title TEXT,
                 cover_media TEXT,
@@ -251,6 +252,11 @@ class GraphDBManager:
         try:
             c.execute("ALTER TABLE echo_clusters ADD COLUMN library_id TEXT")
             logger.info("⚙️ Migrated echo_clusters to include library_id Dual-Anchor.")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            c.execute("ALTER TABLE echo_clusters ADD COLUMN source_echo_id TEXT")
         except sqlite3.OperationalError:
             pass
 
@@ -952,25 +958,49 @@ class GraphDBManager:
         return res["cluster_id"] if res else None
 
     def create_cluster(
-        self, cluster_id, book_id, parent_cluster_id=None, library_id=None
+        self,
+        cluster_id,
+        book_id,
+        parent_cluster_id=None,
+        library_id=None,
+        source_echo_id=None,
+        title=None,
+        is_active=True,
     ):
         """Saves BOTH the display string and the indestructible library ID."""
         c = self.conn.cursor()
-        if library_id:
+        if is_active and library_id:
             c.execute(
                 "UPDATE echo_clusters SET is_active = 0 WHERE library_id = ?",
                 (library_id,),
             )
-        c.execute(
-            "UPDATE echo_clusters SET is_active = 0 WHERE book_id = ?", (book_id,)
-        )
+        if is_active:
+            c.execute(
+                "UPDATE echo_clusters SET is_active = 0 WHERE book_id = ?", (book_id,)
+            )
 
         c.execute(
             """
-            INSERT INTO echo_clusters (cluster_id, book_id, is_active, parent_cluster_id, library_id)
-            VALUES (?, ?, 1, ?, ?)
+            INSERT INTO echo_clusters (
+                cluster_id,
+                book_id,
+                is_active,
+                parent_cluster_id,
+                library_id,
+                source_echo_id,
+                title
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-            (cluster_id, book_id, parent_cluster_id, library_id),
+            (
+                cluster_id,
+                book_id,
+                1 if is_active else 0,
+                parent_cluster_id,
+                library_id,
+                source_echo_id,
+                title,
+            ),
         )
         self.conn.commit()
 
@@ -1058,12 +1088,13 @@ class GraphDBManager:
         return [dict(r) for r in c.fetchall()]
 
     def clean_orphan_clusters(self):
-        """V2: Safe cleanup. Only deletes clusters that are truly orphaned, not branched or archived."""
+        """V2: Safe cleanup. Only deletes empty inactive root clusters."""
         c = self.conn.cursor()
         c.execute(
             """
             DELETE FROM echo_clusters
             WHERE cluster_id NOT IN (SELECT DISTINCT cluster_id FROM user_echoes)
+              AND parent_cluster_id IS NULL
               AND cluster_id NOT IN (
                 SELECT DISTINCT parent_cluster_id
                 FROM echo_clusters
@@ -1089,7 +1120,8 @@ class GraphDBManager:
         # 2. Fetch all clusters and echoes
         c.execute(
             """
-            SELECT c.cluster_id, c.book_id, c.library_id, c.is_active, c.parent_cluster_id, 
+            SELECT c.cluster_id, c.book_id, c.library_id, c.is_active, c.parent_cluster_id,
+                   c.source_echo_id,
                    c.cover_media, c.archive_group_id, c.archive_group_title, c.title as custom_title, c.orbit_layout,
                    e.echo_id, e.ai_insight, e.weight, e.sources, e.title, e.tags, e.quick_thoughts, e.group_id,
                    lib.title as true_library_title
@@ -1129,6 +1161,7 @@ class GraphDBManager:
                     "title": display_title,
                     "is_active": bool(r["is_active"]),
                     "parent_cluster_id": r["parent_cluster_id"],
+                    "source_echo_id": r["source_echo_id"],
                     "cover_media": r["cover_media"],
                     "archive_group_id": r["archive_group_id"],
                     "archive_group_title": r["archive_group_title"],
@@ -2288,13 +2321,19 @@ class GraphDBManager:
     def delete_cluster(self, cluster_id: str):
         """Cascade deletes a column, its child branches, and all echoes inside them."""
         c = self.conn.cursor()
-        # Find all direct child branches
-        c.execute(
-            "SELECT cluster_id FROM echo_clusters WHERE parent_cluster_id = ?",
-            (cluster_id,),
-        )
-        children = [row["cluster_id"] for row in c.fetchall()]
-        all_clusters = [cluster_id] + children
+        all_clusters = []
+        queue = [cluster_id]
+
+        while queue:
+            current_cluster_id = queue.pop(0)
+            if current_cluster_id in all_clusters:
+                continue
+            all_clusters.append(current_cluster_id)
+            c.execute(
+                "SELECT cluster_id FROM echo_clusters WHERE parent_cluster_id = ?",
+                (current_cluster_id,),
+            )
+            queue.extend(row["cluster_id"] for row in c.fetchall())
 
         placeholders = ",".join(["?"] * len(all_clusters))
 

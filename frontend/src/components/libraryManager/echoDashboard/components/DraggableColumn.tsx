@@ -28,11 +28,13 @@ const DraggableColumn = React.memo(
     interactionReduced,
     onRename, // <--- NEW PROP
     onDelete,
+    defaultWidth = DEFAULT_COLUMN_WIDTH,
+    defaultHeight = DEFAULT_COLUMN_HEIGHT,
   }: any) => {
     const [localPos, setLocalPos] = useState(initialPos);
     const [localSize, setLocalSize] = useState({
-      width: DEFAULT_COLUMN_WIDTH,
-      height: DEFAULT_COLUMN_HEIGHT,
+      width: defaultWidth,
+      height: defaultHeight,
     });
 
     const [dragState, setDragState] = useState({ active: false, shift: false });
@@ -43,12 +45,12 @@ const DraggableColumn = React.memo(
     const resizeRef = useRef({
       startX: 0,
       startY: 0,
-      width: DEFAULT_COLUMN_WIDTH,
-      height: DEFAULT_COLUMN_HEIGHT,
+      width: defaultWidth,
+      height: defaultHeight,
     });
     const currentSize = useRef({
-      width: DEFAULT_COLUMN_WIDTH,
-      height: DEFAULT_COLUMN_HEIGHT,
+      width: defaultWidth,
+      height: defaultHeight,
     });
     const sizeFrameRef = useRef<number | null>(null);
     const [isResizing, setIsResizing] = useState(false);
@@ -101,6 +103,16 @@ const DraggableColumn = React.memo(
       currentSize.current = localSize;
       applySize(localSize);
     }, [applySize, localSize]);
+
+    useEffect(() => {
+      const nextSize = {
+        width: defaultWidth,
+        height: defaultHeight,
+      };
+      setLocalSize(nextSize);
+      currentSize.current = nextSize;
+      applySize(nextSize);
+    }, [applySize, defaultHeight, defaultWidth]);
 
     useEffect(() => {
       return () => {
@@ -196,7 +208,7 @@ const DraggableColumn = React.memo(
         onWheel={(e) => e.stopPropagation()}
         className={`no-pan absolute flex flex-col bg-white/95 rounded-2xl border canvas-heavy-shell ${
           isHighlighted
-            ? "border-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.5)] scale-[1.02] z-[9999]"
+            ? "border-slate-400 shadow-xl z-[9999]"
             : "border-slate-200 shadow-xl"
         } ${dragState.active ? "shadow-2xl cursor-grabbing scale-[1.01]" : ""} ${isResizing ? "select-none" : ""} ${
           reducedVisuals ? "canvas-interaction-reduced" : ""
