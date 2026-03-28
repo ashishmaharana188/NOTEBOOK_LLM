@@ -2,6 +2,7 @@ import asyncio
 import glob
 import json
 import logging
+import mimetypes
 import os
 import uuid
 
@@ -932,9 +933,20 @@ async def get_reader_file_endpoint(
     lid: Optional[str] = Query(default=None),
 ):
     identity = resolve_reader_identity(filename, lid)
+    media_type = (
+        {
+            "epub": "application/epub+zip",
+            "pdf": "application/pdf",
+            "txt": "text/plain; charset=utf-8",
+            "md": "text/markdown; charset=utf-8",
+        }.get(identity["format"])
+        or mimetypes.guess_type(identity["filename"])[0]
+        or "application/octet-stream"
+    )
     return FileResponse(
         path=identity["file_path"],
         filename=identity["filename"],
+        media_type=media_type,
         content_disposition_type="inline",
         headers={
             "Cache-Control": "public, max-age=3600, must-revalidate",

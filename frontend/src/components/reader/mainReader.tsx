@@ -87,7 +87,9 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
     );
   }
 
-  const ext = book.extension || "txt";
+  const ext = String(book.extension || "txt")
+    .toLowerCase()
+    .replace(/^\./, "");
 
   if (ext === "epub") {
     return (

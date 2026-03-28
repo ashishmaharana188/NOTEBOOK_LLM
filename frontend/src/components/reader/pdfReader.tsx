@@ -16,7 +16,10 @@ import useIsMobile from "../../hooks/appTools/useIsMobile";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url,
+).toString();
 
 interface PdfReaderComponentProps extends ReaderProps {
   chromeVisible: boolean;
@@ -69,6 +72,7 @@ export default function PdfReader({
   } = usePdfControl(initialLocation, (loc) => onSaveLocation(loc));
   const { settings, updateSetting, themeStyles } = useReaderSetting();
   const [showPanel, setShowPanel] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const handleMouseUp = () => {
     if (!onSelection) return;
@@ -324,9 +328,25 @@ export default function PdfReader({
           <Document
             file={book.url}
             onLoadSuccess={({ numPages: loadedNumPages }) =>
-              setNumPages(loadedNumPages)
+              {
+                setLoadError("");
+                setNumPages(loadedNumPages);
+              }
             }
-            onLoadError={(error) => console.error("PDF Error:", error)}
+            onLoadError={(error) => {
+              console.error("PDF Error:", error);
+              setLoadError("Could not render this PDF in the cloud reader.");
+            }}
+            loading={
+              <div className="px-6 py-8 text-sm text-slate-500">
+                Loading PDF...
+              </div>
+            }
+            error={
+              <div className="px-6 py-8 text-sm text-rose-600">
+                {loadError || "Could not render this PDF."}
+              </div>
+            }
             className="flex justify-center"
           >
             <div
