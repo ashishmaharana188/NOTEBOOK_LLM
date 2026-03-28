@@ -15,6 +15,8 @@ LIBRARY_DIR = os.path.join(BASE_DIR, "data", "library")
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
 ARCHIVE_NAME = "rdf-files.tar.bz2"
 ARCHIVE_PATH = os.path.join(CACHE_DIR, ARCHIVE_NAME)
+SANITIZED_ARCHIVE_NAME = "rdf-files-sanitized.tar.bz2"
+SANITIZED_ARCHIVE_PATH = os.path.join(CACHE_DIR, SANITIZED_ARCHIVE_NAME)
 DB_PATH = "gutenbergindex.db"
 
 # Ensure settings point to our local DB
@@ -48,6 +50,42 @@ def download_file_robustly(url, dest_path):
             raise e
 
 
+def _should_skip_rdf_member(member_name):
+    normalized = member_name.replace("\\", "/").strip("/").lower()
+    if not normalized:
+        return False
+
+    parts = normalized.split("/")
+    return "test" in parts or normalized.endswith("pgtest.rdf")
+
+
+def sanitize_rdf_archive(source_path, dest_path):
+    """Strip Gutenberg test fixtures that break XML parsing on local builds."""
+    if os.path.exists(dest_path):
+        os.remove(dest_path)
+
+    skipped_members = 0
+    with tarfile.open(source_path, "r:bz2") as source_archive, tarfile.open(
+        dest_path, "w:bz2"
+    ) as cleaned_archive:
+        for member in source_archive.getmembers():
+            if _should_skip_rdf_member(member.name):
+                skipped_members += 1
+                continue
+
+            file_obj = source_archive.extractfile(member) if member.isfile() else None
+            try:
+                cleaned_archive.addfile(member, fileobj=file_obj)
+            finally:
+                if file_obj is not None:
+                    file_obj.close()
+
+    print(
+        f"🧹 Sanitized Gutenberg RDF archive. Skipped {skipped_members} test fixture entries."
+    )
+    return dest_path
+
+
 # --- GUTENBERG LOGIC ---
 
 
@@ -64,7 +102,8 @@ def build_catalog():
         "https://www.gutenberg.org/cache/epub/feeds/rdf-files.tar.bz2", ARCHIVE_PATH
     )
 
-    GutenbergCacheSettings.CACHE_RDF_ARCHIVE_NAME = os.path.abspath(ARCHIVE_PATH)
+    sanitized_archive = sanitize_rdf_archive(ARCHIVE_PATH, SANITIZED_ARCHIVE_PATH)
+    GutenbergCacheSettings.CACHE_RDF_ARCHIVE_NAME = os.path.abspath(sanitized_archive)
 
     if os.path.exists(DB_PATH):
         try:
