@@ -16,6 +16,12 @@ import useIsMobile from "../../hooks/appTools/useIsMobile";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
+const THEME_OPTIONS = [
+  { label: "Light", value: "light" },
+  { label: "Sepia", value: "sepia" },
+  { label: "Dark", value: "dark" },
+] as const;
+
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
@@ -128,19 +134,19 @@ export default function PdfReader({
 
       <button
         onClick={() => setShowPanel((prev) => !prev)}
-        className={`absolute right-3 top-3 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all sm:right-4 sm:top-4 ${
+        className={`absolute right-3 top-3 z-50 bg-white px-3 py-2 text-primary shadow-lg transition-all sm:right-4 sm:top-4 ${
           showPanel || chromeVisible
             ? "translate-y-0 opacity-100"
             : "pointer-events-none -translate-y-2 opacity-0"
-        } ${showPanel ? "bg-primary text-white" : "bg-surface text-primary hover:bg-canvas"}`}
+        } ${showPanel ? "text-black" : "hover:bg-neutral-50"}`}
         title="Reader controls"
       >
         <IconSettings />
       </button>
 
       {showPanel ? (
-        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
-          <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden bg-surface px-5 py-4 shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
+          <div className="flex items-start justify-between gap-4 pb-4">
             <div>
               <div className="text-sm font-semibold text-primary">
                 Reader Controls
@@ -149,14 +155,17 @@ export default function PdfReader({
             </div>
             <button
               onClick={() => setShowPanel(false)}
-              className="rounded-lg border border-black/10 p-2 text-primary hover:bg-canvas"
+              className="text-xs font-medium uppercase tracking-[0.2em] text-primary"
               title="Close controls"
             >
-              <IconPanelClose />
+              <span className="inline-flex items-center gap-1">
+                <IconPanelClose />
+                Close
+              </span>
             </button>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="flex-1 space-y-5 overflow-y-auto">
             <ReaderPanelSection title="Bookmarks" defaultOpen>
               <ReaderAnnotationPanel
                 embedded
@@ -169,33 +178,35 @@ export default function PdfReader({
             </ReaderPanelSection>
 
             <ReaderPanelSection title="Contents" defaultOpen>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 text-sm text-primary">
+                <div className="text-xs text-muted">
+                  Page {pageNumber} of {numPages || "--"}
+                </div>
+                <div className="flex items-center gap-5 pt-1 text-xs font-medium uppercase tracking-[0.18em]">
                 <button
                   onClick={() => changePage(viewMode === "double" ? -2 : -1)}
                   disabled={pageNumber <= 1}
-                  className="rounded-xl border border-black/10 bg-surface px-3 py-3 text-sm text-primary disabled:opacity-40"
+                  className="text-primary disabled:opacity-40"
                 >
                   Previous
                 </button>
                 <button
                   onClick={() => changePage(viewMode === "double" ? 2 : 1)}
                   disabled={pageNumber >= (numPages || 9999)}
-                  className="rounded-xl border border-black/10 bg-surface px-3 py-3 text-sm text-primary disabled:opacity-40"
+                  className="text-primary disabled:opacity-40"
                 >
                   Next
                 </button>
-              </div>
-              <div className="mt-2 rounded-xl border border-black/10 bg-surface px-4 py-3 text-sm text-muted">
-                Page {pageNumber} of {numPages || "--"}
+                </div>
               </div>
             </ReaderPanelSection>
 
             <ReaderPanelSection title="Layout" icon={<IconLineHeight />}>
-              <div className="rounded-xl border border-black/10 bg-surface p-4">
-                <div className="mb-3 flex items-center justify-between text-xs text-muted">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-muted">
                   <button
                     onClick={zoomOut}
-                    className="rounded-lg border border-black/10 p-2 text-primary hover:bg-canvas"
+                    className="text-primary"
                     title="Zoom out"
                   >
                     <IconMinus />
@@ -203,7 +214,7 @@ export default function PdfReader({
                   <span>{Math.round(scale * 100)}%</span>
                   <button
                     onClick={zoomIn}
-                    className="rounded-lg border border-black/10 p-2 text-primary hover:bg-canvas"
+                    className="text-primary"
                     title="Zoom in"
                   >
                     <IconPlus />
@@ -222,31 +233,25 @@ export default function PdfReader({
                 />
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => viewMode === "double" && toggleViewMode()}
-                  className={`rounded-xl border px-3 py-3 text-sm ${
-                    viewMode === "single"
-                      ? "border-primary bg-primary text-white"
-                      : "border-black/10 bg-surface text-primary"
-                  }`}
+              <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                View
+                <select
+                  value={viewMode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value;
+                    if (nextMode !== viewMode) {
+                      toggleViewMode();
+                    }
+                  }}
+                  className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
                 >
-                  Single
-                </button>
-                <button
-                  onClick={() => viewMode === "single" && toggleViewMode()}
-                  className={`rounded-xl border px-3 py-3 text-sm ${
-                    viewMode === "double"
-                      ? "border-primary bg-primary text-white"
-                      : "border-black/10 bg-surface text-primary"
-                  }`}
-                >
-                  Spread
-                </button>
-              </div>
+                  <option value="single">Single page</option>
+                  <option value="double">Spread</option>
+                </select>
+              </label>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-surface p-4">
-                <div className="mb-3 flex items-center justify-between text-xs text-muted">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-muted">
                   <span>Narrow</span>
                   <span>{settings.pageMargin}%</span>
                   <span>Wide</span>
@@ -264,38 +269,22 @@ export default function PdfReader({
                 />
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => updateSetting("theme", "light")}
-                  className={`rounded-xl border px-3 py-4 text-sm ${
-                    settings.theme === "light"
-                      ? "border-primary ring-2 ring-primary/15"
-                      : "border-black/10"
-                  } bg-white text-black`}
+              <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                Theme
+                <select
+                  value={settings.theme}
+                  onChange={(event) =>
+                    updateSetting("theme", event.target.value as "light" | "sepia" | "dark")
+                  }
+                  className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
                 >
-                  Aa
-                </button>
-                <button
-                  onClick={() => updateSetting("theme", "sepia")}
-                  className={`rounded-xl border px-3 py-4 text-sm ${
-                    settings.theme === "sepia"
-                      ? "border-primary ring-2 ring-primary/15"
-                      : "border-black/10"
-                  } bg-[#f8f1e3] text-[#5b4636]`}
-                >
-                  Aa
-                </button>
-                <button
-                  onClick={() => updateSetting("theme", "dark")}
-                  className={`rounded-xl border px-3 py-4 text-sm ${
-                    settings.theme === "dark"
-                      ? "border-primary ring-2 ring-primary/15"
-                      : "border-black/10"
-                  } bg-[#111827] text-white`}
-                >
-                  Aa
-                </button>
-              </div>
+                  {THEME_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </ReaderPanelSection>
           </div>
         </aside>

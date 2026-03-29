@@ -65,26 +65,26 @@ export default function ReaderAnnotationPanel({
     <aside
       className={`${
         embedded
-          ? "w-full rounded-xl border border-black/10 bg-canvas shadow-sm"
-          : "absolute top-44 left-4 bottom-4 z-40 w-[320px] rounded-2xl border border-black/10 bg-surface shadow-2xl"
+          ? "w-full"
+          : "absolute top-44 left-4 bottom-4 z-40 w-[320px] bg-surface shadow-2xl"
       } flex flex-col overflow-hidden`}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-black/5">
+      <div className="flex items-center justify-between py-1">
         <div>
           <h2 className="text-sm font-semibold text-primary">Bookmarks</h2>
           <p className="text-xs text-muted">{annotations.length} saved locations</p>
         </div>
         <button
           onClick={onAddBookmark}
-          className="rounded-lg border border-black/10 bg-canvas px-3 py-1.5 text-xs font-medium text-primary hover:bg-gray-100"
+          className="text-xs font-medium uppercase tracking-[0.2em] text-primary"
         >
           Add
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto">
         {annotations.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-black/10 p-4 text-sm text-muted">
+          <div className="py-3 text-sm text-muted">
             Save a bookmark to keep your current place or add notes to important spots.
           </div>
         ) : (
@@ -93,7 +93,7 @@ export default function ReaderAnnotationPanel({
             return (
               <div
                 key={annotation.annotation_id}
-                className="rounded-xl border border-black/10 bg-canvas p-3 shadow-sm"
+                className="border-b border-black/10 py-3 last:border-b-0"
               >
                 {isEditing ? (
                   <div className="space-y-3">
@@ -101,39 +101,39 @@ export default function ReaderAnnotationPanel({
                       value={draftTitle}
                       onChange={(event) => setDraftTitle(event.target.value)}
                       placeholder="Bookmark title"
-                      className="w-full rounded-lg border border-black/10 bg-surface px-3 py-2 text-sm outline-none focus:border-black/25"
+                      className="w-full border-b border-black/10 bg-transparent px-0 py-2 text-sm outline-none"
                     />
                     <textarea
                       value={draftNote}
                       onChange={(event) => setDraftNote(event.target.value)}
                       placeholder="Optional note"
                       rows={3}
-                      className="w-full resize-none rounded-lg border border-black/10 bg-surface px-3 py-2 text-sm outline-none focus:border-black/25"
+                      className="w-full resize-none border-b border-black/10 bg-transparent px-0 py-2 text-sm outline-none"
                     />
-                    <div className="flex items-center gap-2">
-                      {COLOR_OPTIONS.map((color) => (
-                        <button
-                          key={color.id}
-                          onClick={() => setDraftColor(color.id)}
-                          className={`h-6 w-6 rounded-full border ${
-                            draftColor === color.id
-                              ? "border-black/70 ring-2 ring-black/10"
-                              : "border-black/10"
-                          }`}
-                          style={{ backgroundColor: color.value }}
-                        />
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-end gap-2">
+                    <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                      Color
+                      <select
+                        value={draftColor}
+                        onChange={(event) => setDraftColor(event.target.value)}
+                        className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
+                      >
+                        {COLOR_OPTIONS.map((color) => (
+                          <option key={color.id} value={color.id}>
+                            {color.id}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex items-center justify-end gap-4">
                       <button
                         onClick={() => setEditingId(null)}
-                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface"
+                        className="text-xs font-medium uppercase tracking-[0.18em] text-muted"
                       >
                         Cancel
                       </button>
                       <button
                         onClick={() => handleSave(annotation)}
-                        className="rounded-lg border border-black/10 bg-surface px-3 py-1.5 text-xs font-medium text-primary hover:bg-gray-100"
+                        className="text-xs font-medium uppercase tracking-[0.18em] text-primary"
                       >
                         Save
                       </button>
@@ -172,16 +172,16 @@ export default function ReaderAnnotationPanel({
                         </p>
                       ) : null}
                     </button>
-                    <div className="mt-3 flex items-center justify-end gap-2">
+                    <div className="mt-3 flex items-center justify-end gap-4">
                       <button
                         onClick={() => startEditing(annotation)}
-                        className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface"
+                        className="text-xs font-medium uppercase tracking-[0.18em] text-muted"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => onDelete(annotation.annotation_id)}
-                        className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                        className="text-xs font-medium uppercase tracking-[0.18em] text-red-600"
                       >
                         Delete
                       </button>

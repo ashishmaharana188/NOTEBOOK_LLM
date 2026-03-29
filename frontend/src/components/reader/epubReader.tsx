@@ -24,6 +24,12 @@ const FONT_OPTIONS = [
   { label: "Monospace", value: "'SFMono-Regular', Consolas, monospace" },
 ];
 
+const THEME_OPTIONS = [
+  { label: "Light", value: "light" },
+  { label: "Sepia", value: "sepia" },
+  { label: "Dark", value: "dark" },
+] as const;
+
 interface EpubReaderComponentProps extends ReaderProps {
   chromeVisible: boolean;
   onActivity: () => void;
@@ -79,6 +85,12 @@ export default function EpubReader({
 
   const [showPanel, setShowPanel] = useState(false);
   const isPaginated = settings.flow === "paginated";
+  const layoutMode =
+    settings.flow === "scrolled"
+      ? "scroll"
+      : settings.spread === "always"
+      ? "spread"
+      : "single";
   const readerMaxWidth =
     isMobile
       ? "100%"
@@ -100,19 +112,19 @@ export default function EpubReader({
     >
       <button
         onClick={() => setShowPanel((prev) => !prev)}
-        className={`absolute right-3 top-3 z-50 rounded-xl border border-black/10 p-3 shadow-lg transition-all sm:right-4 sm:top-4 ${
+        className={`absolute right-3 top-3 z-50 bg-white px-3 py-2 text-primary shadow-lg transition-all sm:right-4 sm:top-4 ${
           showPanel || chromeVisible
             ? "opacity-100 translate-y-0"
             : "opacity-0 -translate-y-2 pointer-events-none"
-        } ${showPanel ? "bg-primary text-white" : "bg-surface text-primary hover:bg-canvas"}`}
+        } ${showPanel ? "text-black" : "hover:bg-neutral-50"}`}
         title="Reader controls"
       >
         <IconSettings />
       </button>
 
       {showPanel ? (
-        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-surface shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
-          <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+        <aside className="absolute inset-x-3 top-16 bottom-3 z-40 flex flex-col overflow-hidden bg-surface px-5 py-4 shadow-2xl sm:inset-x-auto sm:right-20 sm:top-4 sm:bottom-4 sm:w-[360px]">
+          <div className="flex items-start justify-between gap-4 pb-4">
             <div>
               <div className="text-sm font-semibold text-primary">
                 Reader Controls
@@ -121,14 +133,17 @@ export default function EpubReader({
             </div>
             <button
               onClick={() => setShowPanel(false)}
-              className="rounded-lg border border-black/10 p-2 text-primary hover:bg-canvas"
+              className="text-xs font-medium uppercase tracking-[0.2em] text-primary"
               title="Close controls"
             >
-              <IconPanelClose />
+              <span className="inline-flex items-center gap-1">
+                <IconPanelClose />
+                Close
+              </span>
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto space-y-5">
             <ReaderPanelSection title="Bookmarks" defaultOpen>
               <ReaderAnnotationPanel
                 embedded
@@ -141,9 +156,9 @@ export default function EpubReader({
             </ReaderPanelSection>
 
             <ReaderPanelSection title="Contents" icon={<IconList />} defaultOpen>
-              <div className="max-h-56 overflow-y-auto rounded-xl border border-black/10 bg-surface p-2">
+              <div className="max-h-56 overflow-y-auto pr-2 text-sm">
                 {toc.length === 0 ? (
-                  <div className="p-3 text-sm text-muted">
+                  <div className="py-1 text-sm text-muted">
                     No table of contents available.
                   </div>
                 ) : (
@@ -151,7 +166,7 @@ export default function EpubReader({
                     <button
                       key={`${item.href}-${index}`}
                       onClick={() => navigateTo(item.href)}
-                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-primary hover:bg-canvas"
+                      className="block w-full py-1 text-left text-sm text-primary"
                     >
                       {item.label}
                     </button>
@@ -161,64 +176,50 @@ export default function EpubReader({
             </ReaderPanelSection>
 
             <ReaderPanelSection title="Layout" icon={<IconLineHeight />}>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => {
-                    updateSetting("flow", "scrolled");
-                    updateSetting("spread", "none");
+              <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                Layout
+                <select
+                  value={layoutMode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value;
+                    if (nextMode === "scroll") {
+                      updateSetting("flow", "scrolled");
+                      updateSetting("spread", "none");
+                    } else if (nextMode === "spread") {
+                      updateSetting("flow", "paginated");
+                      updateSetting("spread", "always");
+                    } else {
+                      updateSetting("flow", "paginated");
+                      updateSetting("spread", "none");
+                    }
                   }}
-                  className={`rounded-xl border px-3 py-3 text-xs font-medium ${
-                    settings.flow === "scrolled"
-                      ? "border-primary bg-primary text-white"
-                      : "border-black/10 bg-surface text-primary"
-                  }`}
+                  className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
                 >
-                  Scroll
-                </button>
-                <button
-                  onClick={() => {
-                    updateSetting("flow", "paginated");
-                    updateSetting("spread", "none");
-                  }}
-                  className={`rounded-xl border px-3 py-3 text-xs font-medium ${
-                    settings.flow === "paginated" && settings.spread === "none"
-                      ? "border-primary bg-primary text-white"
-                      : "border-black/10 bg-surface text-primary"
-                  }`}
-                >
-                  Single
-                </button>
-                <button
-                  onClick={() => {
-                    updateSetting("flow", "paginated");
-                    updateSetting("spread", "always");
-                  }}
-                  className={`rounded-xl border px-3 py-3 text-xs font-medium ${
-                    settings.flow === "paginated" && settings.spread === "always"
-                      ? "border-primary bg-primary text-white"
-                      : "border-black/10 bg-surface text-primary"
-                  }`}
-                >
-                  Spread
-                </button>
-              </div>
+                  <option value="scroll">Scroll</option>
+                  <option value="single">Single page</option>
+                  <option value="spread">Spread</option>
+                </select>
+              </label>
 
-              <select
-                value={settings.fontFamily}
-                onChange={(event) =>
-                  updateSetting("fontFamily", event.target.value)
-                }
-                className="mt-3 w-full rounded-xl border border-black/10 bg-surface px-3 py-3 text-sm text-primary outline-none"
-              >
-                {FONT_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                Font
+                <select
+                  value={settings.fontFamily}
+                  onChange={(event) =>
+                    updateSetting("fontFamily", event.target.value)
+                  }
+                  className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
+                >
+                  {FONT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-surface p-4">
-                <div className="mb-3 flex items-center justify-between text-xs text-muted">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-muted">
                   <span>A</span>
                   <span>{settings.fontSize}%</span>
                   <span className="text-base">A</span>
@@ -236,8 +237,8 @@ export default function EpubReader({
                 />
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-surface p-4">
-                <div className="mb-3 flex items-center justify-between text-xs text-muted">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-muted">
                   <span>Tight</span>
                   <span>{settings.lineHeight.toFixed(1)}</span>
                   <span>Loose</span>
@@ -255,8 +256,8 @@ export default function EpubReader({
                 />
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-surface p-4">
-                <div className="mb-3 flex items-center justify-between text-xs text-muted">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] text-muted">
                   <span>Narrow</span>
                   <span>{isPaginated ? "Auto" : `${settings.pageMargin}%`}</span>
                   <span>Wide</span>
@@ -274,44 +275,28 @@ export default function EpubReader({
                   className="w-full accent-black disabled:cursor-not-allowed disabled:opacity-40"
                 />
                 {isPaginated ? (
-                  <div className="mt-2 text-xs text-muted">
+                  <div className="text-xs text-muted">
                     Single and spread use a fixed page width for stable pagination.
                   </div>
                 ) : null}
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => updateSetting("theme", "light")}
-                  className={`rounded-xl border px-3 py-4 text-sm ${
-                    settings.theme === "light"
-                      ? "border-primary ring-2 ring-primary/15"
-                      : "border-black/10"
-                  } bg-white text-black`}
+              <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                Theme
+                <select
+                  value={settings.theme}
+                  onChange={(event) =>
+                    updateSetting("theme", event.target.value as "light" | "sepia" | "dark")
+                  }
+                  className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
                 >
-                  Aa
-                </button>
-                <button
-                  onClick={() => updateSetting("theme", "sepia")}
-                  className={`rounded-xl border px-3 py-4 text-sm ${
-                    settings.theme === "sepia"
-                      ? "border-primary ring-2 ring-primary/15"
-                      : "border-black/10"
-                  } bg-[#f8f1e3] text-[#5b4636]`}
-                >
-                  Aa
-                </button>
-                <button
-                  onClick={() => updateSetting("theme", "dark")}
-                  className={`rounded-xl border px-3 py-4 text-sm ${
-                    settings.theme === "dark"
-                      ? "border-primary ring-2 ring-primary/15"
-                      : "border-black/10"
-                  } bg-[#111827] text-white`}
-                >
-                  Aa
-                </button>
-              </div>
+                  {THEME_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </ReaderPanelSection>
           </div>
         </aside>

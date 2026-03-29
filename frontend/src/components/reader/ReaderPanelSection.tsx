@@ -17,13 +17,13 @@ export default function ReaderPanelSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <section className="rounded-xl border border-black/10 bg-canvas">
+    <section className="space-y-3">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 py-1 text-left"
       >
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted">
           {icon ? <span className="text-primary">{icon}</span> : null}
           <span>{title}</span>
         </div>
@@ -33,7 +33,7 @@ export default function ReaderPanelSection({
           <IconChevronDown />
         </span>
       </button>
-      {open ? <div className="border-t border-black/10 p-4">{children}</div> : null}
+      {open ? <div className="space-y-3 pb-2">{children}</div> : null}
     </section>
   );
 }
