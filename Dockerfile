@@ -42,6 +42,13 @@ RUN mkdir -p \
     stored_files/notes && \
     chmod +x start.sh
 
+# Bake models into the Docker image during the build phase
+RUN nohup bash -c "ollama serve &" && \
+    sleep 5 && \
+    ollama pull qwen2.5:0.5b-instruct && \
+    ollama pull qwen2.5:1.5b-instruct && \
+    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
 EXPOSE 7860
 
 CMD ["./start.sh"]

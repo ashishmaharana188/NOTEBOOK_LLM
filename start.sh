@@ -7,7 +7,7 @@ PREFETCH_OLLAMA_MODELS="${COGNITIVE_PREFETCH_OLLAMA_MODELS:-0}"
 PREFETCH_EMBEDDING_MODEL="${COGNITIVE_PREFETCH_EMBEDDING_MODEL:-0}"
 
 echo "Starting Ollama service..."
-ollama serve >/tmp/ollama.log 2>&1 &
+ollama serve &
 
 warm_in_background() {
   (
