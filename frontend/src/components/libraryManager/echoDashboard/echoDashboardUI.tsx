@@ -187,21 +187,25 @@ export default function EchoDashboardUI(props: any) {
     }) => {
       const cluster =
         (state.savedGlobalClusters || []).find(
-          (entry: any) => String(entry.id || entry.cluster_id || "") === String(clusterId),
+          (entry: any) =>
+            String(entry.id || entry.cluster_id || "") === String(clusterId),
         ) ||
         (state.savedGlobalClusters || []).find((entry: any) => entry.is_active);
+      const resolvedClusterId = String(
+        cluster?.id || cluster?.cluster_id || clusterId || "",
+      );
 
-      if (!cluster) {
+      if (!resolvedClusterId) {
         return;
       }
 
       await state.createDraftBranchFromHighlight({
         text,
         sourceEchoId: echoId,
-        parentClusterId: String(cluster.id || cluster.cluster_id || clusterId),
-        parentClusterTitle: cluster.title || activeBookTitle,
-        bookId: cluster.book_id || activeBookTitle,
-        libraryId: cluster.library_id || libraryId,
+        parentClusterId: resolvedClusterId,
+        parentClusterTitle: cluster?.title || activeBookTitle,
+        bookId: cluster?.book_id || activeBookTitle,
+        libraryId: cluster?.library_id || libraryId,
       });
     },
     [
@@ -506,6 +510,9 @@ export default function EchoDashboardUI(props: any) {
                                                     }
                                                     onSaveSuccess={
                                                       state.refreshGlobalCanvas
+                                                    }
+                                                    onEchoSaved={
+                                                      state.handleEchoSaved
                                                     }
                                                     linkedNoteIds={
                                                       state.localLinkedNotes[

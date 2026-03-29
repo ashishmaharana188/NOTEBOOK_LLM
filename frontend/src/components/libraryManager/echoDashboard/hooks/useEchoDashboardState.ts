@@ -493,6 +493,27 @@ export default function useEchoDashboardState({
         [],
     );
 
+    const handleEchoSaved = useCallback(
+        ({
+            echoId,
+            clusterId,
+        }: {
+            echoId: string;
+            clusterId: string;
+            created: boolean;
+        }) => {
+            if (!echoId || !clusterId) {
+                return;
+            }
+
+            setExpandedEchoByCluster((prev) => ({
+                ...prev,
+                [clusterId]: echoId,
+            }));
+        },
+        [],
+    );
+
     const closeDraftBranch = useCallback((draftId: string) => {
         setDraftBranches((prev) =>
             prev.filter((draft: any) => String(draft.id) !== String(draftId)),
@@ -823,6 +844,7 @@ export default function useEchoDashboardState({
         handleToggleActive,
         handleSpawnCluster,
         toggleSavedEchoExpansion,
+        handleEchoSaved,
         createDraftBranchFromHighlight,
         ensureDraftBranchCluster,
         handleDraftBranchSaved,
