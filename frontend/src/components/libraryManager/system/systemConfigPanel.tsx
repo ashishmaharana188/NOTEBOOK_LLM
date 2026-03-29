@@ -17,7 +17,7 @@ const runtimePresetPayloads = {
     runtime_preset: "cloud_cpu",
     local_reasoning_ollama_tag: "phi3.5:latest",
     embedding_profile: "all-minilm-l6-v2",
-    reasoning_profile: "qwen2.5:0.5b-instruct",
+    reasoning_profile: "heuristic-cpu",
     embedding_timeout_minutes: 0,
     reasoning_timeout_minutes: 0,
     embedding_placement: "cpu",
@@ -25,7 +25,7 @@ const runtimePresetPayloads = {
     embedding_precision: "fp32",
     embedding_eager_unload: false,
     embedding_low_memory_profile: "paraphrase-multilingual-minilm-l12-v2",
-    reasoning_low_memory_profile: "qwen2.5:0.5b-instruct",
+    reasoning_low_memory_profile: "heuristic-cpu",
   },
   local_cuda_test: {
     runtime_preset: "local_cuda_test",
@@ -71,6 +71,9 @@ export default function SystemConfigPanel() {
   const preset = runtime?.preset || {};
   const activePreset = draft?.runtime_preset || preset?.active || "cloud_cpu";
   const isLocalCudaPreset = activePreset === "local_cuda_test";
+  const ollamaRequired =
+    (catalog?.reasoning?.[draft?.reasoning_profile || ""]?.provider || "") ===
+    "ollama";
 
   const profileOptions = useMemo(
     () => ({
@@ -114,6 +117,8 @@ export default function SystemConfigPanel() {
         ? "bg-sky-100 text-sky-700"
         : service.state === "error"
           ? "bg-rose-100 text-rose-700"
+          : service.state === "not_required"
+            ? "bg-slate-100 text-slate-600"
           : "bg-slate-100 text-slate-600";
 
   return (
@@ -128,27 +133,35 @@ export default function SystemConfigPanel() {
                 >
                   {service.state || "unknown"}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => connectOllama()}
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  Connect
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startOllama()}
-                  className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
-                >
-                  Start Service
-                </button>
-                <button
-                  type="button"
-                  onClick={() => stopOllama()}
-                  className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100"
-                >
-                  Stop Managed
-                </button>
+                {ollamaRequired ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => connectOllama()}
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      Connect
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startOllama()}
+                      className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-opacity hover:opacity-90"
+                    >
+                      Start Service
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => stopOllama()}
+                      className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100"
+                    >
+                      Stop Managed
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-sm font-semibold text-slate-500">
+                    Ollama not used in the active cloud CPU preset.
+                  </span>
+                )}
               </div>
 
               <div className="rounded-2xl bg-slate-50 p-4">
@@ -182,7 +195,7 @@ export default function SystemConfigPanel() {
                 <p className="mt-3 text-sm font-semibold text-slate-600">
                   {isLocalCudaPreset
                     ? "CUDA mode is active. The runtime will use BGE-M3 + your local Phi Ollama tag with sequential GPU switching."
-                    : "Cloud-safe CPU mode keeps the current small-model production defaults."}
+                    : "Cloud-safe CPU mode uses MiniLM embeddings and the built-in CPU reasoning fallback. No Ollama service is required."}
                 </p>
                 {isLocalCudaPreset && (
                   <label className="mt-4 block text-sm font-bold text-slate-700">
@@ -216,23 +229,25 @@ export default function SystemConfigPanel() {
             </div>
           </div>
 
-          <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600">
-            <label className="block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-              Ollama Endpoint
-            </label>
-            <input
-              type="text"
-              value={draft.ollama_endpoint}
-              onChange={(e) =>
-                setDraft({ ...draft, ollama_endpoint: e.target.value })
-              }
-              onBlur={() => persist({ ollama_endpoint: draft.ollama_endpoint })}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400"
-            />
-            {refreshing && (
-              <span className="ml-3 text-slate-400">Refreshing...</span>
-            )}
-          </div>
+          {ollamaRequired ? (
+            <div className="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-600">
+              <label className="block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                Ollama Endpoint
+              </label>
+              <input
+                type="text"
+                value={draft.ollama_endpoint}
+                onChange={(e) =>
+                  setDraft({ ...draft, ollama_endpoint: e.target.value })
+                }
+                onBlur={() => persist({ ollama_endpoint: draft.ollama_endpoint })}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400"
+              />
+              {refreshing && (
+                <span className="ml-3 text-slate-400">Refreshing...</span>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_1fr]">

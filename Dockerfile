@@ -8,20 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
-    curl \
-    zstd \
     && rm -rf /var/lib/apt/lists/*
-
-RUN ARCH="$(dpkg --print-architecture)" && \
-    case "$ARCH" in \
-        amd64) OLLAMA_ARCH="amd64" ;; \
-        arm64) OLLAMA_ARCH="arm64" ;; \
-        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
-    esac && \
-    curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 180 -fsSL "https://ollama.com/download/ollama-linux-${OLLAMA_ARCH}.tar.zst" -o /tmp/ollama.tar.zst && \
-    tar --zstd -xf /tmp/ollama.tar.zst -C /usr && \
-    rm -f /tmp/ollama.tar.zst && \
-    chmod +x /usr/bin/ollama
 
 WORKDIR /app
 
@@ -41,13 +28,6 @@ RUN mkdir -p \
     data/reader_cache \
     stored_files/notes && \
     chmod +x start.sh
-
-# Bake models into the Docker image during the build phase
-RUN nohup bash -c "ollama serve &" && \
-    sleep 5 && \
-    ollama pull qwen2.5:0.5b-instruct && \
-    ollama pull qwen2.5:1.5b-instruct && \
-    python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 
 EXPOSE 7860
 

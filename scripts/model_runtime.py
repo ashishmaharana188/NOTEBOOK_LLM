@@ -36,7 +36,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "ollama_endpoint": "http://localhost:11434",
     "local_reasoning_ollama_tag": "phi3.5:latest",
     "embedding_profile": "all-minilm-l6-v2",
-    "reasoning_profile": "qwen2.5:0.5b-instruct",
+    "reasoning_profile": "heuristic-cpu",
     "embedding_timeout_minutes": 0,
     "reasoning_timeout_minutes": 0,
     "embedding_placement": "cpu",
@@ -44,7 +44,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "embedding_precision": "fp32",
     "embedding_eager_unload": False,
     "embedding_low_memory_profile": "paraphrase-multilingual-minilm-l12-v2",
-    "reasoning_low_memory_profile": "qwen2.5:0.5b-instruct",
+    "reasoning_low_memory_profile": "heuristic-cpu",
 }
 
 RUNTIME_PRESET_OVERRIDES: Dict[str, Dict[str, Any]] = {
@@ -52,7 +52,7 @@ RUNTIME_PRESET_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "runtime_preset": RUNTIME_PRESET_CLOUD_CPU,
         "local_reasoning_ollama_tag": "phi3.5:latest",
         "embedding_profile": "all-minilm-l6-v2",
-        "reasoning_profile": "qwen2.5:0.5b-instruct",
+        "reasoning_profile": "heuristic-cpu",
         "embedding_timeout_minutes": 0,
         "reasoning_timeout_minutes": 0,
         "embedding_placement": "cpu",
@@ -60,7 +60,7 @@ RUNTIME_PRESET_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "embedding_precision": "fp32",
         "embedding_eager_unload": False,
         "embedding_low_memory_profile": "paraphrase-multilingual-minilm-l12-v2",
-        "reasoning_low_memory_profile": "qwen2.5:0.5b-instruct",
+        "reasoning_low_memory_profile": "heuristic-cpu",
     },
     RUNTIME_PRESET_LOCAL_CUDA_TEST: {
         "runtime_preset": RUNTIME_PRESET_LOCAL_CUDA_TEST,
@@ -121,6 +121,14 @@ MODEL_CATALOG: Dict[str, Dict[str, Dict[str, Any]]] = {
         },
     },
     "reasoning": {
+        "heuristic-cpu": {
+            "label": "Built-in CPU Heuristic",
+            "provider": "builtin",
+            "model_id": "heuristic-cpu",
+            "est_ram_gb": 0.05,
+            "est_vram_gb": 0.0,
+            "dual_vram_profile": "heuristic-cpu",
+        },
         "qwen2.5:1.5b-instruct": {
             "label": "Qwen 2.5 1.5B Instruct",
             "provider": "ollama",
@@ -517,6 +525,10 @@ class ModelRuntimeManager:
         except KeyError as error:
             raise RuntimeLoadError(f"Unknown {role} profile: {profile}") from error
 
+    def _reasoning_provider(self, profile: Optional[str] = None) -> str:
+        target_profile = profile or self._config["reasoning_profile"]
+        return str(self._get_catalog_entry("reasoning", target_profile).get("provider") or "")
+
     def _resolve_role_profile(self, role: str, dual_vram_mode: bool = False) -> str:
         profile = self._config[f"{role}_profile"]
         if dual_vram_mode:
@@ -693,6 +705,8 @@ class ModelRuntimeManager:
             return False
 
     def connect_ollama(self) -> Dict[str, Any]:
+        if self._reasoning_provider() != "ollama":
+            return self.get_runtime_snapshot()
         reachable = self._ollama_is_reachable()
         if not reachable:
             raise RuntimeLoadError(
@@ -702,6 +716,8 @@ class ModelRuntimeManager:
         return self.get_runtime_snapshot()
 
     def start_ollama(self) -> Dict[str, Any]:
+        if self._reasoning_provider() != "ollama":
+            return self.get_runtime_snapshot()
         with self._lock:
             if (
                 self._managed_ollama_process
@@ -977,6 +993,17 @@ class ModelRuntimeManager:
     def load_reasoning_model(self, profile: Optional[str] = None):
         with self._lock:
             self._ensure_cuda_available(["reasoning"])
+            target_profile = profile or self._config["reasoning_profile"]
+            provider = self._reasoning_provider(target_profile)
+            if provider == "builtin":
+                self._mark_role_loaded(
+                    "reasoning",
+                    target_profile,
+                    "cuda"
+                    if self._placement_to_device("reasoning") == "cuda"
+                    else "cpu",
+                )
+                return
             if not self._ollama_is_reachable():
                 raise RuntimeLoadError("Ollama is not running or reachable.")
             if (
@@ -984,7 +1011,6 @@ class ModelRuntimeManager:
                 and not self._uses_shared_cpu_runtime()
             ):
                 self.unload_embedding_model(reason="embedding_switch")
-            target_profile = profile or self._config["reasoning_profile"]
             keep_alive = (
                 f"{int(self._config['reasoning_timeout_minutes'])}m"
                 if int(self._config["reasoning_timeout_minutes"]) > 0
@@ -1018,7 +1044,7 @@ class ModelRuntimeManager:
                     self._role_state["reasoning"]["enabled"] = False
                 return
             profile = self._role_state["reasoning"]["profile"]
-            if self._ollama_is_reachable():
+            if self._reasoning_provider(profile) == "ollama" and self._ollama_is_reachable():
                 try:
                     resolved_model = self._resolve_ollama_model_name(
                         self.get_resolved_reasoning_model_tag(
@@ -1055,7 +1081,10 @@ class ModelRuntimeManager:
             return self.get_runtime_snapshot()
         preflight = self._preflight_roles(role_list)
 
-        if "reasoning" in role_list and not self._ollama_is_reachable():
+        requires_ollama = "reasoning" in role_list and self._reasoning_provider(
+            preflight["resolved_profiles"].get("reasoning")
+        ) == "ollama"
+        if requires_ollama and not self._ollama_is_reachable():
             if allow_start_managed:
                 self.start_ollama()
             else:
@@ -1123,7 +1152,11 @@ class ModelRuntimeManager:
         role_list = sorted(set(roles))
         self._ensure_cuda_available(role_list)
         missing = [role for role in role_list if not self._role_state[role]["enabled"]]
-        service_required = "reasoning" in role_list and not self._ollama_is_reachable()
+        service_required = (
+            "reasoning" in role_list
+            and self._reasoning_provider() == "ollama"
+            and not self._ollama_is_reachable()
+        )
         if missing or service_required:
             raise RuntimeNotReadyError(
                 required_roles=role_list,
@@ -1136,13 +1169,15 @@ class ModelRuntimeManager:
     def get_runtime_snapshot(
         self, preflight: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        service_state = "disconnected"
-        if self._managed_ollama_process and self._managed_ollama_process.poll() is None:
-            service_state = (
-                "running_managed" if self._ollama_is_reachable() else "error"
-            )
-        elif self._ollama_is_reachable():
-            service_state = "connected_external"
+        service_state = "not_required"
+        if self._reasoning_provider() == "ollama":
+            service_state = "disconnected"
+            if self._managed_ollama_process and self._managed_ollama_process.poll() is None:
+                service_state = (
+                    "running_managed" if self._ollama_is_reachable() else "error"
+                )
+            elif self._ollama_is_reachable():
+                service_state = "connected_external"
 
         return {
             "config": self._config,
@@ -1301,6 +1336,13 @@ class ModelRuntimeManager:
             self.load_reasoning_model(profile=self._config["reasoning_profile"])
         self._begin_use("reasoning")
         try:
+            if self._reasoning_provider(self._role_state["reasoning"]["profile"]) != "ollama":
+                return json.dumps(
+                    [
+                        {"relation": "EXPAND", "bridge": "Semantic Match"}
+                        for _ in chunks_list
+                    ]
+                )
             resolved_model = self._resolve_ollama_model_name(
                 self.get_resolved_reasoning_model_tag(
                     profile=self._role_state["reasoning"]["profile"],
