@@ -23,6 +23,21 @@ def get_core_graph():
 
     # --- LAYER 1: CORE (Library Books) ---
     library_books = {}
+    library_lid_by_filename = {}
+    library_lid_by_title = {}
+
+    def normalize_book_key(value):
+        if value is None:
+            return ""
+        normalized = str(value).strip().replace("\\", "/")
+        if "/" in normalized:
+            normalized = normalized.split("/")[-1]
+        lowered = normalized.lower()
+        for suffix in (".pdf", ".epub", ".txt", ".md"):
+            if lowered.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+                lowered = normalized.lower()
+        return lowered
     try:
         import sqlite3
 
@@ -38,6 +53,12 @@ def get_core_graph():
             lid_str = str(b["lid"])  # The indestructible hash!
             library_books[lid_str] = lid_str
             filename = b.get("file_path") or title
+            normalized_filename = normalize_book_key(filename)
+            normalized_title = normalize_book_key(title)
+            if normalized_filename:
+                library_lid_by_filename[normalized_filename] = lid_str
+            if normalized_title:
+                library_lid_by_title[normalized_title] = lid_str
 
             nodes.append(
                 {
@@ -88,6 +109,24 @@ def get_core_graph():
     except Exception as e:
         logger.error(f"Failed to load Brain Layer: {e}")
 
+    def resolve_library_anchor(*candidates):
+        for candidate in candidates:
+            if not candidate:
+                continue
+            candidate_str = str(candidate).strip()
+            if candidate_str in library_books:
+                return candidate_str
+            if candidate_str in brain_lid_map:
+                return brain_lid_map[candidate_str]
+
+            normalized = normalize_book_key(candidate_str)
+            if normalized in library_lid_by_filename:
+                return library_lid_by_filename[normalized]
+            if normalized in library_lid_by_title:
+                return library_lid_by_title[normalized]
+
+        return None
+
     # --- LAYER 3: RING 2 (Echo Clusters & Synthesis Hubs) ---
     cluster_catalyst = {}
     try:
@@ -115,19 +154,8 @@ def get_core_graph():
             )
             node_ids.add(cid)
 
-            # --- THE FIX: Perfect Structural Anchor ---
-            # If we have the exact Library ID, use it. Otherwise, fallback to guessing with the string.
-            target_book = (
-                library_id
-                if (library_id and library_id in library_books)
-                else fallback_string
-            )
+            target_book = resolve_library_anchor(library_id, fallback_string)
             cluster_catalyst[cid] = target_book
-
-        if not target_book:
-            target_book = fallback_string
-
-        cluster_catalyst[cid] = target_book
 
         # 2. Fetch Unique Child Echoes & Route Cross-Pollination
         # --- V2: We no longer fetch linked_note_id from user_echoes! ---
@@ -174,7 +202,10 @@ def get_core_graph():
                             # 2. Link Source Book -> Catalyst Book (Layer 2 -> Layer 1)
                             cat_id = cluster_catalyst.get(cid)
 
-                            if cat_id and cat_id != src_filename:
+                            if not cat_id:
+                                cat_id = resolve_library_anchor(src_filename)
+
+                            if cat_id and cat_id in library_books:
                                 cat_key = (src_filename, cat_id)
                                 if cat_key not in seen_catalyst_links:
                                     seen_catalyst_links.add(cat_key)
