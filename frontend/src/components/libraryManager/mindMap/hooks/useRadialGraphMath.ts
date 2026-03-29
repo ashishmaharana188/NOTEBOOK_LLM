@@ -197,10 +197,12 @@ export default function useRadialGraphMath({
           if (normalizedAngle > Math.PI) normalizedAngle -= 2 * Math.PI;
           if (normalizedAngle < -Math.PI) normalizedAngle += 2 * Math.PI;
 
-          if (
-            normalizedAngle > -Math.PI / 1.6 &&
-            normalizedAngle < Math.PI / 1.6
-          ) {
+          const isInVisibleArc =
+            useEvenSpacing ||
+            (normalizedAngle > -Math.PI / 1.6 &&
+              normalizedAngle < Math.PI / 1.6);
+
+          if (isInVisibleArc) {
             const x = CENTER_X + radius * Math.cos(totalAngle);
             const y = CENTER_Y + radius * Math.sin(totalAngle);
 
