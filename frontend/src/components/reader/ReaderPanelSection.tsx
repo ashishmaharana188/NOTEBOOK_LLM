@@ -17,7 +17,7 @@ export default function ReaderPanelSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <section className="space-y-3">
+    <section className="mt-4 border-t border-black/10 pt-4 first:mt-0 first:border-t-0 first:pt-0">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -33,7 +33,7 @@ export default function ReaderPanelSection({
           <IconChevronDown />
         </span>
       </button>
-      {open ? <div className="space-y-3 pb-2">{children}</div> : null}
+      {open ? <div className="space-y-3 pb-2 pt-3">{children}</div> : null}
     </section>
   );
 }

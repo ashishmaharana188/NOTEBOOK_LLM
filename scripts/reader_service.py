@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import threading
 from typing import Any, Callable
 
@@ -91,6 +92,21 @@ def _section_offsets_are_invalid(
         if start_offset < 0 or end_offset <= start_offset or end_offset > text_length:
             return True
     return False
+
+
+def _resolve_epub_section_label(item_name: str, soup: BeautifulSoup) -> str:
+    for selector in ("title", "h1", "h2", "h3"):
+        candidate = soup.find(selector)
+        if not candidate:
+            continue
+        text = clean_text(candidate.get_text(separator=" "))
+        if text:
+            return text[:140]
+
+    fallback = os.path.splitext(os.path.basename(item_name))[0]
+    fallback = re.sub(r"[_-]+", " ", fallback).strip()
+    fallback = re.sub(r"\s+", " ", fallback)
+    return fallback[:140] or item_name
 
 
 class ReaderManifestService:
@@ -371,6 +387,7 @@ class ReaderManifestService:
             soup = BeautifulSoup(item.get_content(), "html.parser")
             text = clean_text(soup.get_text(separator="\n"))
             item_name = item.get_name()
+            item_label = _resolve_epub_section_label(item_name, soup)
             item_offsets[item_name] = running_offset
             if not text:
                 continue
@@ -379,7 +396,7 @@ class ReaderManifestService:
             section_index.append(
                 {
                     "section_index": len(section_index),
-                    "label": item_name,
+                    "label": item_label,
                     "href": item_name,
                     "char_index": running_offset,
                     "start_offset": start_offset,

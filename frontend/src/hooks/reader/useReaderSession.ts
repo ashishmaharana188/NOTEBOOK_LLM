@@ -580,24 +580,10 @@ export function useReaderSession(book: ReaderBook | null) {
     useEffect(() => {
         if (!usesSectionReader || !manifest) return;
         void loadTextSections(Math.max(0, currentTextSection - 1), 3);
-        if (!manifest.section_index?.length) return;
-        reportLocation({
-            location: currentTextSection,
-            locationType: "text_section",
-            progressPercent:
-                manifest.section_index.length > 0
-                    ? ((currentTextSection + 1) /
-                          manifest.section_index.length) *
-                      100
-                    : 0,
-            pageLabel: `Section ${currentTextSection + 1}`,
-            viewState: {},
-        });
     }, [
         currentTextSection,
         loadTextSections,
         manifest?.section_index?.length,
-        reportLocation,
         usesSectionReader,
     ]);
 

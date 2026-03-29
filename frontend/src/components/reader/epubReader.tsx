@@ -156,7 +156,28 @@ export default function EpubReader({
             </ReaderPanelSection>
 
             <ReaderPanelSection title="Contents" icon={<IconList />} defaultOpen>
-              <div className="max-h-56 overflow-y-auto pr-2 text-sm">
+              <div className="space-y-3 text-sm">
+                <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                  Chapter
+                  <select
+                    value=""
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        navigateTo(event.target.value);
+                      }
+                    }}
+                    className="mt-2 w-full border-b border-black/10 bg-transparent px-0 py-1 text-sm text-primary outline-none"
+                  >
+                    <option value="">Jump to chapter</option>
+                    {toc.map((item, index) => (
+                      <option key={`${item.href}-${index}`} value={item.href}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="max-h-56 overflow-y-auto pr-2 text-sm">
                 {toc.length === 0 ? (
                   <div className="py-1 text-sm text-muted">
                     No table of contents available.
@@ -172,6 +193,7 @@ export default function EpubReader({
                     </button>
                   ))
                 )}
+                </div>
               </div>
             </ReaderPanelSection>
 

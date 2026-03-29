@@ -9,6 +9,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
   const {
     isBootstrapping,
     manifest,
+    session,
     annotations,
     readerLocation,
     currentTextSection,
@@ -153,11 +154,14 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
         onSelection={handleSelection}
         currentSectionIndex={currentTextSection}
         sectionCount={manifest?.section_index?.length || 0}
+        sections={manifest?.section_index || []}
+        toc={manifest?.toc || []}
         sectionLabel={
           activeTextSection?.label ||
           manifest?.section_index?.[currentTextSection]?.label ||
           ""
         }
+        initialPageIndex={Number(session?.view_state?.pageIndex || 0)}
         onNavigateSection={(nextSection) =>
           setCurrentTextSection(
             Math.min(
