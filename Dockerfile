@@ -1,49 +1,47 @@
-# Use an official Python runtime as a parent image
 FROM python:3.10-slim
 
-# Install system dependencies needed for Ollama, sqlite, and building packages
-RUN apt-get update && apt-get install -y \
-    curl \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TOKENIZERS_PARALLELISM=false
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    sqlite3 \
+    ca-certificates \
+    curl \
     zstd \
-    nodejs \
-    npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Ollama using the official Linux package format
 RUN ARCH="$(dpkg --print-architecture)" && \
     case "$ARCH" in \
         amd64) OLLAMA_ARCH="amd64" ;; \
         arm64) OLLAMA_ARCH="arm64" ;; \
         *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
     esac && \
-    curl -fsSL "https://ollama.com/download/ollama-linux-${OLLAMA_ARCH}.tar.zst" -o /tmp/ollama.tar.zst && \
+    curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 180 -fsSL "https://ollama.com/download/ollama-linux-${OLLAMA_ARCH}.tar.zst" -o /tmp/ollama.tar.zst && \
     tar --zstd -xf /tmp/ollama.tar.zst -C /usr && \
     rm -f /tmp/ollama.tar.zst && \
     chmod +x /usr/bin/ollama
 
-# Set the working directory to the root of your app
 WORKDIR /app
 
-# 🔴 THE FIX: Install the tiny CPU-only version of PyTorch first!
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+COPY requirements.txt ./requirements.txt
 
-# Copy requirements and install them
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch && \
+    pip install -r requirements.txt
 
-# Copy the rest of your repository into the container
-COPY . .
+COPY scripts ./scripts
+COPY start.sh ./start.sh
 
-# Create the storage directories your app expects so it doesn't crash on startup
-RUN mkdir -p data/processed data/library data/metadata data/crawler data/reader_cache stored_files/notes
+RUN mkdir -p \
+    data/processed \
+    data/library \
+    data/metadata \
+    data/crawler \
+    data/reader_cache \
+    stored_files/notes && \
+    chmod +x start.sh
 
-# Make the startup script executable
-RUN chmod +x start.sh
-
-# Hugging Face Spaces strictly routes traffic to port 7860
 EXPOSE 7860
 
-# Command to run when the container starts
 CMD ["./start.sh"]
