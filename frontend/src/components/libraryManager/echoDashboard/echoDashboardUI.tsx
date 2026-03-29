@@ -218,12 +218,15 @@ export default function EchoDashboardUI(props: any) {
         parentClusterTitle: cluster?.title || activeBookTitle,
         bookId: cluster?.book_id || activeBookTitle,
         libraryId: cluster?.library_id || libraryId,
+        spawnBasePosition: activeColumnPos,
       });
     },
     [
+      activeColumnPos,
       activeBookTitle,
       libraryId,
       state.createDraftBranchFromHighlight,
+      state.handleEchoSaved,
       state.savedGlobalClusters,
     ],
   );

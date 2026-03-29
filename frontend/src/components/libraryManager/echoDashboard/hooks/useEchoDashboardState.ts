@@ -599,6 +599,7 @@ export default function useEchoDashboardState({
             parentClusterTitle,
             bookId,
             libraryId,
+            spawnBasePosition,
         }: {
             text: string;
             sourceEchoId: string;
@@ -606,6 +607,7 @@ export default function useEchoDashboardState({
             parentClusterTitle: string;
             bookId: string;
             libraryId: string;
+            spawnBasePosition?: { x: number; y: number };
         }) => {
             const highlightText = text.trim();
             if (!highlightText) return;
@@ -613,7 +615,7 @@ export default function useEchoDashboardState({
             const draftId = `draft_branch_${Date.now()}_${Math.random()
                 .toString(36)
                 .slice(2, 7)}`;
-            const parentPos = positions[parentClusterId] || {
+            const parentPos = positions[parentClusterId] || spawnBasePosition || {
                 x: 1000,
                 y: 100,
             };
