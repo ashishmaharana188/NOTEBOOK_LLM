@@ -83,6 +83,9 @@ def get_core_graph():
     # --- LAYER 2: RING 1 (The Brain / LanceDB) ---
     brain_books = {}
     brain_lid_map = {}  # Maps Brain Filename -> Library ID
+    brain_node_id_by_lid = {}
+    brain_node_id_by_filename = {}
+    brain_node_id_by_title = {}
     try:
         brain_records = db.get_all_books()
         for b in brain_records:
@@ -93,6 +96,13 @@ def get_core_graph():
             brain_books[filename] = filename
             if true_lid:
                 brain_lid_map[filename] = true_lid
+                brain_node_id_by_lid[str(true_lid)] = filename
+            normalized_filename = normalize_book_key(filename)
+            normalized_title = normalize_book_key(title)
+            if normalized_filename:
+                brain_node_id_by_filename[normalized_filename] = filename
+            if normalized_title:
+                brain_node_id_by_title[normalized_title] = filename
 
             if filename not in node_ids:
                 nodes.append(
@@ -108,6 +118,24 @@ def get_core_graph():
                 node_ids.add(filename)
     except Exception as e:
         logger.error(f"Failed to load Brain Layer: {e}")
+
+    def resolve_brain_node(*candidates):
+        for candidate in candidates:
+            if not candidate:
+                continue
+            candidate_str = str(candidate).strip()
+            if candidate_str in brain_books:
+                return candidate_str
+            if candidate_str in brain_node_id_by_lid:
+                return brain_node_id_by_lid[candidate_str]
+
+            normalized = normalize_book_key(candidate_str)
+            if normalized in brain_node_id_by_filename:
+                return brain_node_id_by_filename[normalized]
+            if normalized in brain_node_id_by_title:
+                return brain_node_id_by_title[normalized]
+
+        return None
 
     def resolve_library_anchor(*candidates):
         for candidate in candidates:
@@ -182,18 +210,21 @@ def get_core_graph():
                 try:
                     sources_data = json.loads(r["sources"])
                     if isinstance(sources_data, list) and len(sources_data) > 0:
-                        src_filename = sources_data[0].get("filename")
+                        primary_source = sources_data[0] or {}
+                        src_reference = primary_source.get("filename")
+                        src_lid = primary_source.get("source_lid")
+                        src_node_id = resolve_brain_node(src_lid, src_reference)
 
-                        if src_filename and src_filename in brain_books:
+                        if src_node_id:
                             # 1. Link Parent Column -> Source Book (Layer 3 -> Layer 2)
-                            hub_key = (cid, src_filename)
+                            hub_key = (cid, src_node_id)
                             if hub_key not in seen_hub_links:
                                 seen_hub_links.add(hub_key)
                                 edges.append(
                                     {
-                                        "id": f"edge_hub_{cid}_{src_filename}",
+                                        "id": f"edge_hub_{cid}_{src_node_id}",
                                         "source": cid,
-                                        "target": src_filename,
+                                        "target": src_node_id,
                                         "type": "implicit",
                                         "weight": 1.5,
                                     }
@@ -203,16 +234,16 @@ def get_core_graph():
                             cat_id = cluster_catalyst.get(cid)
 
                             if not cat_id:
-                                cat_id = resolve_library_anchor(src_filename)
+                                cat_id = resolve_library_anchor(src_lid, src_reference)
 
                             if cat_id and cat_id in library_books:
-                                cat_key = (src_filename, cat_id)
+                                cat_key = (src_node_id, cat_id)
                                 if cat_key not in seen_catalyst_links:
                                     seen_catalyst_links.add(cat_key)
                                     edges.append(
                                         {
-                                            "id": f"edge_catalyst_{src_filename}_{cat_id}",
-                                            "source": src_filename,
+                                            "id": f"edge_catalyst_{src_node_id}_{cat_id}",
+                                            "source": src_node_id,
                                             "target": cat_id,
                                             "type": "cross_pollination",
                                             "weight": 2.0,
