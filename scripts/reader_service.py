@@ -152,6 +152,34 @@ class ReaderManifestService:
             full_text = handle.read()
 
         section_index = manifest.get("section_index") or []
+        if not section_index and full_text.strip():
+            rebuilt_sections = _split_text_sections(full_text)
+            rebuilt_manifest = {
+                **manifest,
+                "page_count": len(rebuilt_sections),
+                "section_index": rebuilt_sections,
+                "location_map": [
+                    {
+                        "section_index": row["section_index"],
+                        "start_offset": row["start_offset"],
+                        "end_offset": row["end_offset"],
+                    }
+                    for row in rebuilt_sections
+                ],
+                "content_meta": {
+                    **content_meta,
+                    "supports_section_content": True,
+                    "section_count": len(rebuilt_sections),
+                    "char_count": len(full_text),
+                    "word_count": len(full_text.split()),
+                },
+            }
+            self.graph_db.upsert_reader_manifest(
+                identity["filename"], rebuilt_manifest, identity["lid"]
+            )
+            manifest = rebuilt_manifest
+            section_index = rebuilt_sections
+
         safe_limit = max(1, min(int(limit or 1), 5))
         safe_start = max(0, int(section or 0))
         slice_rows = section_index[safe_start : safe_start + safe_limit]

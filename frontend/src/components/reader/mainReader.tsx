@@ -167,7 +167,11 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
           )
         }
         isLoadingSection={
-          isBootstrapping || (usesSectionReader && !activeTextSection)
+          isBootstrapping ||
+          manifest?.status === "building" ||
+          (usesSectionReader &&
+            !!manifest?.section_index?.length &&
+            !activeTextSection)
         }
         chromeVisible={chromeVisible}
         annotations={annotations}

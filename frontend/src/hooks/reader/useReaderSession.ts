@@ -242,14 +242,17 @@ export function useReaderSession(book: ReaderBook | null) {
         async (sectionIndex: number, limit = 1) => {
             if (!book?.filename || !usesSectionReader) return;
             try {
+                const params: Record<string, string | number> = {
+                    section: sectionIndex,
+                    limit,
+                };
+                if (book.lid) {
+                    params.lid = book.lid;
+                }
                 const response = await API.get(
                     `/reader/books/${encodeURIComponent(book.filename)}/content`,
                     {
-                        params: {
-                            lid: book.lid || "",
-                            section: sectionIndex,
-                            limit,
-                        },
+                        params,
                     },
                 );
                 const payload = response.data?.data;
@@ -551,8 +554,9 @@ export function useReaderSession(book: ReaderBook | null) {
     }, [book?.filename, refreshBootstrap]);
 
     useEffect(() => {
-        if (!usesSectionReader || !manifest?.section_index?.length) return;
+        if (!usesSectionReader || !manifest) return;
         void loadTextSections(Math.max(0, currentTextSection - 1), 3);
+        if (!manifest.section_index?.length) return;
         reportLocation({
             location: currentTextSection,
             locationType: "text_section",
