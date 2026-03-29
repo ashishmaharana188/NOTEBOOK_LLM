@@ -79,6 +79,20 @@ def _split_text_sections(text: str, target_chars: int = 6000) -> list[dict[str, 
     return sections
 
 
+def _section_offsets_are_invalid(
+    section_index: list[dict[str, Any]], text_length: int
+) -> bool:
+    for row in section_index:
+        try:
+            start_offset = int(row.get("start_offset"))
+            end_offset = int(row.get("end_offset"))
+        except (TypeError, ValueError):
+            return True
+        if start_offset < 0 or end_offset <= start_offset or end_offset > text_length:
+            return True
+    return False
+
+
 class ReaderManifestService:
     def __init__(self, graph_db, library_dir: str, cache_dir: str):
         self.graph_db = graph_db
@@ -166,7 +180,17 @@ class ReaderManifestService:
             full_text = handle.read()
 
         section_index = manifest.get("section_index") or []
-        if not section_index and full_text.strip():
+        needs_rebuilt_sections = (
+            not section_index
+            or (
+                identity["format"] == "epub"
+                and (
+                    any(int(row.get("char_length") or 0) <= 0 for row in section_index)
+                    or _section_offsets_are_invalid(section_index, len(full_text))
+                )
+            )
+        )
+        if needs_rebuilt_sections and full_text.strip():
             rebuilt_sections = _split_text_sections(full_text)
             rebuilt_manifest = {
                 **manifest,
@@ -194,8 +218,13 @@ class ReaderManifestService:
             manifest = rebuilt_manifest
             section_index = rebuilt_sections
 
+        if identity["format"] == "epub" and not full_text.strip():
+            self._schedule_build(identity, manifest.get("file_fingerprint", ""))
+            return identity, manifest, [], "building"
+
         safe_limit = max(1, min(int(limit or 1), 5))
-        safe_start = max(0, int(section or 0))
+        max_section_index = max(len(section_index) - 1, 0)
+        safe_start = min(max(0, int(section or 0)), max_section_index)
         slice_rows = section_index[safe_start : safe_start + safe_limit]
         payload_sections: list[dict[str, Any]] = []
         for row in slice_rows:
@@ -343,11 +372,13 @@ class ReaderManifestService:
             text = clean_text(soup.get_text(separator="\n"))
             item_name = item.get_name()
             item_offsets[item_name] = running_offset
+            if not text:
+                continue
             start_offset = running_offset
             end_offset = start_offset + len(text)
             section_index.append(
                 {
-                    "section_index": idx,
+                    "section_index": len(section_index),
                     "label": item_name,
                     "href": item_name,
                     "char_index": running_offset,

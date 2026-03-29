@@ -281,6 +281,15 @@ export function useReaderSession(book: ReaderBook | null) {
                         }
                         return next;
                     });
+                    if (
+                        payload.sections.length > 0 &&
+                        !payload.sections.some(
+                            (row: ReaderManifestSection) =>
+                                row.section_index === sectionIndex,
+                        )
+                    ) {
+                        setCurrentTextSection(payload.sections[0].section_index);
+                    }
                 }
             } catch (error) {
                 console.error("Reader text content failed", error);
@@ -519,6 +528,21 @@ export function useReaderSession(book: ReaderBook | null) {
             }
         };
     }, [book?.filename, manifest, refreshBootstrap]);
+
+    useEffect(() => {
+        if (!usesSectionReader) return;
+        const sectionCount = manifest?.section_index?.length || 0;
+        if (!sectionCount) {
+            if (currentTextSection !== 0) {
+                setCurrentTextSection(0);
+            }
+            return;
+        }
+        const maxSectionIndex = sectionCount - 1;
+        if (currentTextSection > maxSectionIndex) {
+            setCurrentTextSection(maxSectionIndex);
+        }
+    }, [currentTextSection, manifest?.section_index?.length, usesSectionReader]);
 
     useEffect(() => {
         if (!book?.filename) return;
