@@ -9,6 +9,8 @@ import { buildApiUrl } from "../../../../lib/runtimeConfig";
 const ROOT_COLUMN_X_OFFSET = 620;
 const CHILD_COLUMN_X_OFFSET = 560;
 const CHILD_COLUMN_Y_OFFSET = 120;
+const DERIVED_COLUMN_X_OFFSET = 640;
+const DERIVED_COLUMN_Y_OFFSET = 90;
 
 export default function useEchoDashboardState({
     isOpen,
@@ -34,6 +36,30 @@ export default function useEchoDashboardState({
         Record<string, string | null>
     >({});
     const [draftBranches, setDraftBranches] = useState<any[]>([]);
+    const [derivedColumns, setDerivedColumns] = useState<any[]>([]);
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedCanvasItems, setSelectedCanvasItems] = useState<
+        Record<string, any>
+    >({});
+    const [ragComposerState, setRagComposerState] = useState<{
+        open: boolean;
+        prompt: string;
+        contexts: any[];
+        selectionRefs: any[];
+        sourceAnchorIds: string[];
+        titleHint: string;
+        includeWeb: boolean;
+        scopeLabel: string;
+    }>({
+        open: false,
+        prompt: "",
+        contexts: [],
+        selectionRefs: [],
+        sourceAnchorIds: [],
+        titleHint: "",
+        includeWeb: true,
+        scopeLabel: "",
+    });
 
     const { stacks, groups, fetchStacks, fetchGroups, createNote, updateNote } =
         useNotes("echoDashboard");
@@ -89,6 +115,10 @@ export default function useEchoDashboardState({
     const [highlightId, setHighlightId] = useState<string | null>(null);
 
     const [isCanvasWheelDisabled, setIsCanvasWheelDisabled] = useState(false);
+    const selectedItems = useMemo(
+        () => Object.values(selectedCanvasItems || {}),
+        [selectedCanvasItems],
+    );
 
     const localLinkedNotes = useMemo(() => {
         const linkMap: Record<string, string[]> = {};
@@ -514,6 +544,473 @@ export default function useEchoDashboardState({
         [],
     );
 
+    const clearSelections = useCallback(() => {
+        setSelectedCanvasItems({});
+    }, []);
+
+    const toggleSelectionMode = useCallback(() => {
+        setSelectionMode((prev) => {
+            const next = !prev;
+            if (!next) {
+                setSelectedCanvasItems({});
+            }
+            return next;
+        });
+    }, []);
+
+    const toggleCanvasSelection = useCallback((item: any) => {
+        const selectionKey = String(item?.key || "");
+        if (!selectionKey) return;
+        setSelectedCanvasItems((prev) => {
+            if (prev[selectionKey]) {
+                const next = { ...prev };
+                delete next[selectionKey];
+                return next;
+            }
+            return {
+                ...prev,
+                [selectionKey]: {
+                    ...item,
+                    anchorId: String(item.anchorId || ""),
+                    contexts: Array.isArray(item.contexts) ? item.contexts : [],
+                    selectionRefs: Array.isArray(item.selectionRefs)
+                        ? item.selectionRefs
+                        : [],
+                },
+            };
+        });
+    }, []);
+
+    const isCanvasItemSelected = useCallback(
+        (key: string) => Boolean(selectedCanvasItems[String(key)]),
+        [selectedCanvasItems],
+    );
+
+    const selectionPayload = useMemo(() => {
+        const contextsMap = new Map<string, any>();
+        const refsMap = new Map<string, any>();
+        const anchorIds = new Set<string>();
+        const labels: string[] = [];
+
+        selectedItems.forEach((item: any) => {
+            if (item.anchorId) {
+                anchorIds.add(String(item.anchorId));
+            }
+            if (item.label) {
+                labels.push(String(item.label));
+            }
+            (item.contexts || []).forEach((context: any, index: number) => {
+                const contextId = String(
+                    context.context_id ||
+                        `${item.key || "selection"}:context:${index}`,
+                );
+                if (!contextsMap.has(contextId)) {
+                    contextsMap.set(contextId, {
+                        ...context,
+                        context_id: contextId,
+                    });
+                }
+            });
+            (item.selectionRefs || []).forEach((ref: any, index: number) => {
+                const refKey = `${ref.kind || "selection"}:${ref.id || `${item.key}:${index}`}`;
+                if (!refsMap.has(refKey)) {
+                    refsMap.set(refKey, ref);
+                }
+            });
+        });
+
+        return {
+            contexts: Array.from(contextsMap.values()),
+            selectionRefs: Array.from(refsMap.values()),
+            sourceAnchorIds: Array.from(anchorIds).filter(Boolean),
+            titleHint:
+                labels.length === 1
+                    ? (labels[0] ?? "")
+                    : labels.length > 1
+                      ? `${labels.length} Selected Sources`
+                      : "",
+            scopeLabel:
+                labels.length === 1
+                    ? (labels[0] ?? "")
+                    : labels.length > 1
+                      ? `${labels.length} selected items`
+                      : "selection",
+        };
+    }, [selectedItems]);
+
+    const getDerivedColumnPosition = useCallback(
+        (sourceAnchorIds: string[]) => {
+            const anchorPositions = (sourceAnchorIds || [])
+                .map((anchorId) => positions[String(anchorId)])
+                .filter(
+                    (
+                        item,
+                    ): item is {
+                        x: number;
+                        y: number;
+                    } => Boolean(item),
+                );
+
+            if (anchorPositions.length === 0) {
+                const activePos = positions[activeColumnId] || { x: 550, y: 100 };
+                return {
+                    x: activePos.x + DERIVED_COLUMN_X_OFFSET,
+                    y: activePos.y,
+                };
+            }
+
+            const rightMost = Math.max(...anchorPositions.map((item) => item.x));
+            const averageY =
+                anchorPositions.reduce((sum, item) => sum + item.y, 0) /
+                anchorPositions.length;
+            const siblingCount = derivedColumns.filter((column: any) =>
+                (column.sourceAnchorIds || []).some((anchorId: string) =>
+                    sourceAnchorIds.includes(String(anchorId)),
+                ),
+            ).length;
+
+            return {
+                x: rightMost + DERIVED_COLUMN_X_OFFSET,
+                y: averageY + siblingCount * DERIVED_COLUMN_Y_OFFSET,
+            };
+        },
+        [activeColumnId, derivedColumns, positions],
+    );
+
+    const runDerivedAnalysis = useCallback(
+        async ({
+            mode,
+            prompt = "",
+            contexts,
+            selectionRefs,
+            sourceAnchorIds,
+            titleHint = "",
+            includeWeb = true,
+        }: {
+            mode: string;
+            prompt?: string;
+            contexts: any[];
+            selectionRefs: any[];
+            sourceAnchorIds: string[];
+            titleHint?: string;
+            includeWeb?: boolean;
+        }) => {
+            if (!contexts || contexts.length === 0) {
+                notify({
+                    title: "Nothing Selected",
+                    message:
+                        "Select one or more echoes or columns before running an analysis.",
+                    tone: "warning",
+                });
+                return;
+            }
+
+            const derivedId = `derived_${Date.now()}_${Math.random()
+                .toString(36)
+                .slice(2, 7)}`;
+            const nextPos = getDerivedColumnPosition(sourceAnchorIds || []);
+
+            setPositions((prev) => ({
+                ...prev,
+                [derivedId]: nextPos,
+            }));
+            setDerivedColumns((prev) => [
+                ...prev,
+                {
+                    id: derivedId,
+                    mode,
+                    title: titleHint || "Derived Analysis",
+                    summary: "",
+                    bullets: [],
+                    followUps: [],
+                    contexts,
+                    selectionRefs,
+                    sourceAnchorIds: sourceAnchorIds || [],
+                    localEvidence: [],
+                    webEvidence: [],
+                    webStatus: includeWeb ? "pending" : "skipped",
+                    webMessage: includeWeb
+                        ? "Gathering live web evidence..."
+                        : "Web retrieval skipped for this run.",
+                    prompt,
+                    includeWeb,
+                    isLoading: true,
+                    errorMessage: "",
+                },
+            ]);
+            setZoomTarget(derivedId);
+
+            try {
+                const res = await ensureRolesThen(["embedding", "reasoning"], () =>
+                    axios.post(buildApiUrl("/echo/analysis/run"), {
+                        mode,
+                        prompt,
+                        contexts,
+                        selection_refs: selectionRefs,
+                        include_web: includeWeb,
+                        title_hint: titleHint,
+                    }),
+                );
+                if (!res) return;
+                const payload = res.data?.data || res.data || {};
+
+                setDerivedColumns((prev) =>
+                    prev.map((column: any) =>
+                        String(column.id) === String(derivedId)
+                            ? {
+                                  ...column,
+                                  title:
+                                      payload.title ||
+                                      titleHint ||
+                                      "Derived Analysis",
+                                  modeLabel: payload.mode_label || mode,
+                                  summary: payload.summary || "",
+                                  bullets: Array.isArray(payload.bullets)
+                                      ? payload.bullets
+                                      : [],
+                                  followUps: Array.isArray(payload.follow_ups)
+                                      ? payload.follow_ups
+                                      : [],
+                                  contexts: Array.isArray(payload.contexts)
+                                      ? payload.contexts
+                                      : contexts,
+                                  localEvidence: Array.isArray(
+                                      payload.local_evidence,
+                                  )
+                                      ? payload.local_evidence
+                                      : [],
+                                  webEvidence: Array.isArray(
+                                      payload.web_evidence,
+                                  )
+                                      ? payload.web_evidence
+                                      : [],
+                                  webStatus: payload.web_status || "disabled",
+                                  webMessage:
+                                      payload.web_message ||
+                                      "No web evidence available.",
+                                  prompt: payload.prompt ?? prompt,
+                                  includeWeb:
+                                      typeof payload.include_web === "boolean"
+                                          ? payload.include_web
+                                          : includeWeb,
+                                  isLoading: false,
+                                  errorMessage: "",
+                              }
+                            : column,
+                    ),
+                );
+            } catch (error) {
+                console.error("Derived analysis failed", error);
+                setDerivedColumns((prev) =>
+                    prev.map((column: any) =>
+                        String(column.id) === String(derivedId)
+                            ? {
+                                  ...column,
+                                  isLoading: false,
+                                  errorMessage:
+                                      "The analysis could not be completed right now.",
+                              }
+                            : column,
+                    ),
+                );
+                notify({
+                    title: "Analysis Failed",
+                    message:
+                        "The analysis could not be completed right now.",
+                    tone: "error",
+                });
+            }
+        },
+        [ensureRolesThen, getDerivedColumnPosition],
+    );
+
+    const closeDerivedColumn = useCallback((derivedId: string) => {
+        setDerivedColumns((prev) =>
+            prev.filter((column: any) => String(column.id) !== String(derivedId)),
+        );
+        setSelectedCanvasItems((prev) => {
+            const next = { ...prev };
+            delete next[`derived-column:${derivedId}`];
+            return next;
+        });
+    }, []);
+
+    const saveDerivedColumn = useCallback(
+        async (derivedId: string) => {
+            const target = derivedColumns.find(
+                (column: any) => String(column.id) === String(derivedId),
+            );
+            if (!target || !target.summary) return;
+
+            try {
+                const res = await axios.post(buildApiUrl("/echo/analysis/save"), {
+                    mode: target.mode,
+                    title: target.title || "Derived Analysis",
+                    summary: target.summary,
+                    prompt: target.prompt || "",
+                    include_web: Boolean(target.includeWeb),
+                    contexts: target.contexts || [],
+                    selection_refs: target.selectionRefs || [],
+                    local_evidence: target.localEvidence || [],
+                    web_evidence: target.webEvidence || [],
+                    follow_ups: target.followUps || [],
+                    source_anchor_ids: target.sourceAnchorIds || [],
+                });
+
+                if (res.data?.status !== "success" || !res.data?.cluster_id) {
+                    throw new Error(
+                        res.data?.message || "The derived column could not be saved.",
+                    );
+                }
+
+                closeDerivedColumn(derivedId);
+                await refreshCanvasSnapshot();
+                setZoomTarget(String(res.data.cluster_id));
+                setHighlightId(String(res.data.cluster_id));
+                window.setTimeout(() => setHighlightId(null), 1200);
+            } catch (error) {
+                console.error("Failed to save derived column", error);
+                notify({
+                    title: "Save Failed",
+                    message: "The derived column could not be saved right now.",
+                    tone: "error",
+                });
+            }
+        },
+        [closeDerivedColumn, derivedColumns, refreshCanvasSnapshot],
+    );
+
+    const openSelectionRagComposer = useCallback(() => {
+        if (!selectionPayload.contexts.length) {
+            notify({
+                title: "Nothing Selected",
+                message:
+                    "Select a column or echo before asking a RAG question.",
+                tone: "warning",
+            });
+            return;
+        }
+        setRagComposerState({
+            open: true,
+            prompt: "",
+            contexts: selectionPayload.contexts,
+            selectionRefs: selectionPayload.selectionRefs,
+            sourceAnchorIds: selectionPayload.sourceAnchorIds,
+            titleHint: selectionPayload.titleHint || "",
+            includeWeb: true,
+            scopeLabel: selectionPayload.scopeLabel || "selection",
+        });
+    }, [selectionPayload]);
+
+    const openHighlightRagComposer = useCallback(
+        ({
+            text,
+            title,
+            chapter = "",
+            sourceLabel = "",
+            sourceAnchorId = "",
+            selectionRefs = [],
+            contextExtras = {},
+        }: {
+            text: string;
+            title: string;
+            chapter?: string;
+            sourceLabel?: string;
+            sourceAnchorId?: string;
+            selectionRefs?: any[];
+            contextExtras?: Record<string, any>;
+        }) => {
+            const trimmed = text.trim();
+            if (!trimmed) return;
+            setRagComposerState({
+                open: true,
+                prompt: "",
+                contexts: [
+                    {
+                        context_id: `highlight:${Date.now()}`,
+                        kind: "highlight",
+                        anchor_id: sourceAnchorId,
+                        title,
+                        text: trimmed,
+                        chapter,
+                        source_label: sourceLabel,
+                        ...contextExtras,
+                    },
+                ],
+                selectionRefs,
+                sourceAnchorIds: sourceAnchorId ? [sourceAnchorId] : [],
+                titleHint: title,
+                includeWeb: true,
+                scopeLabel: title,
+            });
+        },
+        [],
+    );
+
+    const closeRagComposer = useCallback(() => {
+        setRagComposerState({
+            open: false,
+            prompt: "",
+            contexts: [],
+            selectionRefs: [],
+            sourceAnchorIds: [],
+            titleHint: "",
+            includeWeb: true,
+            scopeLabel: "",
+        });
+    }, []);
+
+    const setRagComposerPrompt = useCallback((prompt: string) => {
+        setRagComposerState((prev) => ({ ...prev, prompt }));
+    }, []);
+
+    const submitRagComposer = useCallback(async () => {
+        const prompt = ragComposerState.prompt.trim();
+        if (!prompt) {
+            notify({
+                title: "Add A Question",
+                message: "Enter the question you want RAG to answer.",
+                tone: "warning",
+            });
+            return;
+        }
+        const currentComposer = ragComposerState;
+        closeRagComposer();
+        await runDerivedAnalysis({
+            mode: "rag",
+            prompt,
+            contexts: currentComposer.contexts,
+            selectionRefs: currentComposer.selectionRefs,
+            sourceAnchorIds: currentComposer.sourceAnchorIds,
+            titleHint: currentComposer.titleHint || prompt,
+            includeWeb: currentComposer.includeWeb,
+        });
+    }, [closeRagComposer, ragComposerState, runDerivedAnalysis]);
+
+    const runSelectionAnalysis = useCallback(
+        async (mode: string) => {
+            if (!selectionPayload.contexts.length) {
+                notify({
+                    title: "Nothing Selected",
+                    message:
+                        "Select a column or echo before running an analysis.",
+                    tone: "warning",
+                });
+                return;
+            }
+            await runDerivedAnalysis({
+                mode,
+                prompt: "",
+                contexts: selectionPayload.contexts,
+                selectionRefs: selectionPayload.selectionRefs,
+                sourceAnchorIds: selectionPayload.sourceAnchorIds,
+                titleHint: selectionPayload.titleHint || "",
+                includeWeb: true,
+            });
+        },
+        [runDerivedAnalysis, selectionPayload],
+    );
+
     const closeDraftBranch = useCallback((draftId: string) => {
         setDraftBranches((prev) =>
             prev.filter((draft: any) => String(draft.id) !== String(draftId)),
@@ -807,6 +1304,50 @@ export default function useEchoDashboardState({
         [draftBranches, savedGlobalClusters], // Dependency required to map the family tree
     );
 
+    useEffect(() => {
+        if (!isOpen) return;
+        const pendingRaw = sessionStorage.getItem("pendingDerivedAction");
+        if (!pendingRaw) return;
+
+        try {
+            const pending = JSON.parse(pendingRaw);
+            sessionStorage.removeItem("pendingDerivedAction");
+
+            if (pending?.type === "rag" && pending?.highlight && pending?.prompt) {
+                runDerivedAnalysis({
+                    mode: "rag",
+                    prompt: String(pending.prompt),
+                    contexts: [
+                        {
+                            context_id: `external-rag:${Date.now()}`,
+                            kind: "highlight",
+                            anchor_id: activeColumnId,
+                            title: activeBookTitle || "Selected Highlight",
+                            text: String(pending.highlight),
+                            chapter: "Reader Highlight",
+                            source_label: activeBookTitle || "Current Focus",
+                            book_id: activeBookTitle || "Current Focus",
+                            library_id: libraryId || "",
+                        },
+                    ],
+                    selectionRefs: [
+                        {
+                            kind: "highlight",
+                            id: "external-highlight",
+                            label: activeBookTitle || "Reader Highlight",
+                        },
+                    ],
+                    sourceAnchorIds: [activeColumnId],
+                    titleHint: activeBookTitle || "Reader Highlight",
+                    includeWeb: true,
+                });
+            }
+        } catch (error) {
+            console.error("Failed to restore pending derived action", error);
+            sessionStorage.removeItem("pendingDerivedAction");
+        }
+    }, [activeBookTitle, activeColumnId, isOpen, libraryId, runDerivedAnalysis]);
+
     return {
         expandedStackId,
         zIndexes,
@@ -831,6 +1372,7 @@ export default function useEchoDashboardState({
         visibleSavedClusters,
         draftBranches,
         visibleDraftBranches,
+        derivedColumns,
         expandedEchoByCluster,
         branchesBySourceEchoId,
         highlightedBranchClusterIds,
@@ -851,6 +1393,8 @@ export default function useEchoDashboardState({
         ensureDraftBranchCluster,
         handleDraftBranchSaved,
         closeDraftBranch,
+        closeDerivedColumn,
+        saveDerivedColumn,
         focusBranchesForEcho,
         toggleStack,
         bringToFront,
@@ -859,5 +1403,19 @@ export default function useEchoDashboardState({
         setIsCanvasWheelDisabled,
         handleRenameCluster,
         handleDeleteCluster,
+        selectionMode,
+        toggleSelectionMode,
+        clearSelections,
+        toggleCanvasSelection,
+        isCanvasItemSelected,
+        selectedItems,
+        selectionPayload,
+        runSelectionAnalysis,
+        openSelectionRagComposer,
+        openHighlightRagComposer,
+        ragComposerState,
+        closeRagComposer,
+        setRagComposerPrompt,
+        submitRagComposer,
     };
 }

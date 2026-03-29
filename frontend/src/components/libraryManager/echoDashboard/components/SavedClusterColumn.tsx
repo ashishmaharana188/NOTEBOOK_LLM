@@ -24,8 +24,14 @@ const SavedClusterColumn = React.memo(
         onToggleEchoExpand,
         branchCountByEchoId,
         onCreateBranchFromHighlight,
+        onAskRagFromHighlight,
         onShowBranches,
         isHighlighted,
+        selectionMode,
+        isColumnSelected,
+        onToggleColumnSelect,
+        isEchoSelected,
+        onToggleEchoSelect,
     }: any) => {
         const chunks = cluster.chunks || [];
 
@@ -59,6 +65,9 @@ const SavedClusterColumn = React.memo(
                 defaultWidth={470}
                 defaultHeight={780}
                 isHighlighted={isHighlighted}
+                selectionMode={selectionMode}
+                isSelected={isColumnSelected}
+                onToggleSelect={onToggleColumnSelect}
             >
                 <div className="flex h-full min-h-0 flex-col">
                     <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-4 py-4">
@@ -149,6 +158,14 @@ const SavedClusterColumn = React.memo(
                                                 libraryId:
                                                     cluster.library_id || "",
                                             })
+                                        }
+                                        onAskRagFromHighlight={
+                                            onAskRagFromHighlight
+                                        }
+                                        selectionMode={selectionMode}
+                                        isSelected={isEchoSelected?.(echoId)}
+                                        onToggleSelect={() =>
+                                            onToggleEchoSelect?.(chunk)
                                         }
                                     />
                                 );

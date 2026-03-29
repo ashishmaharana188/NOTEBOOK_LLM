@@ -11,12 +11,19 @@ import requests
 import torch
 from sentence_transformers import SentenceTransformer
 
+from scripts.log_sanitizer import (
+    configure_runtime_logging,
+    safe_error_detail,
+    summarize_text_for_log,
+)
+
 try:
     import psutil
 except Exception:  # pragma: no cover - optional dependency fallback
     psutil = None
 
 logger = logging.getLogger(__name__)
+configure_runtime_logging()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -765,22 +772,40 @@ class ModelRuntimeManager:
     def _ollama_generate(
         self, payload: Dict[str, Any], timeout: int = 30
     ) -> Dict[str, Any]:
+        model_name = str(payload.get("model") or "unknown")
+        prompt_summary = summarize_text_for_log("prompt", payload.get("prompt", ""))
+        started_at = time.time()
         response = requests.post(
             f"{self._get_ollama_root()}/api/generate",
             json=payload,
             timeout=timeout,
         )
         if response.status_code >= 400:
-            detail = ""
+            detail: Any = None
             try:
-                body = response.json()
-                detail = body.get("error") or body.get("message") or json.dumps(body)
+                detail = response.json()
             except Exception:
                 detail = response.text.strip()
-            raise RuntimeLoadError(
-                f"Ollama generate request failed ({response.status_code}): {detail or 'Unknown error'}"
+            safe_detail = safe_error_detail(detail)
+            logger.warning(
+                "LLM call failed model=%s status=%s %s detail=%s",
+                model_name,
+                response.status_code,
+                prompt_summary,
+                safe_detail,
             )
-        return response.json()
+            raise RuntimeLoadError(
+                f"Ollama generate request failed ({response.status_code}). {safe_detail}"
+            )
+        result = response.json()
+        logger.info(
+            "LLM call completed model=%s duration_ms=%s %s response_chars=%s",
+            model_name,
+            int((time.time() - started_at) * 1000),
+            prompt_summary,
+            len(str(result.get("response") or "")),
+        )
+        return result
 
     def _get_ollama_model_names(self) -> List[str]:
         response = requests.get(f"{self._get_ollama_root()}/api/tags", timeout=5)
@@ -1359,6 +1384,53 @@ class ModelRuntimeManager:
                 },
                 timeout=60,
             ).get("response", "[]")
+        finally:
+            self._end_use("reasoning")
+
+    def generate_structured_json(
+        self,
+        prompt: str,
+        fallback: Dict[str, Any],
+        timeout: int = 90,
+        temperature: float = 0.2,
+        num_predict: int = 700,
+    ) -> Dict[str, Any]:
+        self.require_roles_ready(["reasoning"])
+        if not self._role_state["reasoning"]["loaded"]:
+            self.load_reasoning_model(profile=self._config["reasoning_profile"])
+        self._begin_use("reasoning")
+        try:
+            if self._reasoning_provider(self._role_state["reasoning"]["profile"]) != "ollama":
+                return fallback
+            resolved_model = self._resolve_ollama_model_name(
+                self.get_resolved_reasoning_model_tag(
+                    profile=self._role_state["reasoning"]["profile"],
+                    require_env=True,
+                )
+            )
+            response_text = self._ollama_generate(
+                {
+                    "model": resolved_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": "json",
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": num_predict,
+                    },
+                },
+                timeout=timeout,
+            ).get("response", "")
+            if not response_text:
+                return fallback
+            try:
+                parsed = json.loads(response_text)
+            except Exception:
+                logger.warning("Reasoning model returned invalid JSON for structured generation.")
+                return fallback
+            if isinstance(parsed, dict):
+                return parsed
+            return fallback
         finally:
             self._end_use("reasoning")
 

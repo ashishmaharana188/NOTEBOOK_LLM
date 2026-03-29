@@ -10,8 +10,9 @@ def analyze_relations_batch(highlight_text, chunks_list):
     if not chunks_list:
         return []
 
-    logger.info(
-        f"LLM batch analyzing {len(chunks_list)} connections simultaneously..."
+    logger.debug(
+        "LLM batch analyzing %s connections simultaneously...",
+        len(chunks_list),
     )
 
     try:

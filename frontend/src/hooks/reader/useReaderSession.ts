@@ -36,6 +36,29 @@ function getCacheKey(filename: string) {
     return `${LOCAL_CACHE_PREFIX}${filename}`;
 }
 
+function stableStringify(value: unknown) {
+    try {
+        return JSON.stringify(value ?? {});
+    } catch {
+        return "{}";
+    }
+}
+
+function isSameLocationPayload(
+    left: ReaderLocationPayload | null,
+    right: ReaderLocationPayload | null,
+) {
+    if (!left && !right) return true;
+    if (!left || !right) return false;
+    return (
+        String(left.location ?? "") === String(right.location ?? "") &&
+        String(left.locationType ?? "") === String(right.locationType ?? "") &&
+        Number(left.progressPercent ?? 0) === Number(right.progressPercent ?? 0) &&
+        String(left.pageLabel ?? "") === String(right.pageLabel ?? "") &&
+        stableStringify(left.viewState) === stableStringify(right.viewState)
+    );
+}
+
 export function useReaderSession(book: ReaderBook | null) {
     const [isBootstrapping, setIsBootstrapping] = useState(false);
     const [manifest, setManifest] = useState<ReaderManifestSummary | null>(
@@ -57,6 +80,7 @@ export function useReaderSession(book: ReaderBook | null) {
     const currentLocationRef = useRef<ReaderLocationPayload | null>(null);
     const hasHydratedLocationRef = useRef(false);
     const sessionDirtyRef = useRef(false);
+    const sessionRef = useRef<ReaderSession | null>(null);
 
     const normalizedExtension = useMemo(() => {
         return String(book?.extension || "")
@@ -76,6 +100,10 @@ export function useReaderSession(book: ReaderBook | null) {
         return normalizedExtension === "epub" && !isLocalHost;
     }, [normalizedExtension]);
     const usesSectionReader = isTextFormat || prefersRemoteSectionReader;
+
+    useEffect(() => {
+        sessionRef.current = session;
+    }, [session]);
 
     const persistLocalCache = useCallback(
         (payload: Record<string, any>) => {
@@ -221,11 +249,14 @@ export function useReaderSession(book: ReaderBook | null) {
 
     const reportLocation = useCallback(
         (payload: ReaderLocationPayload) => {
+            if (isSameLocationPayload(currentLocationRef.current, payload)) {
+                return;
+            }
             currentLocationRef.current = payload;
             sessionDirtyRef.current = true;
             persistLocalCache({
                 session: {
-                    ...(session || ({} as ReaderSession)),
+                    ...(sessionRef.current || ({} as ReaderSession)),
                     last_location: String(payload.location),
                     last_location_type: payload.locationType || "",
                     progress_percent: payload.progressPercent || 0,
@@ -235,7 +266,7 @@ export function useReaderSession(book: ReaderBook | null) {
             });
             scheduleSessionFlush();
         },
-        [persistLocalCache, scheduleSessionFlush, session],
+        [persistLocalCache, scheduleSessionFlush],
     );
 
     const loadTextSections = useCallback(

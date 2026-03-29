@@ -26,6 +26,11 @@ const InteractiveChunkCard = React.memo(
         resolveTargetClusterId,
         onEchoSaved,
         onCreateBranchFromHighlight,
+        onAskRagFromHighlight,
+        selectionMode = false,
+        isSelected = false,
+        onToggleSelect,
+        sourceAnchorId = "",
     }: {
         chunk: EchoChunk;
         chunkIndex: number;
@@ -53,6 +58,19 @@ const InteractiveChunkCard = React.memo(
             echoId: string;
             clusterId: string;
         }) => Promise<void> | void;
+        onAskRagFromHighlight?: (payload: {
+            text: string;
+            title: string;
+            chapter: string;
+            sourceLabel: string;
+            sourceAnchorId: string;
+            selectionRefs: any[];
+            contextExtras: Record<string, any>;
+        }) => void;
+        selectionMode?: boolean;
+        isSelected?: boolean;
+        onToggleSelect?: () => void;
+        sourceAnchorId?: string;
     }) => {
         const { ensureRolesThen } = useModelRuntime();
         const isPreSaved =
@@ -62,6 +80,7 @@ const InteractiveChunkCard = React.memo(
         const [isDeleted, setIsDeleted] = useState(false);
         const [isProcessing, setIsProcessing] = useState(false);
         const [isCollapsed, setIsCollapsed] = useState(false);
+        const [showHighlightMenu, setShowHighlightMenu] = useState(false);
         const [echoId, setEchoId] = useState<string | null>(
             isPreSaved ? String((chunk as any).echo_id || "") : null,
         );
@@ -119,6 +138,7 @@ const InteractiveChunkCard = React.memo(
         useEffect(() => {
             if (isCollapsed) {
                 setSelectionText("");
+                setShowHighlightMenu(false);
             }
         }, [isCollapsed]);
 
@@ -279,6 +299,37 @@ const InteractiveChunkCard = React.memo(
                 echoId: currentEchoRef.echoId,
                 clusterId: currentEchoRef.clusterId,
             });
+            setShowHighlightMenu(false);
+            setSelectionText("");
+            window.getSelection()?.removeAllRanges();
+        };
+
+        const handleAskRag = () => {
+            const nextSelection = selectionText || getSelectionWithinContext();
+            if (!nextSelection || !onAskRagFromHighlight) return;
+            onAskRagFromHighlight({
+                text: nextSelection,
+                title: customTitle || sourceLabel || "Selected Highlight",
+                chapter: chunk.chapter || "Unknown Chapter",
+                sourceLabel,
+                sourceAnchorId,
+                selectionRefs: [
+                    {
+                        kind: echoId ? "echo" : "incoming_echo",
+                        id: echoId || String((chunk as any).chunk_id || ""),
+                        label: customTitle || sourceLabel || "Selected Highlight",
+                        cluster_id: savedClusterIdRef.current || targetClusterId || "",
+                        echo_id: echoId || "",
+                    },
+                ],
+                contextExtras: {
+                    echo_id: echoId || "",
+                    cluster_id: savedClusterIdRef.current || targetClusterId || "",
+                    book_id: bookId || activeBookTitle,
+                    library_id: libraryId || "",
+                },
+            });
+            setShowHighlightMenu(false);
             setSelectionText("");
             window.getSelection()?.removeAllRanges();
         };
@@ -319,6 +370,22 @@ const InteractiveChunkCard = React.memo(
 
                         <div className="flex shrink-0 items-center gap-1">
                             <button
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    onToggleSelect?.();
+                                }}
+                                title={isSelected ? "Unselect echo" : "Select echo"}
+                                className={`${
+                                    selectionMode ? "flex" : "hidden"
+                                } h-8 w-8 items-center justify-center border transition-colors ${
+                                    isSelected
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
+                                }`}
+                            >
+                                {isSelected && <CheckIcon className="h-4 w-4" />}
+                            </button>
+                            <button
                                 onClick={() => setIsCollapsed((prev) => !prev)}
                                 title={isCollapsed ? "Expand card" : "Minimize card"}
                                 className="flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-900"
@@ -342,19 +409,47 @@ const InteractiveChunkCard = React.memo(
                                     {linkedNoteCount}
                                 </span>
                             )}
-                            <button
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={handleSearchHighlight}
-                                disabled={isProcessing || isCollapsed || !onCreateBranchFromHighlight}
-                                title="Search highlight"
-                                className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
-                                    selectionText && !isCollapsed
-                                        ? "text-slate-600 hover:text-slate-900"
-                                        : "text-slate-500 hover:text-slate-900"
-                                }`}
-                            >
-                                Search
-                            </button>
+                            <div className="relative">
+                                <button
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() =>
+                                        setShowHighlightMenu((prev) => !prev)
+                                    }
+                                    disabled={isProcessing || isCollapsed}
+                                    title="Highlight actions"
+                                    className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
+                                        selectionText && !isCollapsed
+                                            ? "text-slate-700 hover:text-slate-900"
+                                            : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                >
+                                    Highlight
+                                </button>
+                                {showHighlightMenu && !isCollapsed && (
+                                    <div className="absolute right-0 top-9 z-30 min-w-[140px] border border-slate-200 bg-white p-1 shadow-lg">
+                                        <button
+                                            onMouseDown={(event) =>
+                                                event.preventDefault()
+                                            }
+                                            onClick={handleSearchHighlight}
+                                            disabled={!onCreateBranchFromHighlight}
+                                            className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                                        >
+                                            <span>Find Echoes</span>
+                                        </button>
+                                        <button
+                                            onMouseDown={(event) =>
+                                                event.preventDefault()
+                                            }
+                                            onClick={handleAskRag}
+                                            disabled={!onAskRagFromHighlight}
+                                            className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                                        >
+                                            <span>Ask RAG</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <button
                                 onClick={handleSaveAndReturnRef}
                                 disabled={isProcessing}

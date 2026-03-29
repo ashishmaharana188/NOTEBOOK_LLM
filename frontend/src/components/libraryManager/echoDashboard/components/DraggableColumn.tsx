@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   BookOpenIcon,
+  CheckIcon,
   PencilSquareIcon, // <--- ADDED ICON
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -28,6 +29,9 @@ const DraggableColumn = React.memo(
     interactionReduced,
     onRename, // <--- NEW PROP
     onDelete,
+    selectionMode = false,
+    isSelected = false,
+    onToggleSelect,
     defaultWidth = DEFAULT_COLUMN_WIDTH,
     defaultHeight = DEFAULT_COLUMN_HEIGHT,
   }: any) => {
@@ -303,19 +307,38 @@ const DraggableColumn = React.memo(
             </div>
           </div>
 
-          {/* TOP RIGHT DELETE BUTTON */}
-          {onDelete && (
-            <button
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              className="p-1.5 -m-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover/header:opacity-100"
-              title="Delete Column & Branches"
-            >
-              <TrashIcon className="w-4 h-4" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {selectionMode && onToggleSelect && (
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect();
+                }}
+                className={`flex h-7 w-7 items-center justify-center border transition-colors ${
+                  isSelected
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
+                }`}
+                title={isSelected ? "Unselect column" : "Select column"}
+              >
+                {isSelected && <CheckIcon className="h-4 w-4" />}
+              </button>
+            )}
+
+            {/* TOP RIGHT DELETE BUTTON */}
+            {onDelete && (
+              <button
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                className="p-1.5 -m-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover/header:opacity-100"
+                title="Delete Column & Branches"
+              >
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* --- BOTTOM BODY WRAPPER --- */}

@@ -205,6 +205,19 @@ function App() {
           setEchoOpen(true);
           dismissTrigger();
         }}
+        onAskRag={(prompt: string) => {
+          sessionStorage.setItem(
+            "pendingDerivedAction",
+            JSON.stringify({
+              type: "rag",
+              highlight: selectedText,
+              prompt,
+            }),
+          );
+          setWorkspaceView("ECHOES");
+          setEchoOpen(true);
+          dismissTrigger();
+        }}
         onDismiss={dismissTrigger}
       />
 

@@ -279,6 +279,7 @@ class GraphDBManager:
                 tags TEXT,
                 sticky_data_json TEXT DEFAULT '[]',
                 quick_thoughts TEXT DEFAULT '[]',
+                analysis_metadata TEXT DEFAULT '{}',
                 sources TEXT, 
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -359,18 +360,22 @@ class GraphDBManager:
                     c.execute("ALTER TABLE user_echoes ADD COLUMN tags TEXT")
                 if "quick_thoughts" not in columns:
                     c.execute("ALTER TABLE user_echoes ADD COLUMN quick_thoughts TEXT")
+                if "analysis_metadata" not in columns:
+                    c.execute(
+                        "ALTER TABLE user_echoes ADD COLUMN analysis_metadata TEXT DEFAULT '{}'"
+                    )
                 # --- NEW MIGRATION: ADD GROUP_ID FOR SCATTERED ARCHIVES ---
                 if "group_id" not in columns:
                     c.execute("ALTER TABLE user_echoes ADD COLUMN group_id TEXT")
 
         # Fallback creation to make sure the complete schema exists with NEW columns
         c.execute(
-            "CREATE TABLE IF NOT EXISTS user_echoes (echo_id TEXT PRIMARY KEY, cluster_id TEXT, group_id TEXT, ai_insight TEXT, weight INTEGER DEFAULT 1, sources TEXT, linked_note_id TEXT, title TEXT, tags TEXT, quick_thoughts TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            "CREATE TABLE IF NOT EXISTS user_echoes (echo_id TEXT PRIMARY KEY, cluster_id TEXT, group_id TEXT, ai_insight TEXT, weight INTEGER DEFAULT 1, sources TEXT, linked_note_id TEXT, title TEXT, tags TEXT, quick_thoughts TEXT, analysis_metadata TEXT DEFAULT '{}', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
         )
 
         # Fallback creation to make sure the complete schema exists with NEW columns
         c.execute(
-            "CREATE TABLE IF NOT EXISTS user_echoes (echo_id TEXT PRIMARY KEY, cluster_id TEXT, ai_insight TEXT, weight INTEGER DEFAULT 1, sources TEXT, linked_note_id TEXT, title TEXT, tags TEXT, quick_thoughts TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            "CREATE TABLE IF NOT EXISTS user_echoes (echo_id TEXT PRIMARY KEY, cluster_id TEXT, ai_insight TEXT, weight INTEGER DEFAULT 1, sources TEXT, linked_note_id TEXT, title TEXT, tags TEXT, quick_thoughts TEXT, analysis_metadata TEXT DEFAULT '{}', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
         )
 
         c.execute(
@@ -1021,10 +1026,18 @@ class GraphDBManager:
         self.conn.commit()
 
     def save_compound_echo(
-        self, echo_id, cluster_id, ai_insight, sources_list, weight=1, title=""
+        self,
+        echo_id,
+        cluster_id,
+        ai_insight,
+        sources_list,
+        weight=1,
+        title="",
+        analysis_metadata=None,
     ):
         c = self.conn.cursor()
         sources_json = json.dumps(sources_list)
+        analysis_metadata_json = json.dumps(analysis_metadata or {})
 
         c.execute(
             "SELECT linked_note_id FROM user_echoes WHERE echo_id = ?", (echo_id,)
@@ -1034,10 +1047,18 @@ class GraphDBManager:
 
         c.execute(
             """
-            INSERT OR REPLACE INTO user_echoes (echo_id, cluster_id, ai_insight, weight, sources, title, updated_at) 
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT OR REPLACE INTO user_echoes (echo_id, cluster_id, ai_insight, weight, sources, title, analysis_metadata, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
-            (echo_id, cluster_id, ai_insight, weight, sources_json, title),
+            (
+                echo_id,
+                cluster_id,
+                ai_insight,
+                weight,
+                sources_json,
+                title,
+                analysis_metadata_json,
+            ),
         )
         self.conn.commit()
 
@@ -1123,7 +1144,7 @@ class GraphDBManager:
             SELECT c.cluster_id, c.book_id, c.library_id, c.is_active, c.parent_cluster_id,
                    c.source_echo_id,
                    c.cover_media, c.archive_group_id, c.archive_group_title, c.title as custom_title, c.orbit_layout,
-                   e.echo_id, e.ai_insight, e.weight, e.sources, e.title, e.tags, e.quick_thoughts, e.group_id,
+                   e.echo_id, e.ai_insight, e.weight, e.sources, e.title, e.tags, e.quick_thoughts, e.analysis_metadata, e.group_id,
                    lib.title as true_library_title
             FROM echo_clusters c
             LEFT JOIN user_echoes e ON c.cluster_id = e.cluster_id
@@ -1178,6 +1199,14 @@ class GraphDBManager:
                     sources = json.loads(r["sources"])
                 except:
                     sources = []
+                try:
+                    analysis_metadata = (
+                        json.loads(r["analysis_metadata"])
+                        if r["analysis_metadata"]
+                        else {}
+                    )
+                except:
+                    analysis_metadata = {}
 
                 for src in sources:
                     clusters[cid]["_echo_map"][r["echo_id"]] = {
@@ -1196,6 +1225,7 @@ class GraphDBManager:
                         "similarity": 100,
                         "tags": r["tags"] or "",
                         "quick_thoughts": r["quick_thoughts"] or "[]",
+                        "analysis_metadata": analysis_metadata,
                         "group_id": r["group_id"],  # <--- ADD THIS
                     }
 

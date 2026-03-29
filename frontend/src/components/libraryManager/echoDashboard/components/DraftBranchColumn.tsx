@@ -19,7 +19,13 @@ export default function DraftBranchColumn({
     handleDraftBranchSaved,
     closeDraftBranch,
     onCreateBranchFromHighlight,
+    onAskRagFromHighlight,
     isHighlighted,
+    selectionMode,
+    isColumnSelected,
+    onToggleColumnSelect,
+    isEchoSelected,
+    onToggleEchoSelect,
 }: any) {
     const resultGroups = draft.resultGroups || [];
     const recommendations = draft.recommendations || [];
@@ -43,6 +49,9 @@ export default function DraftBranchColumn({
             defaultWidth={560}
             defaultHeight={780}
             isHighlighted={isHighlighted}
+            selectionMode={selectionMode}
+            isSelected={isColumnSelected}
+            onToggleSelect={onToggleColumnSelect}
         >
             <div className="flex h-full min-h-0 flex-col">
                 <div className="border-b border-slate-200 bg-white px-4 py-4">
@@ -144,6 +153,27 @@ export default function DraftBranchColumn({
                                                                 draft.libraryId,
                                                         })
                                                     }
+                                                    onAskRagFromHighlight={
+                                                        onAskRagFromHighlight
+                                                    }
+                                                    selectionMode={
+                                                        selectionMode
+                                                    }
+                                                    isSelected={isEchoSelected?.(
+                                                        `${draft.id}:${
+                                                            chunk.echo_id ||
+                                                            chunk.chunk_id ||
+                                                            chunkIndex
+                                                        }`,
+                                                    )}
+                                                    onToggleSelect={() =>
+                                                        onToggleEchoSelect?.(
+                                                            chunk,
+                                                            group,
+                                                            chunkIndex,
+                                                        )
+                                                    }
+                                                    sourceAnchorId={draft.id}
                                                 />
                                             ),
                                         )}

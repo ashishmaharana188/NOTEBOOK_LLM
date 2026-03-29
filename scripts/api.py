@@ -36,13 +36,15 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import scripts.hydrator  # <--- ADD THIS
 from scripts.build_db import ingest_csvs
 
 # --- INTERNAL IMPORTS ---
+from scripts.log_sanitizer import configure_runtime_logging, summarize_text_for_log
 from scripts.db_manager import DBManager, graph_db
+from scripts.analysis_engine import run_analysis
 from scripts.echo_engine import get_echo_context
 from scripts.graph_engine import add_custom_edge, add_custom_node, get_core_graph
 from scripts.ingest_queue import ingest_queue_manager
@@ -81,6 +83,7 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+configure_runtime_logging()
 
 db = DBManager()
 reader_manifest_service = ReaderManifestService(
@@ -408,6 +411,51 @@ class EchoSaveRequest(BaseModel):
     title: str = ""
 
 
+class AnalysisContextItem(BaseModel):
+    context_id: str = ""
+    kind: str = "context"
+    anchor_id: str = ""
+    title: str = ""
+    text: str = ""
+    chapter: str = ""
+    source_label: str = ""
+    echo_id: str = ""
+    cluster_id: str = ""
+    book_id: str = ""
+    library_id: str = ""
+
+
+class AnalysisSelectionRef(BaseModel):
+    kind: str
+    id: str = ""
+    label: str = ""
+    cluster_id: str = ""
+    echo_id: str = ""
+
+
+class EchoAnalysisRunRequest(BaseModel):
+    mode: str
+    prompt: str = ""
+    include_web: bool = True
+    title_hint: str = ""
+    contexts: List[AnalysisContextItem] = Field(default_factory=list)
+    selection_refs: List[AnalysisSelectionRef] = Field(default_factory=list)
+
+
+class EchoAnalysisSaveRequest(BaseModel):
+    mode: str
+    title: str
+    summary: str
+    prompt: str = ""
+    include_web: bool = True
+    contexts: List[AnalysisContextItem] = Field(default_factory=list)
+    selection_refs: List[AnalysisSelectionRef] = Field(default_factory=list)
+    local_evidence: List[Dict[str, Any]] = Field(default_factory=list)
+    web_evidence: List[Dict[str, Any]] = Field(default_factory=list)
+    follow_ups: List[str] = Field(default_factory=list)
+    source_anchor_ids: List[str] = Field(default_factory=list)
+
+
 class SpatialMetadataItem(BaseModel):
     item_id: str
     item_type: str  # 'ECHO', 'NOTES', or 'ARCHIVE'
@@ -637,6 +685,87 @@ def get_saved_echoes_endpoint():
             "manual_links": manual_links,
         }
     except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/echo/analysis/run")
+def run_echo_analysis_endpoint(request: EchoAnalysisRunRequest):
+    try:
+        runtime_manager.require_roles_ready(["embedding", "reasoning"])
+        result = run_analysis(
+            mode=request.mode,
+            prompt=request.prompt,
+            contexts=[item.dict() for item in request.contexts],
+            selection_refs=[item.dict() for item in request.selection_refs],
+            include_web=bool(request.include_web),
+            title_hint=request.title_hint,
+        )
+        return {"status": "success", "data": result}
+    except RuntimeNotReadyError as error:
+        return runtime_error_response(error)
+    except RuntimeLoadError as error:
+        return runtime_error_response(error)
+    except Exception as e:
+        logger.error(f"Derived analysis failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/echo/analysis/save")
+def save_echo_analysis_endpoint(request: EchoAnalysisSaveRequest):
+    try:
+        import uuid
+
+        cluster_id = f"cluster_{uuid.uuid4().hex[:8]}"
+        echo_id = f"echo_{uuid.uuid4().hex[:8]}"
+        cluster_title = request.title.strip() or "Derived Analysis"
+
+        graph_db.create_cluster(
+            cluster_id=cluster_id,
+            book_id=cluster_title,
+            library_id=None,
+            title=cluster_title,
+            is_active=False,
+        )
+
+        graph_db.save_compound_echo(
+            echo_id=echo_id,
+            cluster_id=cluster_id,
+            ai_insight=request.summary,
+            sources_list=[
+                {
+                    "title": cluster_title,
+                    "highlight": request.summary,
+                    "context": request.prompt or request.mode,
+                    "filename": cluster_title,
+                    "source_lid": "",
+                    "original_chunk_id": "",
+                    "source_chunk_ref": "",
+                    "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            ],
+            weight=1,
+            title=cluster_title,
+            analysis_metadata={
+                "mode": request.mode,
+                "prompt": request.prompt,
+                "include_web": bool(request.include_web),
+                "contexts": [item.dict() for item in request.contexts],
+                "selection_refs": [item.dict() for item in request.selection_refs],
+                "local_evidence": request.local_evidence,
+                "web_evidence": request.web_evidence,
+                "follow_ups": request.follow_ups,
+                "source_anchor_ids": request.source_anchor_ids,
+                "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        )
+
+        return {
+            "status": "success",
+            "cluster_id": cluster_id,
+            "echo_id": echo_id,
+        }
+    except Exception as e:
+        logger.error(f"Saving derived analysis failed: {e}")
         return {"status": "error", "message": str(e)}
 
 
@@ -1132,7 +1261,11 @@ async def search_ia_endpoint(request: Request):
 
 @app.get("/discover/search_v2")
 async def search_v2_endpoint(query: str = "", limit: int = 25, subject: str = None):
-    logger.info(f"🔎 Search V2 Triggered. Query: '{query}', Genre: '{subject}'")
+    logger.info(
+        "Search V2 triggered %s subject=%s",
+        summarize_text_for_log("query", query),
+        subject or "none",
+    )
 
     target_titles = []
     reasoning_message = ""
@@ -1145,7 +1278,8 @@ async def search_v2_endpoint(query: str = "", limit: int = 25, subject: str = No
         # --- FLOW 1: MANUAL TOPIC PROVIDED ---
         if query.strip():
             logger.info(
-                f"🧠 Manual topic provided: '{query}'. Consulting Recommender..."
+                "Manual topic provided. Consulting recommender. %s",
+                summarize_text_for_log("query", query),
             )
             reasoning_message = f"Curated selections for '{query}'"
             if subject:
@@ -1486,7 +1620,9 @@ async def resolve_recommender_item(request: ResolveRequest):
     try:
         search_query = clean_title_for_search(request.title)
         logger.info(
-            f"🔎 Resolving: '{request.title}' -> Searching as: '{search_query}'"
+            "Resolving recommender item title_chars=%s normalized_chars=%s",
+            len(str(request.title or "").strip()),
+            len(search_query),
         )
         task_gutenberg = asyncio.to_thread(
             search_gutenberg, search_query, "title", None, 1
@@ -1508,7 +1644,10 @@ async def resolve_recommender_item(request: ResolveRequest):
 def discover_from_highlight(request: EchoContextRequest):
     try:
         runtime_manager.require_roles_ready(["embedding"])
-        logger.info(f"🔎 Highlight Discovery (Registry): '{request.text[:30]}...'")
+        logger.info(
+            "Highlight discovery triggered %s",
+            summarize_text_for_log("highlight", request.text),
+        )
         vec = get_embedding(request.text)
 
         registry_res = db.search(vec, limit=15, table_name="registry_vectors")
@@ -2182,6 +2321,11 @@ def get_echo_by_id(echo_id: str):
                     "ai_insight": row["ai_insight"],
                     "title": row["title"],
                     "sources": sources,
+                    "analysis_metadata": (
+                        json.loads(row["analysis_metadata"])
+                        if row["analysis_metadata"]
+                        else {}
+                    ),
                     "linked_note_id": row["linked_note_id"],
                     "linked_notes": linked_notes,
                     "column_name": row["column_name"],  # <--- Sent to UI

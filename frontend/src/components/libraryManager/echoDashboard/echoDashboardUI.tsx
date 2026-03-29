@@ -2,15 +2,19 @@ import React from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import axios from "axios";
 import {
+  ChatBubbleLeftRightIcon,
   LinkIcon,
   MagnifyingGlassPlusIcon,
   MagnifyingGlassMinusIcon,
+  SparklesIcon,
   ViewfinderCircleIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 
 import type { EchoChunk, EchoRecommendation } from "./echoTypes";
 import NotesFormUI from "../noteModule/notesFormUI";
 import AutoZoomTrigger from "./components/AutoZoomTrigger";
+import DerivedAnalysisColumn from "./components/DerivedAnalysisColumn";
 import DraftBranchColumn from "./components/DraftBranchColumn";
 import DraggableColumn from "./components/DraggableColumn";
 import InteractiveChunkCard from "./components/InteractiveChunkCard";
@@ -33,6 +37,7 @@ export default function EchoDashboardUI(props: any) {
   const { isInteracting, startInteraction, settleInteraction } =
     useCanvasInteractionMode(140);
   const state = useEchoDashboardState(props);
+  const [isAnalyzeMenuOpen, setIsAnalyzeMenuOpen] = React.useState(false);
   const {
     recommendations = [],
     query = "",
@@ -119,13 +124,30 @@ export default function EchoDashboardUI(props: any) {
       }),
     [draftBranches, isRectVisible, state.positions, state.zoomTarget],
   );
+  const visibleDerivedColumns = React.useMemo(
+    () =>
+      (state.derivedColumns || []).filter((derived: any) => {
+        if (String(state.zoomTarget || "") === String(derived.id || "")) {
+          return true;
+        }
+        const position = state.positions[derived.id] || { x: 1180, y: 100 };
+        return isRectVisible({
+          x: position.x,
+          y: position.y,
+          width: DRAFT_COLUMN_WIDTH,
+          height: ECHO_COLUMN_HEIGHT,
+        });
+      }),
+    [isRectVisible, state.derivedColumns, state.positions, state.zoomTarget],
+  );
   const visibleEchoClusterIds = React.useMemo(
     () =>
       new Set([
         ...visibleEchoClusters.map((cluster: any) => String(cluster.id)),
         ...visibleDraftBranchColumns.map((draft: any) => String(draft.id)),
+        ...visibleDerivedColumns.map((derived: any) => String(derived.id)),
       ]),
-    [visibleDraftBranchColumns, visibleEchoClusters],
+    [visibleDerivedColumns, visibleDraftBranchColumns, visibleEchoClusters],
   );
   const visibleEchoEdges = React.useMemo(
     () => {
@@ -169,6 +191,58 @@ export default function EchoDashboardUI(props: any) {
       visibleEchoClusterIds,
     ],
   );
+  const getColumnWidthForId = React.useCallback(
+    (columnId: string) => {
+      if (String(columnId) === String(state.activeColumnId)) {
+        return INCOMING_COLUMN_WIDTH;
+      }
+      if (
+        draftBranches.some((draft: any) => String(draft.id) === String(columnId)) ||
+        (state.derivedColumns || []).some(
+          (derived: any) => String(derived.id) === String(columnId),
+        )
+      ) {
+        return DRAFT_COLUMN_WIDTH;
+      }
+      return SAVED_COLUMN_WIDTH;
+    },
+    [draftBranches, state.activeColumnId, state.derivedColumns],
+  );
+  const visibleDerivedEdges = React.useMemo(
+    () =>
+      (state.derivedColumns || []).flatMap((derived: any) =>
+        (derived.sourceAnchorIds || [])
+          .filter(Boolean)
+          .map((anchorId: string) => ({
+            id: `derived-edge:${anchorId}:${derived.id}`,
+            parentId: String(anchorId),
+            childId: String(derived.id),
+          }))
+          .filter((edge: any) => {
+            const start = state.positions[edge.parentId];
+            const end = state.positions[edge.childId];
+            if (!start || !end) return false;
+            if (
+              visibleEchoClusterIds.has(String(edge.parentId)) ||
+              visibleEchoClusterIds.has(String(edge.childId))
+            ) {
+              return true;
+            }
+            return isRectVisible({
+              x: Math.min(start.x, end.x),
+              y: Math.min(start.y, end.y),
+              width: Math.abs(end.x - start.x) + DRAFT_COLUMN_WIDTH,
+              height: Math.abs(end.y - start.y) + 160,
+            });
+          }),
+      ),
+    [
+      isRectVisible,
+      state.derivedColumns,
+      state.positions,
+      visibleEchoClusterIds,
+    ],
+  );
   const branchCountByEchoId = React.useMemo(
     () =>
       Object.fromEntries(
@@ -180,6 +254,258 @@ export default function EchoDashboardUI(props: any) {
         ),
       ),
     [state.branchesBySourceEchoId],
+  );
+  const buildContextFromChunk = React.useCallback(
+    (
+      chunk: any,
+      {
+        contextId,
+        kind = "echo",
+        anchorId = "",
+        title = "",
+        chapter = "",
+        sourceLabel = "",
+        echoId = "",
+        clusterId = "",
+        bookId = "",
+        itemLibraryId = "",
+      }: any = {},
+    ) => ({
+      context_id:
+        contextId ||
+        `${kind}:${echoId || chunk.echo_id || chunk.chunk_id || chunk.filename || "context"}`,
+      kind,
+      anchor_id: anchorId,
+      title:
+        title ||
+        chunk.title ||
+        chunk.bridge ||
+        sourceLabel ||
+        "Selected Context",
+      text: chunk.text || chunk.bridge || "",
+      chapter: chapter || chunk.chapter || "Unknown Chapter",
+      source_label: sourceLabel || chunk.filename || title || "",
+      echo_id: echoId || String(chunk.echo_id || ""),
+      cluster_id: clusterId || String(chunk.cluster_id || ""),
+      book_id: bookId || "",
+      library_id: itemLibraryId || "",
+    }),
+    [],
+  );
+  const createIncomingColumnSelection = React.useCallback(
+    () => ({
+      key: `column:${state.activeColumnId}`,
+      label: activeBookTitle || "Incoming Echoes",
+      anchorId: state.activeColumnId,
+      contexts: (state.unsavedEchoes || []).flatMap((group: any) =>
+        (group.chunks || []).map((chunk: any, index: number) =>
+          buildContextFromChunk(chunk, {
+            contextId: `incoming-column:${group.id || group.title}:${index}`,
+            kind: "column_echo",
+            anchorId: state.activeColumnId,
+            title: chunk.title || group.title || activeBookTitle,
+            chapter: chunk.chapter,
+            sourceLabel: group.title || activeBookTitle,
+            bookId: activeBookTitle,
+            itemLibraryId: libraryId,
+          }),
+        ),
+      ),
+      selectionRefs: [
+        {
+          kind: "column",
+          id: state.activeColumnId,
+          label: activeBookTitle || "Incoming Echoes",
+        },
+      ],
+    }),
+    [activeBookTitle, buildContextFromChunk, libraryId, state.activeColumnId, state.unsavedEchoes],
+  );
+  const createIncomingEchoSelection = React.useCallback(
+    (group: any, chunk: any, chunkIndex: number) => {
+      const chunkKey = `incoming-echo:${group.id || group.title}:${chunk.echo_id || chunk.chunk_id || chunkIndex}`;
+      return {
+        key: chunkKey,
+        label: chunk.title || group.title || activeBookTitle || "Incoming Echo",
+        anchorId: state.activeColumnId,
+        contexts: [
+          buildContextFromChunk(chunk, {
+            contextId: chunkKey,
+            kind: "incoming_echo",
+            anchorId: state.activeColumnId,
+            title: chunk.title || group.title || activeBookTitle,
+            chapter: chunk.chapter,
+            sourceLabel: group.title || activeBookTitle,
+            bookId: activeBookTitle,
+            itemLibraryId: libraryId,
+          }),
+        ],
+        selectionRefs: [
+          {
+            kind: "incoming_echo",
+            id: String(chunk.echo_id || chunk.chunk_id || chunkIndex),
+            label: chunk.title || group.title || activeBookTitle || "Incoming Echo",
+          },
+        ],
+      };
+    },
+    [activeBookTitle, buildContextFromChunk, libraryId, state.activeColumnId],
+  );
+  const createSavedClusterSelection = React.useCallback(
+    (cluster: any) => ({
+      key: `saved-column:${cluster.id}`,
+      label: cluster.title || "Saved Column",
+      anchorId: String(cluster.id),
+      contexts: (cluster.chunks || [])
+        .filter((item: any) => item.type !== "note" && !item.note_id)
+        .map((chunk: any, index: number) =>
+          buildContextFromChunk(chunk, {
+            contextId: `saved-column:${cluster.id}:${chunk.echo_id || chunk.chunk_id || index}`,
+            kind: "saved_echo",
+            anchorId: String(cluster.id),
+            title: chunk.title || cluster.title,
+            chapter: chunk.chapter,
+            sourceLabel: chunk.filename || cluster.title,
+            echoId: String(chunk.echo_id || ""),
+            clusterId: String(cluster.id),
+            bookId: cluster.book_id || cluster.title,
+            itemLibraryId: cluster.library_id || "",
+          }),
+        ),
+      selectionRefs: [
+        {
+          kind: "column",
+          id: String(cluster.id),
+          label: cluster.title || "Saved Column",
+          cluster_id: String(cluster.id),
+        },
+      ],
+    }),
+    [buildContextFromChunk],
+  );
+  const createSavedEchoSelection = React.useCallback(
+    (cluster: any, chunk: any) => ({
+      key: `saved-echo:${cluster.id}:${chunk.echo_id || chunk.chunk_id}`,
+      label: chunk.title || cluster.title || "Saved Echo",
+      anchorId: String(cluster.id),
+      contexts: [
+        buildContextFromChunk(chunk, {
+          contextId: `saved-echo:${cluster.id}:${chunk.echo_id || chunk.chunk_id}`,
+          kind: "saved_echo",
+          anchorId: String(cluster.id),
+          title: chunk.title || cluster.title,
+          chapter: chunk.chapter,
+          sourceLabel: chunk.filename || cluster.title,
+          echoId: String(chunk.echo_id || ""),
+          clusterId: String(cluster.id),
+          bookId: cluster.book_id || cluster.title,
+          itemLibraryId: cluster.library_id || "",
+        }),
+      ],
+      selectionRefs: [
+        {
+          kind: "echo",
+          id: String(chunk.echo_id || chunk.chunk_id || ""),
+          label: chunk.title || cluster.title || "Saved Echo",
+          cluster_id: String(cluster.id),
+          echo_id: String(chunk.echo_id || ""),
+        },
+      ],
+    }),
+    [buildContextFromChunk],
+  );
+  const createDraftColumnSelection = React.useCallback(
+    (draft: any) => ({
+      key: `draft-column:${draft.id}`,
+      label: draft.title || "Draft Branch",
+      anchorId: String(draft.id),
+      contexts: (draft.resultGroups || []).flatMap((group: any, groupIndex: number) =>
+        (group.chunks || []).map((chunk: any, chunkIndex: number) =>
+          buildContextFromChunk(chunk, {
+            contextId: `draft-column:${draft.id}:${groupIndex}:${chunk.echo_id || chunk.chunk_id || chunkIndex}`,
+            kind: "draft_echo",
+            anchorId: String(draft.id),
+            title: chunk.title || group.title || draft.title,
+            chapter: chunk.chapter,
+            sourceLabel: group.title || draft.title,
+            echoId: String(chunk.echo_id || ""),
+            clusterId: String(draft.persistedClusterId || ""),
+            bookId: draft.bookId || draft.title,
+            itemLibraryId: draft.libraryId || "",
+          }),
+        ),
+      ),
+      selectionRefs: [
+        {
+          kind: "draft_column",
+          id: String(draft.id),
+          label: draft.title || "Draft Branch",
+          cluster_id: String(draft.persistedClusterId || ""),
+        },
+      ],
+    }),
+    [buildContextFromChunk],
+  );
+  const createDraftEchoSelection = React.useCallback(
+    (draft: any, group: any, chunk: any, chunkIndex: number) => ({
+      key: `draft-echo:${draft.id}:${chunk.echo_id || chunk.chunk_id || chunkIndex}`,
+      label: chunk.title || group.title || draft.title || "Draft Echo",
+      anchorId: String(draft.id),
+      contexts: [
+        buildContextFromChunk(chunk, {
+          contextId: `draft-echo:${draft.id}:${chunk.echo_id || chunk.chunk_id || chunkIndex}`,
+          kind: "draft_echo",
+          anchorId: String(draft.id),
+          title: chunk.title || group.title || draft.title,
+          chapter: chunk.chapter,
+          sourceLabel: group.title || draft.title,
+          echoId: String(chunk.echo_id || ""),
+          clusterId: String(draft.persistedClusterId || ""),
+          bookId: draft.bookId || draft.title,
+          itemLibraryId: draft.libraryId || "",
+        }),
+      ],
+      selectionRefs: [
+        {
+          kind: "draft_echo",
+          id: String(chunk.echo_id || chunk.chunk_id || chunkIndex),
+          label: chunk.title || group.title || draft.title || "Draft Echo",
+          cluster_id: String(draft.persistedClusterId || ""),
+          echo_id: String(chunk.echo_id || ""),
+        },
+      ],
+    }),
+    [buildContextFromChunk],
+  );
+  const createDerivedColumnSelection = React.useCallback(
+    (derived: any) => ({
+      key: `derived-column:${derived.id}`,
+      label: derived.title || "Derived Analysis",
+      anchorId: String(derived.id),
+      contexts: [
+        {
+          context_id: `derived-summary:${derived.id}`,
+          kind: "derived_summary",
+          anchor_id: String(derived.id),
+          title: derived.title || "Derived Analysis",
+          text: derived.summary || "",
+          chapter: derived.modeLabel || derived.mode || "Derived Analysis",
+          source_label: derived.modeLabel || "Derived Analysis",
+          echo_id: "",
+          cluster_id: "",
+          book_id: derived.title || "Derived Analysis",
+          library_id: "",
+        },
+      ],
+      selectionRefs: [
+        {
+          kind: "derived_column",
+          id: String(derived.id),
+          label: derived.title || "Derived Analysis",
+        },
+      ],
+    }),
+    [],
   );
   const createIncomingHighlightBranch = React.useCallback(
     async ({
@@ -350,11 +676,12 @@ export default function EchoDashboardUI(props: any) {
                       }}
                     >
                       <g transform="translate(15000, 15000)">
-                        {visibleEchoEdges.map((c) => {
+                        {[...visibleEchoEdges, ...visibleDerivedEdges].map((c) => {
                           const start = state.positions[c.parentId];
-                          const end = state.positions[c.id];
+                          const childId = c.childId || c.id;
+                          const end = state.positions[childId];
                           if (!start || !end) return null;
-                          const startX = start.x + SAVED_COLUMN_WIDTH;
+                          const startX = start.x + getColumnWidthForId(c.parentId);
                           const startY = start.y + 80;
                           const endX = end.x;
                           const endY = end.y + 80;
@@ -364,13 +691,13 @@ export default function EchoDashboardUI(props: any) {
                           );
                           return (
                             <path
-                              key={`edge-${c.id}`}
+                              key={`edge-${childId}-${c.parentId}`}
                               d={`M ${startX} ${startY} C ${startX + cpOffset} ${startY}, ${endX - cpOffset} ${endY}, ${endX} ${endY}`}
-                              stroke="#64748b"
-                              strokeWidth="3.5"
+                              stroke={c.childId ? "#0f766e" : "#64748b"}
+                              strokeWidth={c.childId ? "3" : "3.5"}
                               fill="none"
                               opacity="0.8"
-                              strokeDasharray="6 6"
+                              strokeDasharray={c.childId ? "0" : "6 6"}
                             />
                           );
                         })}
@@ -395,6 +722,15 @@ export default function EchoDashboardUI(props: any) {
                         interactionReduced={isInteracting}
                         defaultWidth={INCOMING_COLUMN_WIDTH}
                         defaultHeight={ECHO_COLUMN_HEIGHT}
+                        selectionMode={state.selectionMode}
+                        isSelected={state.isCanvasItemSelected(
+                          `column:${state.activeColumnId}`,
+                        )}
+                        onToggleSelect={() =>
+                          state.toggleCanvasSelection(
+                            createIncomingColumnSelection(),
+                          )
+                        }
                       >
                         <div className="min-h-full bg-white p-4">
                           <div className="sticky top-0 z-30 mb-4 border-b border-slate-200 bg-white/95 pb-3">
@@ -540,6 +876,31 @@ export default function EchoDashboardUI(props: any) {
                                                     onCreateBranchFromHighlight={
                                                       createIncomingHighlightBranch
                                                     }
+                                                    onAskRagFromHighlight={
+                                                      state.openHighlightRagComposer
+                                                    }
+                                                    selectionMode={
+                                                      state.selectionMode
+                                                    }
+                                                    isSelected={state.isCanvasItemSelected(
+                                                      createIncomingEchoSelection(
+                                                        bookGroup,
+                                                        chunk,
+                                                        chunkIndex,
+                                                      ).key,
+                                                    )}
+                                                    onToggleSelect={() =>
+                                                      state.toggleCanvasSelection(
+                                                        createIncomingEchoSelection(
+                                                          bookGroup,
+                                                          chunk,
+                                                          chunkIndex,
+                                                        ),
+                                                      )
+                                                    }
+                                                    sourceAnchorId={
+                                                      state.activeColumnId
+                                                    }
                                                   />
                                                 ),
                                               )}
@@ -608,9 +969,65 @@ export default function EchoDashboardUI(props: any) {
                         onCreateBranchFromHighlight={
                           state.createDraftBranchFromHighlight
                         }
+                        onAskRagFromHighlight={state.openHighlightRagComposer}
                         isHighlighted={state.highlightedBranchClusterIds?.has?.(
                           String(draft.id),
                         )}
+                        selectionMode={state.selectionMode}
+                        isColumnSelected={state.isCanvasItemSelected(
+                          `draft-column:${draft.id}`,
+                        )}
+                        onToggleColumnSelect={() =>
+                          state.toggleCanvasSelection(
+                            createDraftColumnSelection(draft),
+                          )
+                        }
+                        isEchoSelected={(key: string) =>
+                          state.isCanvasItemSelected(`draft-echo:${key}`)
+                        }
+                        onToggleEchoSelect={(
+                          chunk: any,
+                          group: any,
+                          chunkIndex: number,
+                        ) =>
+                          state.toggleCanvasSelection(
+                            createDraftEchoSelection(
+                              draft,
+                              group,
+                              chunk,
+                              chunkIndex,
+                            ),
+                          )
+                        }
+                      />
+                    ))}
+
+                    {visibleDerivedColumns.map((derived: any) => (
+                      <DerivedAnalysisColumn
+                        key={derived.id}
+                        derived={derived}
+                        initialPos={
+                          state.positions[derived.id] || { x: 1480, y: 120 }
+                        }
+                        zIndex={state.zIndexes[derived.id] || 1}
+                        updatePosition={state.updatePosition}
+                        bringToFront={state.bringToFront}
+                        canvasScale={canvasScale}
+                        setIsCanvasWheelDisabled={
+                          state.setIsCanvasWheelDisabled
+                        }
+                        interactionReduced={isInteracting}
+                        closeDerivedColumn={state.closeDerivedColumn}
+                        saveDerivedColumn={state.saveDerivedColumn}
+                        selectionMode={state.selectionMode}
+                        isSelected={state.isCanvasItemSelected(
+                          `derived-column:${derived.id}`,
+                        )}
+                        onToggleSelect={() =>
+                          state.toggleCanvasSelection(
+                            createDerivedColumnSelection(derived),
+                          )
+                        }
                       />
                     ))}
 
@@ -644,10 +1061,30 @@ export default function EchoDashboardUI(props: any) {
                         onCreateBranchFromHighlight={
                           state.createDraftBranchFromHighlight
                         }
+                        onAskRagFromHighlight={state.openHighlightRagComposer}
                         onShowBranches={state.focusBranchesForEcho}
                         isHighlighted={state.highlightedBranchClusterIds?.has?.(
                           String(cluster.id),
                         )}
+                        selectionMode={state.selectionMode}
+                        isColumnSelected={state.isCanvasItemSelected(
+                          `saved-column:${cluster.id}`,
+                        )}
+                        onToggleColumnSelect={() =>
+                          state.toggleCanvasSelection(
+                            createSavedClusterSelection(cluster),
+                          )
+                        }
+                        isEchoSelected={(echoId: string) =>
+                          state.isCanvasItemSelected(
+                            `saved-echo:${cluster.id}:${echoId}`,
+                          )
+                        }
+                        onToggleEchoSelect={(chunk: any) =>
+                          state.toggleCanvasSelection(
+                            createSavedEchoSelection(cluster, chunk),
+                          )
+                        }
                       />
                     ))}
                   </div>
@@ -656,6 +1093,135 @@ export default function EchoDashboardUI(props: any) {
             )}
           </TransformWrapper>
       </div>
+
+      <div className="absolute bottom-4 right-4 z-[2200] flex items-center gap-2 border border-slate-200 bg-white/95 px-3 py-2 shadow-lg sm:bottom-6 sm:right-6">
+        <button
+          onClick={() => {
+            setIsAnalyzeMenuOpen(false);
+            state.toggleSelectionMode();
+          }}
+          className={`px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors ${
+            state.selectionMode
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          {state.selectionMode
+            ? `Select ${state.selectedItems.length || 0}`
+            : "Select"}
+        </button>
+
+        <div className="relative">
+          <button
+            onClick={() => setIsAnalyzeMenuOpen((prev) => !prev)}
+            disabled={!state.selectionPayload.contexts.length}
+            className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
+          >
+            <SparklesIcon className="h-4 w-4" />
+            Analyze
+          </button>
+          {isAnalyzeMenuOpen && (
+            <div className="absolute bottom-12 right-0 z-[2300] min-w-[220px] border border-slate-200 bg-white p-1 shadow-lg">
+              {[
+                {
+                  id: "cross_pollination",
+                  label: "Cross-Pollination",
+                },
+                {
+                  id: "friction",
+                  label: "Friction Analysis",
+                },
+                {
+                  id: "gap",
+                  label: "Gap Analysis",
+                },
+              ].map((mode) => (
+                <button
+                  key={mode.id}
+                  onClick={() => {
+                    setIsAnalyzeMenuOpen(false);
+                    state.runSelectionAnalysis(mode.id);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <span>{mode.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => {
+            setIsAnalyzeMenuOpen(false);
+            state.openSelectionRagComposer();
+          }}
+          disabled={!state.selectionPayload.contexts.length}
+          className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
+        >
+          <ChatBubbleLeftRightIcon className="h-4 w-4" />
+          Ask RAG
+        </button>
+
+        {state.selectionMode && state.selectedItems.length > 0 && (
+          <button
+            onClick={state.clearSelections}
+            className="inline-flex items-center gap-1 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
+          >
+            <XMarkIcon className="h-4 w-4" />
+            Clear
+          </button>
+        )}
+      </div>
+
+      {state.ragComposerState.open && (
+        <div className="absolute inset-x-4 bottom-20 z-[2300] mx-auto max-w-2xl border border-slate-200 bg-white shadow-xl sm:bottom-24">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                Ask RAG
+              </div>
+              <div className="mt-1 text-sm text-slate-700">
+                Using {state.ragComposerState.scopeLabel || "selected context"} as grounding context.
+              </div>
+            </div>
+            <button
+              onClick={state.closeRagComposer}
+              className="p-1 text-slate-400 transition-colors hover:text-slate-900"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="space-y-3 px-4 py-4">
+            <textarea
+              value={state.ragComposerState.prompt}
+              onChange={(e) => state.setRagComposerPrompt(e.target.value)}
+              placeholder="What should this context explain, compare, or answer?"
+              className="h-28 w-full resize-none border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                Local corpus runs first. Web evidence is added when a provider is configured.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={state.closeRagComposer}
+                  className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={state.submitRagComposer}
+                  className="inline-flex items-center gap-2 bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black"
+                >
+                  <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                  Run RAG
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {state.echoNoteState.isOpen && (
         <NotesFormUI

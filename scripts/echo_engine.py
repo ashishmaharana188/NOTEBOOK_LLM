@@ -1,6 +1,8 @@
 import logging
 from collections import defaultdict
+
 from scripts.db_manager import db
+from scripts.log_sanitizer import summarize_text_for_log
 from scripts.vectorize import get_embedding
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,7 @@ def get_echo_context(
     current_book_author: str = None,
     limit: int = 15,
 ):
-    logger.info(f"🧠 Echo Search: '{query_text[:30]}...'")
+    logger.info("Echo search triggered %s", summarize_text_for_log("query", query_text))
 
     thought_vec = get_embedding(query_text)
 

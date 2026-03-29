@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
+    CheckIcon,
     ChevronDownIcon,
     ChevronUpIcon,
 } from "@heroicons/react/24/outline";
@@ -19,6 +20,10 @@ export default function SavedEchoCard({
     branchCount = 0,
     onShowBranches,
     onCreateBranchFromHighlight,
+    onAskRagFromHighlight,
+    selectionMode = false,
+    isSelected = false,
+    onToggleSelect,
 }: {
     chunk: EchoChunk;
     clusterId: string;
@@ -31,12 +36,25 @@ export default function SavedEchoCard({
     branchCount?: number;
     onShowBranches?: () => void;
     onCreateBranchFromHighlight?: (text: string) => Promise<void> | void;
+    onAskRagFromHighlight?: (payload: {
+        text: string;
+        title: string;
+        chapter: string;
+        sourceLabel: string;
+        sourceAnchorId: string;
+        selectionRefs: any[];
+        contextExtras: Record<string, any>;
+    }) => void;
+    selectionMode?: boolean;
+    isSelected?: boolean;
+    onToggleSelect?: () => void;
 }) {
     const echoId = String((chunk as any).echo_id || (chunk as any).chunk_id || "");
     const [customTitle, setCustomTitle] = useState(chunk.title || "Untitled Echo");
     const [isSavingTitle, setIsSavingTitle] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectionText, setSelectionText] = useState("");
+    const [showHighlightMenu, setShowHighlightMenu] = useState(false);
     const [fullText, setFullText] = useState(chunk.text);
     const [showFullContext, setShowFullContext] = useState(false);
     const [loadingContext, setLoadingContext] = useState(false);
@@ -72,6 +90,7 @@ export default function SavedEchoCard({
     useEffect(() => {
         if (!isExpanded) {
             setSelectionText("");
+            setShowHighlightMenu(false);
         }
     }, [isExpanded]);
 
@@ -166,6 +185,37 @@ export default function SavedEchoCard({
         const nextSelection = selectionText || getSelectionWithinContext();
         if (!nextSelection || !onCreateBranchFromHighlight) return;
         await onCreateBranchFromHighlight(nextSelection);
+        setShowHighlightMenu(false);
+        setSelectionText("");
+        window.getSelection()?.removeAllRanges();
+    };
+
+    const openHighlightRag = () => {
+        const nextSelection = selectionText || getSelectionWithinContext();
+        if (!nextSelection || !onAskRagFromHighlight) return;
+        onAskRagFromHighlight({
+            text: nextSelection,
+            title: customTitle || sourceLabel || "Saved Echo",
+            chapter: chunk.chapter || "Unknown Chapter",
+            sourceLabel,
+            sourceAnchorId: clusterId,
+            selectionRefs: [
+                {
+                    kind: "echo",
+                    id: echoId,
+                    label: customTitle || sourceLabel || "Saved Echo",
+                    cluster_id: clusterId,
+                    echo_id: echoId,
+                },
+            ],
+            contextExtras: {
+                echo_id: echoId,
+                cluster_id: clusterId,
+                book_id: clusterTitle,
+                library_id: "",
+            },
+        });
+        setShowHighlightMenu(false);
         setSelectionText("");
         window.getSelection()?.removeAllRanges();
     };
@@ -216,6 +266,22 @@ export default function SavedEchoCard({
                     )}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 text-[10px] font-bold uppercase tracking-[0.16em]">
+                    {selectionMode && (
+                        <button
+                            onPointerDown={(e) => {
+                                e.stopPropagation();
+                                onToggleSelect?.();
+                            }}
+                            className={`flex h-7 w-7 items-center justify-center border transition-colors ${
+                                isSelected
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
+                            }`}
+                            title={isSelected ? "Unselect echo" : "Select echo"}
+                        >
+                            {isSelected && <CheckIcon className="h-4 w-4" />}
+                        </button>
+                    )}
                     {isExpanded ? (
                         <>
                             <button
@@ -228,18 +294,41 @@ export default function SavedEchoCard({
                                       ? "Collapse Context"
                                       : "Read Full Context"}
                             </button>
-                            <button
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={runHighlightBranchSearch}
-                                disabled={!onCreateBranchFromHighlight}
-                                className={`px-0 py-0 transition-colors ${
-                                    selectionText
-                                        ? "text-slate-900 hover:text-black"
-                                        : "text-slate-500 hover:text-slate-900"
-                                }`}
-                            >
-                                Search Highlight
-                            </button>
+                            <div className="relative">
+                                <button
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() =>
+                                        setShowHighlightMenu((prev) => !prev)
+                                    }
+                                    className={`px-0 py-0 transition-colors ${
+                                        selectionText
+                                            ? "text-slate-900 hover:text-black"
+                                            : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                >
+                                    Highlight
+                                </button>
+                                {showHighlightMenu && (
+                                    <div className="absolute right-0 top-6 z-30 min-w-[140px] border border-slate-200 bg-white p-1 shadow-lg">
+                                        <button
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={runHighlightBranchSearch}
+                                            disabled={!onCreateBranchFromHighlight}
+                                            className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                                        >
+                                            <span>Find Echoes</span>
+                                        </button>
+                                        <button
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={openHighlightRag}
+                                            disabled={!onAskRagFromHighlight}
+                                            className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+                                        >
+                                            <span>Ask RAG</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             {branchCount > 0 && onShowBranches && (
                                 <button
                                     onClick={onShowBranches}
