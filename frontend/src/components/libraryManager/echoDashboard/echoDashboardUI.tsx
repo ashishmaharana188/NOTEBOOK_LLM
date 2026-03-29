@@ -175,6 +175,42 @@ export default function EchoDashboardUI(props: any) {
       ),
     [state.branchesBySourceEchoId],
   );
+  const createIncomingHighlightBranch = React.useCallback(
+    async ({
+      text,
+      echoId,
+      clusterId,
+    }: {
+      text: string;
+      echoId: string;
+      clusterId: string;
+    }) => {
+      const cluster =
+        (state.savedGlobalClusters || []).find(
+          (entry: any) => String(entry.id || entry.cluster_id || "") === String(clusterId),
+        ) ||
+        (state.savedGlobalClusters || []).find((entry: any) => entry.is_active);
+
+      if (!cluster) {
+        return;
+      }
+
+      await state.createDraftBranchFromHighlight({
+        text,
+        sourceEchoId: echoId,
+        parentClusterId: String(cluster.id || cluster.cluster_id || clusterId),
+        parentClusterTitle: cluster.title || activeBookTitle,
+        bookId: cluster.book_id || activeBookTitle,
+        libraryId: cluster.library_id || libraryId,
+      });
+    },
+    [
+      activeBookTitle,
+      libraryId,
+      state.createDraftBranchFromHighlight,
+      state.savedGlobalClusters,
+    ],
+  );
   const handleViewportUpdate = React.useCallback(
     (ref: any) => {
       syncViewport(ref);
@@ -479,6 +515,9 @@ export default function EchoDashboardUI(props: any) {
                                                             .chunk_id
                                                       ] || []
                                                     }
+                                                    onCreateBranchFromHighlight={
+                                                      createIncomingHighlightBranch
+                                                    }
                                                   />
                                                 ),
                                               )}
@@ -544,6 +583,9 @@ export default function EchoDashboardUI(props: any) {
                         ensureDraftBranchCluster={state.ensureDraftBranchCluster}
                         handleDraftBranchSaved={state.handleDraftBranchSaved}
                         closeDraftBranch={state.closeDraftBranch}
+                        onCreateBranchFromHighlight={
+                          state.createDraftBranchFromHighlight
+                        }
                         isHighlighted={state.highlightedBranchClusterIds?.has?.(
                           String(draft.id),
                         )}

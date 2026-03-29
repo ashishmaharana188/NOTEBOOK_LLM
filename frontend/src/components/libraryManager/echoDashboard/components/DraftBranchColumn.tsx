@@ -18,6 +18,7 @@ export default function DraftBranchColumn({
     ensureDraftBranchCluster,
     handleDraftBranchSaved,
     closeDraftBranch,
+    onCreateBranchFromHighlight,
     isHighlighted,
 }: any) {
     const resultGroups = draft.resultGroups || [];
@@ -123,6 +124,25 @@ export default function DraftBranchColumn({
                                                             draft.id,
                                                             clusterId,
                                                         )
+                                                    }
+                                                    onCreateBranchFromHighlight={({
+                                                        text,
+                                                        echoId,
+                                                        clusterId,
+                                                    }) =>
+                                                        onCreateBranchFromHighlight({
+                                                            text,
+                                                            sourceEchoId: echoId,
+                                                            parentClusterId:
+                                                                clusterId,
+                                                            parentClusterTitle:
+                                                                draft.title ||
+                                                                "Draft Branch",
+                                                            bookId:
+                                                                draft.bookId,
+                                                            libraryId:
+                                                                draft.libraryId,
+                                                        })
                                                     }
                                                 />
                                             ),

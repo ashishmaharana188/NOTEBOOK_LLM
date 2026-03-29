@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
     BookmarkSquareIcon,
@@ -25,6 +25,7 @@ const InteractiveChunkCard = React.memo(
         targetClusterId,
         resolveTargetClusterId,
         onEchoSaved,
+        onCreateBranchFromHighlight,
     }: {
         chunk: EchoChunk;
         chunkIndex: number;
@@ -47,6 +48,11 @@ const InteractiveChunkCard = React.memo(
             clusterId: string;
             created: boolean;
         }) => void;
+        onCreateBranchFromHighlight?: (payload: {
+            text: string;
+            echoId: string;
+            clusterId: string;
+        }) => Promise<void> | void;
     }) => {
         const { ensureRolesThen } = useModelRuntime();
         const isPreSaved =
@@ -59,13 +65,67 @@ const InteractiveChunkCard = React.memo(
         const [echoId, setEchoId] = useState<string | null>(
             isPreSaved ? String((chunk as any).echo_id || "") : null,
         );
+        const [savedClusterId, setSavedClusterId] = useState<string | null>(
+            targetClusterId || null,
+        );
         const [customTitle, setCustomTitle] = useState(chunk.title || "");
+        const [selectionText, setSelectionText] = useState("");
+        const contextRef = useRef<HTMLDivElement | null>(null);
 
         const resolvedLinkedNoteIds = linkedNoteIds.filter(Boolean);
         const linkedNoteCount = resolvedLinkedNoteIds.length;
         const sourceLabel = (chunk as any).filename || activeBookTitle;
 
-        const handleSaveAndReturnId = async () => {
+        useEffect(() => {
+            if (targetClusterId) {
+                setSavedClusterId(targetClusterId);
+            }
+        }, [targetClusterId]);
+
+        useEffect(() => {
+            if (isCollapsed) {
+                setSelectionText("");
+            }
+        }, [isCollapsed]);
+
+        const captureSelection = useCallback(() => {
+            window.setTimeout(() => {
+                const selection = window.getSelection();
+                if (!selection || selection.rangeCount === 0 || !contextRef.current) {
+                    setSelectionText("");
+                    return;
+                }
+
+                const text = selection.toString().trim();
+                if (!text || text.length < 6) {
+                    setSelectionText("");
+                    return;
+                }
+
+                const anchorNode = selection.anchorNode;
+                const focusNode = selection.focusNode;
+                if (
+                    (anchorNode && !contextRef.current.contains(anchorNode)) ||
+                    (focusNode && !contextRef.current.contains(focusNode))
+                ) {
+                    setSelectionText("");
+                    return;
+                }
+
+                setSelectionText(text);
+            }, 0);
+        }, []);
+
+        useEffect(() => {
+            if (isCollapsed) return;
+
+            document.addEventListener("selectionchange", captureSelection);
+            return () => {
+                document.removeEventListener("selectionchange", captureSelection);
+            };
+        }, [captureSelection, isCollapsed]);
+
+        const handleSaveAndReturnRef = async () => {
             setIsProcessing(true);
             try {
                 if (isSaved && echoId) {
@@ -79,7 +139,13 @@ const InteractiveChunkCard = React.memo(
                     );
                     if (res.data.status === "success") {
                         if (onSaveSuccess) onSaveSuccess();
-                        return echoId;
+                        return {
+                            echoId,
+                            clusterId:
+                                savedClusterId ||
+                                targetClusterId ||
+                                String(res.data.cluster_id || ""),
+                        };
                     }
                     return null;
                 }
@@ -114,6 +180,7 @@ const InteractiveChunkCard = React.memo(
                     const nextClusterId = String(res.data.cluster_id || clusterId);
                     setIsSaved(true);
                     setEchoId(nextEchoId);
+                    setSavedClusterId(nextClusterId || null);
                     chunk.relation = "Saved Insight";
                     (chunk as any).chunk_id = nextEchoId;
                     if (onSaveSuccess) onSaveSuccess();
@@ -122,7 +189,10 @@ const InteractiveChunkCard = React.memo(
                         clusterId: nextClusterId,
                         created: true,
                     });
-                    return nextEchoId;
+                    return {
+                        echoId: nextEchoId,
+                        clusterId: nextClusterId,
+                    };
                 }
             } catch (e) {
                 console.error("Failed to save/update echo:", e);
@@ -155,11 +225,41 @@ const InteractiveChunkCard = React.memo(
         };
 
         const handleOpenNoteManager = async () => {
-            let currentEchoId = echoId;
-            if (!isSaved) currentEchoId = await handleSaveAndReturnId();
-            if (currentEchoId) {
-                onManageNotes(currentEchoId);
+            let currentEchoRef =
+                echoId && (savedClusterId || targetClusterId)
+                    ? {
+                          echoId,
+                          clusterId: savedClusterId || targetClusterId || "",
+                      }
+                    : null;
+            if (!isSaved || !currentEchoRef) currentEchoRef = await handleSaveAndReturnRef();
+            if (currentEchoRef?.echoId) {
+                onManageNotes(currentEchoRef.echoId);
             }
+        };
+
+        const handleSearchHighlight = async () => {
+            if (!selectionText || !onCreateBranchFromHighlight) return;
+
+            const currentEchoRef =
+                echoId && (savedClusterId || targetClusterId)
+                    ? {
+                          echoId,
+                          clusterId: savedClusterId || targetClusterId || "",
+                      }
+                    : await handleSaveAndReturnRef();
+
+            if (!currentEchoRef?.echoId || !currentEchoRef?.clusterId) {
+                return;
+            }
+
+            await onCreateBranchFromHighlight({
+                text: selectionText,
+                echoId: currentEchoRef.echoId,
+                clusterId: currentEchoRef.clusterId,
+            });
+            setSelectionText("");
+            window.getSelection()?.removeAllRanges();
         };
 
         if (isDeleted) return null;
@@ -180,7 +280,7 @@ const InteractiveChunkCard = React.memo(
                                         !isProcessing
                                     ) {
                                         e.preventDefault();
-                                        handleSaveAndReturnId();
+                                        handleSaveAndReturnRef();
                                     }
                                 }}
                                 placeholder="Name this echo..."
@@ -222,7 +322,20 @@ const InteractiveChunkCard = React.memo(
                                 </span>
                             )}
                             <button
-                                onClick={handleSaveAndReturnId}
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={handleSearchHighlight}
+                                disabled={isProcessing || isCollapsed || !selectionText}
+                                title="Search highlight"
+                                className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
+                                    selectionText && !isCollapsed
+                                        ? "text-slate-600 hover:text-slate-900"
+                                        : "text-slate-300"
+                                }`}
+                            >
+                                Search
+                            </button>
+                            <button
+                                onClick={handleSaveAndReturnRef}
                                 disabled={isProcessing}
                                 title={isSaved ? "Update title" : "Save echo"}
                                 className="flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-900 disabled:opacity-50"
@@ -248,7 +361,13 @@ const InteractiveChunkCard = React.memo(
                 </div>
 
                 {!isCollapsed && (
-                    <div className="bg-white px-4 py-4 sm:px-5 sm:py-5">
+                    <div
+                        ref={contextRef}
+                        onMouseUp={captureSelection}
+                        onKeyUp={captureSelection}
+                        onTouchEnd={captureSelection}
+                        className="bg-white px-4 py-4 sm:px-5 sm:py-5"
+                    >
                         <p className="whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800">
                             {chunk.text}
                         </p>
