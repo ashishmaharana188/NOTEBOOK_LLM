@@ -14,6 +14,18 @@ const CARD_WIDTH = 590;
 const MAX_EXTENSION = 550;
 const SNAP_THRESHOLD = 150;
 const NEGATIVE_MARGIN = "-35px";
+const OPEN_TRANSITION = {
+  type: "spring",
+  stiffness: 320,
+  damping: 30,
+  mass: 0.85,
+} as const;
+const CLOSE_TRANSITION = {
+  type: "spring",
+  stiffness: 430,
+  damping: 38,
+  mass: 0.8,
+} as const;
 
 interface GroupCardProps {
   group: NoteGroup;
@@ -50,7 +62,6 @@ const GroupCard = React.memo(
     const controls = useAnimation();
     const y = useMotionValue(0);
     const [isDragging, setIsDragging] = useState(false);
-    const [isLockedOpen, setIsLockedOpen] = useState(false);
 
     // NEW EDIT STATES
     const [isRenaming, setIsRenaming] = useState(false);
@@ -59,40 +70,33 @@ const GroupCard = React.memo(
     const cardHeight = useTransform(y, (latestY) => Math.max(0, -latestY));
     const contentOpacity = useTransform(y, [-30, -150], [0, 1]);
     const cardScale = useTransform(y, [-30, -MAX_EXTENSION], [0.98, 1]);
-    const activeZ = isDragging || isLockedOpen || y.get() < -5 ? 99999 : zIndex;
+    const activeZ = isDragging || isActive ? 99999 : zIndex;
     const reducedVisuals = interactionReduced || isDragging;
 
     const handleDragStart = () => setIsDragging(true);
+    React.useEffect(() => {
+      if (isDragging) return;
+      void controls.start({
+        y: isActive ? -MAX_EXTENSION : 0,
+        transition: isActive ? OPEN_TRANSITION : CLOSE_TRANSITION,
+      });
+    }, [controls, isActive, isDragging]);
+
     const handleDragEnd = async (_: any, info: PanInfo) => {
       setIsDragging(false);
-      if (-info.offset.y > SNAP_THRESHOLD || -info.velocity.y > 300) {
-        setIsLockedOpen(true);
+      const shouldOpen =
+        y.get() <= -SNAP_THRESHOLD || info.velocity.y < -300;
+      if (shouldOpen !== isActive) {
         onOpen();
-        await controls.start({
-          y: -MAX_EXTENSION,
-          transition: { type: "spring", stiffness: 320, damping: 32 },
-        });
-      } else {
-        setIsLockedOpen(false);
-        await controls.start({
-          y: 0,
-          transition: { type: "spring", stiffness: 520, damping: 38 },
-        });
       }
+      await controls.start({
+        y: shouldOpen ? -MAX_EXTENSION : 0,
+        transition: shouldOpen ? OPEN_TRANSITION : CLOSE_TRANSITION,
+      });
     };
 
     const handleTabClick = () => {
-      if (isLockedOpen) {
-        setIsLockedOpen(false);
-        controls.start({ y: 0 });
-      } else {
-        setIsLockedOpen(true);
-        onOpen();
-        controls.start({
-          y: -MAX_EXTENSION,
-          transition: { type: "spring", stiffness: 320, damping: 32 },
-        });
-      }
+      onOpen();
     };
 
     return (
@@ -116,9 +120,7 @@ const GroupCard = React.memo(
           animate={controls}
           style={{ y, willChange: "transform" }}
           className={`relative overflow-visible ${reducedVisuals ? "canvas-interaction-reduced" : ""} ${
-            !isDragging
-              ? "transition-[filter,transform] duration-75"
-              : "transition-none"
+            !isDragging ? "transition-[filter] duration-100" : "transition-none"
           } ${
             isHighlighted
               ? "drop-shadow-[0_0_25px_rgba(59,130,246,0.8)] scale-[1.02] z-50"
@@ -183,11 +185,12 @@ const GroupCard = React.memo(
 
           <motion.div
             className="absolute left-1/2 transform -translate-x-1/2 bg-[#F3F4F6] rounded-b-xl border-2 border-t-0 border-gray-900 overflow-hidden flex flex-col canvas-heavy-shell"
-              style={{
+            style={{
               top: TAB_HEIGHT - 2,
               width: CARD_WIDTH,
               height: cardHeight,
               scale: cardScale,
+              transformOrigin: "top center",
               zIndex: 0,
             }}
           >

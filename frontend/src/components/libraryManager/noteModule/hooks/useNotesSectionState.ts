@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import useNotes from "../../../../hooks/noteManager/useNotes";
 import { confirmAction } from "../../../system/AppNotifications";
@@ -25,6 +25,7 @@ export default function useNotesSectionState() {
     } = useNotes("notesSection");
 
     const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+    const activeGroupIdRef = useRef<string | null>(null);
     const [isCreatingStack, setIsCreatingStack] = useState(false);
     const [draftStackTitle, setDraftStackTitle] = useState("");
     const [canvasScale, setCanvasScale] = useState(1);
@@ -47,6 +48,10 @@ export default function useNotesSectionState() {
         fetchStacks();
         fetchGroups();
     }, [fetchStacks, fetchGroups]);
+
+    useEffect(() => {
+        activeGroupIdRef.current = activeGroupId;
+    }, [activeGroupId]);
 
     // --- INITIALIZE STACK POSITIONS ---
     useEffect(() => {
@@ -214,6 +219,10 @@ export default function useNotesSectionState() {
 
     const handleOpenGroup = useCallback(
         (groupId: string) => {
+            if (activeGroupIdRef.current === groupId) {
+                setActiveGroupId(null);
+                return;
+            }
             setActiveGroupId(groupId);
             fetchNotesForGroup(groupId);
         },
