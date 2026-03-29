@@ -207,7 +207,11 @@ export default function WorkspaceShellUI(props: any) {
             </button>
           </div>
 
-          <div className="max-w-full overflow-x-auto rounded-sm border border-border-subtle bg-surface/95 p-1 shadow-sm">
+          <div
+            className={`max-w-full overflow-x-auto rounded-sm border border-border-subtle bg-surface/95 p-1 shadow-sm ${
+              activeTab === "NOTES" ? (isMobile ? "mt-2" : "mt-4") : ""
+            }`}
+          >
             <div className="flex min-w-max gap-1">
               <button
                 onClick={() => setActiveTab("ECHOES")}

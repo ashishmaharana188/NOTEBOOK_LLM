@@ -24,6 +24,7 @@ import useStackLayoutMap from "../hooks/useStackLayoutMap";
 import useQuickThoughts, { getRealId } from "../hooks/useQuickThoughts";
 import useCoverStickies from "../hooks/useCoverStickies";
 import { buildApiUrl } from "../../../../lib/runtimeConfig";
+import useIsTouchDevice from "../../../../hooks/appTools/useIsTouchDevice";
 
 const SpatialStack = React.memo(
     ({
@@ -76,6 +77,7 @@ const SpatialStack = React.memo(
         interactionReduced,
     }: any) => {
         const isNotesMode = canvasMode === "NOTES";
+        const isTouchDevice = useIsTouchDevice();
 
         const dragDeltaX = useMotionValue(0);
         const dragDeltaY = useMotionValue(0);
@@ -104,6 +106,9 @@ const SpatialStack = React.memo(
         });
         const stackTitle = isNotesMode ? noteStack?.title : cluster?.title;
         const [stackRotation, setStackRotation] = useState(0);
+        const stackActionVisibility = isTouchDevice
+            ? "opacity-100"
+            : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100";
 
         const prevPathRef = useRef<string[]>(drillDownPath || []);
 
@@ -778,7 +783,7 @@ const SpatialStack = React.memo(
                                 })()}
 
                                 <div
-                                    className="absolute z-[9999] flex items-center gap-2 opacity-100 transition-opacity pointer-events-auto sm:opacity-0 sm:group-hover:opacity-100"
+                                    className={`absolute z-[9999] flex items-center gap-2 transition-opacity pointer-events-auto ${stackActionVisibility}`}
                                     style={{ top: "-224px", right: "-159px" }}
                                 >
                                     <label

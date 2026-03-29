@@ -8,6 +8,7 @@ import type {
 import GroupDivider from "./GroupDivider";
 import GroupCard from "./GroupCard";
 import { buildApiUrl } from "../../../../lib/runtimeConfig";
+import useIsTouchDevice from "../../../../hooks/appTools/useIsTouchDevice";
 
 interface NoteStackColumnProps {
   stack: NoteStack;
@@ -57,6 +58,7 @@ const NoteStackColumn = React.memo(
     highlightedGroupId,
     interactionReduced,
   }: NoteStackColumnProps) => {
+    const isTouchDevice = useIsTouchDevice();
     const [isCreatingGroup, setIsCreatingGroup] = useState(false);
     const [draftTitle, setDraftTitle] = useState("");
     const [localPos, setLocalPos] = useState(initialPos || { x: 0, y: 0 });
@@ -149,6 +151,9 @@ const NoteStackColumn = React.memo(
     }, [isDragging, onDragEnd, scale, schedulePosition, stack.stack_id]);
 
     const reducedVisuals = interactionReduced || isDragging;
+    const coverButtonVisibility = isTouchDevice
+      ? "opacity-100"
+      : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100";
 
     const groupMap = new Map<string, NoteGroup[]>();
     [...groups]
@@ -260,7 +265,9 @@ const NoteStackColumn = React.memo(
               </svg>
             </div>
 
-            <div className="absolute -top-1 right-135 z-50 pointer-events-auto opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+            <div
+              className={`absolute -top-1 right-135 z-50 pointer-events-auto transition-opacity ${coverButtonVisibility}`}
+            >
               <label
                 className="no-pan cursor-pointer bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full  -sm transition-colors flex items-center justify-center"
                 onClick={(e) => e.stopPropagation()}
