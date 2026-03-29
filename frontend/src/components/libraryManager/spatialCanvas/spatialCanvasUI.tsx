@@ -542,16 +542,16 @@ export default function SpatialCanvasUI({
     );
     const animatingArchiveIdSet = useMemo(
         () =>
-            new Set((animatingArchive?.sourceIds || []).map((id) =>
-                String(id),
-            )),
+            new Set(
+                (animatingArchive?.sourceIds || []).map((id) => String(id)),
+            ),
         [animatingArchive],
     );
     const unarchivingSourceIdSet = useMemo(
         () =>
-            new Set((unarchivingSource?.sourceIds || []).map((id) =>
-                String(id),
-            )),
+            new Set(
+                (unarchivingSource?.sourceIds || []).map((id) => String(id)),
+            ),
         [unarchivingSource],
     );
     const rootSceneItems = useMemo(
@@ -567,10 +567,8 @@ export default function SpatialCanvasUI({
                 const defaultX = col * 600 + (row % 2 === 0 ? 0 : 300);
                 const defaultY = row * 650;
 
-                const baseX =
-                    draftMeta?.x ?? savedMeta?.x_coord ?? defaultX;
-                const baseY =
-                    draftMeta?.y ?? savedMeta?.y_coord ?? defaultY;
+                const baseX = draftMeta?.x ?? savedMeta?.x_coord ?? defaultX;
+                const baseY = draftMeta?.y ?? savedMeta?.y_coord ?? defaultY;
 
                 let gridOffsetX = 0;
                 let gridOffsetY = 0;
@@ -837,17 +835,14 @@ export default function SpatialCanvasUI({
         }
 
         try {
-            const response = await fetch(
-                buildApiUrl("/brain/archive/append"),
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        target_archive_id: targetArchiveId,
-                        item_ids: itemIdsToMerge,
-                    }),
-                },
-            );
+            const response = await fetch(buildApiUrl("/brain/archive/append"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    target_archive_id: targetArchiveId,
+                    item_ids: itemIdsToMerge,
+                }),
+            });
             const payload = await response.json().catch(() => null);
 
             if (response.ok && payload?.status === "success") {
@@ -1043,7 +1038,10 @@ export default function SpatialCanvasUI({
         [clearTouchShiftTimer, getCanvasPointFromClient],
     );
     const finalizeTouchSelection = useCallback(
-        async (trackedTouch: TouchPointLike | null, cancelSelection = false) => {
+        async (
+            trackedTouch: TouchPointLike | null,
+            cancelSelection = false,
+        ) => {
             const session = touchShiftSessionRef.current;
             if (
                 !session ||
@@ -1106,15 +1104,13 @@ export default function SpatialCanvasUI({
             width: Math.max(
                 1,
                 Math.abs(
-                    touchMarqueeBox.endClientX -
-                        touchMarqueeBox.startClientX,
+                    touchMarqueeBox.endClientX - touchMarqueeBox.startClientX,
                 ),
             ),
             height: Math.max(
                 1,
                 Math.abs(
-                    touchMarqueeBox.endClientY -
-                        touchMarqueeBox.startClientY,
+                    touchMarqueeBox.endClientY - touchMarqueeBox.startClientY,
                 ),
             ),
         };
@@ -1125,7 +1121,10 @@ export default function SpatialCanvasUI({
             const session = touchShiftSessionRef.current;
             if (!session) return;
 
-            const trackedTouch = findTrackedTouch(event.touches, session.touchId);
+            const trackedTouch = findTrackedTouch(
+                event.touches,
+                session.touchId,
+            );
             if (!trackedTouch) return;
 
             event.preventDefault();
@@ -1169,11 +1168,7 @@ export default function SpatialCanvasUI({
             window.removeEventListener("touchend", handleWindowTouchEnd);
             window.removeEventListener("touchcancel", handleWindowTouchCancel);
         };
-    }, [
-        findTrackedTouch,
-        finalizeTouchSelection,
-        syncTouchSelectionFromTouch,
-    ]);
+    }, [findTrackedTouch, finalizeTouchSelection, syncTouchSelectionFromTouch]);
 
     return (
         <div
@@ -1221,7 +1216,8 @@ export default function SpatialCanvasUI({
 
                 touchShiftTimerRef.current = setTimeout(() => {
                     const session = touchShiftSessionRef.current;
-                    if (!session || session.touchId !== touch.identifier) return;
+                    if (!session || session.touchId !== touch.identifier)
+                        return;
 
                     session.activated = true;
                     setIsTouchSelectionMode(true);
@@ -1303,7 +1299,7 @@ export default function SpatialCanvasUI({
                 }
             }}
         >
-            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200 sm:top-14">
+            <div className="absolute top-30 left-1/2 -translate-x-1/2 z-[9999] flex items-center bg-white rounded-full p-1.5 shadow-lg border border-slate-200 sm:top-14">
                 <button
                     onClick={() => {
                         setCanvasMode("ECHO");
@@ -1407,138 +1403,32 @@ export default function SpatialCanvasUI({
                                     gridOffsetY,
                                     isVisible,
                                 }) => {
-                                const isSelected =
-                                    selectedItemIdSet.has(itemId);
+                                    const isSelected =
+                                        selectedItemIdSet.has(itemId);
 
-                                if (item.is_archive_node) {
-                                    // THE FIX 2: We removed the heavy array sorting from here!
-                                    return (
-                                        <SpatialArchiveFolder
-                                            key={itemId}
-                                            item={item}
-                                            itemId={itemId}
-                                            baseX={baseX}
-                                            baseY={baseY}
-                                            gridOffsetX={gridOffsetX}
-                                            gridOffsetY={gridOffsetY}
-                                            isSelected={isSelected}
-                                            isVisible={isVisible} // <-- Pass the boolean!
-                                            isBeingGridded={animatingGridIdSet.has(
-                                                itemId,
-                                            )}
-                                            gridAnimationTargets={
-                                                gridAnimationTargets
-                                            }
-                                            gridZIndexes={gridZIndexes}
-                                            savedMeta={savedMeta}
-                                            spatialMetadata={spatialMetadata}
-                                            bringToFrontGrid={bringToFrontGrid}
-                                            updateGridPosition={
-                                                updateGridPosition
-                                            }
-                                            canvasMode={canvasMode}
-                                            fetchClusters={fetchClusters}
-                                            fetchStacks={fetchStacks}
-                                            setUnarchivingSource={
-                                                setUnarchivingSource
-                                            }
-                                            selectedItemIds={selectedItemIds}
-                                            selectedItemIdSet={
-                                                selectedItemIdSet
-                                            }
-                                            isMergeMode={isMergeMode}
-                                            onAppendToArchive={
-                                                handleAppendToArchive
-                                            }
-                                            onSelect={(id: string) => {
-                                                setSelectedItemIds((prev) =>
-                                                    prev.includes(id)
-                                                        ? prev.filter(
-                                                              (p) => p !== id,
-                                                          )
-                                                        : [...prev, id],
-                                                );
-                                            }}
-                                            onDrillDown={handleDrillDown}
-                                            interactionReduced={
-                                                isInteracting
-                                            }
-                                        />
-                                    );
-                                }
-
-                                return (
-                                    <div
-                                        key={itemId}
-                                        className="absolute pointer-events-none"
-                                        style={{
-                                            border: isSelected
-                                                ? "2px solid #4ade80"
-                                                : "2px solid transparent",
-                                            borderRadius: "26px",
-                                            transition: "border 0.2s ease",
-                                            zIndex:
-                                                gridZIndexes[itemId] ||
-                                                savedMeta?.z_index ||
-                                                (isSelected ? 9999 : 1),
-                                        }}
-                                    >
-                                        <div className="pointer-events-auto w-full h-full">
-                                            <SpatialStack
+                                    if (item.is_archive_node) {
+                                        // THE FIX 2: We removed the heavy array sorting from here!
+                                        return (
+                                            <SpatialArchiveFolder
+                                                key={itemId}
+                                                item={item}
                                                 itemId={itemId}
-                                                isMergeMode={isMergeMode}
-                                                onAppendToArchive={
-                                                    handleAppendToArchive
-                                                }
-                                                isVisible={isVisible} // <-- Pass the boolean!
-                                                cluster={
-                                                    canvasMode === "ECHO"
-                                                        ? item
-                                                        : null
-                                                }
-                                                noteStack={
-                                                    canvasMode === "NOTES"
-                                                        ? item
-                                                        : null
-                                                }
-                                                allGroups={groups}
-                                                clusterIndex={index}
-                                                initialX={baseX}
-                                                initialY={baseY}
+                                                baseX={baseX}
+                                                baseY={baseY}
                                                 gridOffsetX={gridOffsetX}
                                                 gridOffsetY={gridOffsetY}
-                                                isExpanded={
-                                                    rootExpandedId === itemId
-                                                }
-                                                drillDownPath={
-                                                    rootExpandedId === itemId
-                                                        ? drillDownPath
-                                                        : []
-                                                } // <--- NEW PROP
-                                                onDrillDown={handleDrillDown} // <--- NEW PROP
-                                                onDrillUp={handleDrillUp}
-                                                canvasScale={canvasScale}
-                                                canvasMode={canvasMode}
-                                                fetchNotesForGroup={
-                                                    fetchNotesForGroup
-                                                }
-                                                currentNotes={currentNotes}
-                                                globalNotes={globalNotes}
-                                                allClusters={clusters}
-                                                isBeingArchived={animatingArchiveIdSet.has(
+                                                isSelected={isSelected}
+                                                isVisible={isVisible} // <-- Pass the boolean!
+                                                isBeingGridded={animatingGridIdSet.has(
                                                     itemId,
                                                 )}
-                                                animatingArchive={
-                                                    animatingArchive
+                                                gridAnimationTargets={
+                                                    gridAnimationTargets
                                                 }
-                                                onToggleStack={
-                                                    handleToggleStack
-                                                }
-                                                isBeingUnarchived={unarchivingSourceIdSet.has(
-                                                    itemId,
-                                                )}
-                                                unarchivingSource={
-                                                    unarchivingSource
+                                                gridZIndexes={gridZIndexes}
+                                                savedMeta={savedMeta}
+                                                spatialMetadata={
+                                                    spatialMetadata
                                                 }
                                                 bringToFrontGrid={
                                                     bringToFrontGrid
@@ -1546,55 +1436,176 @@ export default function SpatialCanvasUI({
                                                 updateGridPosition={
                                                     updateGridPosition
                                                 }
-                                                isBeingGridded={animatingGridIdSet.has(
-                                                    itemId,
-                                                )}
-                                                gridAnimationTargets={
-                                                    gridAnimationTargets
+                                                canvasMode={canvasMode}
+                                                fetchClusters={fetchClusters}
+                                                fetchStacks={fetchStacks}
+                                                setUnarchivingSource={
+                                                    setUnarchivingSource
                                                 }
                                                 selectedItemIds={
                                                     selectedItemIds
                                                 }
-                                                onOrbitLayoutUpdate={
-                                                    updateActiveOrbitLayout
+                                                selectedItemIdSet={
+                                                    selectedItemIdSet
                                                 }
-                                                spatialMetadata={
-                                                    spatialMetadata
+                                                isMergeMode={isMergeMode}
+                                                onAppendToArchive={
+                                                    handleAppendToArchive
                                                 }
-                                                onFocusNote={onFocusNote}
-                                                archiveGroupsById={
-                                                    archiveGroupsById
-                                                }
-                                                archiveGroupsByDisplayParentId={
-                                                    archiveGroupsByDisplayParentId
-                                                }
-                                                archiveStateByItemId={
-                                                    archiveStateByItemId
-                                                }
-                                                groupContentsById={
-                                                    groupContentsById
-                                                }
-                                                echoesById={echoesById} // <--- NEW
-                                                notesByLinkedEchoId={
-                                                    notesByLinkedEchoId
-                                                } // <--- NEW
-                                                linkedEchoIdsByNoteId={
-                                                    linkedEchoIdsByNoteId
-                                                }
-                                                linkSummaryByItemId={
-                                                    linkSummaryByItemId
-                                                }
-                                                onOpenMindMap={onOpenMindMap}
-                                                groupsByOwnerId={
-                                                    groupsByOwnerId
-                                                }
+                                                onSelect={(id: string) => {
+                                                    setSelectedItemIds(
+                                                        (prev) =>
+                                                            prev.includes(id)
+                                                                ? prev.filter(
+                                                                      (p) =>
+                                                                          p !==
+                                                                          id,
+                                                                  )
+                                                                : [...prev, id],
+                                                    );
+                                                }}
+                                                onDrillDown={handleDrillDown}
                                                 interactionReduced={
                                                     isInteracting
                                                 }
                                             />
+                                        );
+                                    }
+
+                                    return (
+                                        <div
+                                            key={itemId}
+                                            className="absolute pointer-events-none"
+                                            style={{
+                                                border: isSelected
+                                                    ? "2px solid #4ade80"
+                                                    : "2px solid transparent",
+                                                borderRadius: "26px",
+                                                transition: "border 0.2s ease",
+                                                zIndex:
+                                                    gridZIndexes[itemId] ||
+                                                    savedMeta?.z_index ||
+                                                    (isSelected ? 9999 : 1),
+                                            }}
+                                        >
+                                            <div className="pointer-events-auto w-full h-full">
+                                                <SpatialStack
+                                                    itemId={itemId}
+                                                    isMergeMode={isMergeMode}
+                                                    onAppendToArchive={
+                                                        handleAppendToArchive
+                                                    }
+                                                    isVisible={isVisible} // <-- Pass the boolean!
+                                                    cluster={
+                                                        canvasMode === "ECHO"
+                                                            ? item
+                                                            : null
+                                                    }
+                                                    noteStack={
+                                                        canvasMode === "NOTES"
+                                                            ? item
+                                                            : null
+                                                    }
+                                                    allGroups={groups}
+                                                    clusterIndex={index}
+                                                    initialX={baseX}
+                                                    initialY={baseY}
+                                                    gridOffsetX={gridOffsetX}
+                                                    gridOffsetY={gridOffsetY}
+                                                    isExpanded={
+                                                        rootExpandedId ===
+                                                        itemId
+                                                    }
+                                                    drillDownPath={
+                                                        rootExpandedId ===
+                                                        itemId
+                                                            ? drillDownPath
+                                                            : []
+                                                    } // <--- NEW PROP
+                                                    onDrillDown={
+                                                        handleDrillDown
+                                                    } // <--- NEW PROP
+                                                    onDrillUp={handleDrillUp}
+                                                    canvasScale={canvasScale}
+                                                    canvasMode={canvasMode}
+                                                    fetchNotesForGroup={
+                                                        fetchNotesForGroup
+                                                    }
+                                                    currentNotes={currentNotes}
+                                                    globalNotes={globalNotes}
+                                                    allClusters={clusters}
+                                                    isBeingArchived={animatingArchiveIdSet.has(
+                                                        itemId,
+                                                    )}
+                                                    animatingArchive={
+                                                        animatingArchive
+                                                    }
+                                                    onToggleStack={
+                                                        handleToggleStack
+                                                    }
+                                                    isBeingUnarchived={unarchivingSourceIdSet.has(
+                                                        itemId,
+                                                    )}
+                                                    unarchivingSource={
+                                                        unarchivingSource
+                                                    }
+                                                    bringToFrontGrid={
+                                                        bringToFrontGrid
+                                                    }
+                                                    updateGridPosition={
+                                                        updateGridPosition
+                                                    }
+                                                    isBeingGridded={animatingGridIdSet.has(
+                                                        itemId,
+                                                    )}
+                                                    gridAnimationTargets={
+                                                        gridAnimationTargets
+                                                    }
+                                                    selectedItemIds={
+                                                        selectedItemIds
+                                                    }
+                                                    onOrbitLayoutUpdate={
+                                                        updateActiveOrbitLayout
+                                                    }
+                                                    spatialMetadata={
+                                                        spatialMetadata
+                                                    }
+                                                    onFocusNote={onFocusNote}
+                                                    archiveGroupsById={
+                                                        archiveGroupsById
+                                                    }
+                                                    archiveGroupsByDisplayParentId={
+                                                        archiveGroupsByDisplayParentId
+                                                    }
+                                                    archiveStateByItemId={
+                                                        archiveStateByItemId
+                                                    }
+                                                    groupContentsById={
+                                                        groupContentsById
+                                                    }
+                                                    echoesById={echoesById} // <--- NEW
+                                                    notesByLinkedEchoId={
+                                                        notesByLinkedEchoId
+                                                    } // <--- NEW
+                                                    linkedEchoIdsByNoteId={
+                                                        linkedEchoIdsByNoteId
+                                                    }
+                                                    linkSummaryByItemId={
+                                                        linkSummaryByItemId
+                                                    }
+                                                    onOpenMindMap={
+                                                        onOpenMindMap
+                                                    }
+                                                    groupsByOwnerId={
+                                                        groupsByOwnerId
+                                                    }
+                                                    interactionReduced={
+                                                        isInteracting
+                                                    }
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
-                                );
+                                    );
                                 },
                             )}
                         </MotionConfig>
@@ -1848,7 +1859,9 @@ export default function SpatialCanvasUI({
                             ) {
                                 try {
                                     await fetch(
-                                        buildApiUrl("/brain/canvas/metadata/save"),
+                                        buildApiUrl(
+                                            "/brain/canvas/metadata/save",
+                                        ),
                                         {
                                             method: "POST",
                                             headers: {
