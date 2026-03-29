@@ -107,6 +107,7 @@ function resolveSectionIndexForChar(
   if (!sections.length) return -1;
   for (let index = 0; index < sections.length; index += 1) {
     const section = sections[index];
+    if (!section) continue;
     const start = Number(section.start_offset ?? 0);
     const end = Number(section.end_offset ?? start);
     if (charIndex >= start && charIndex < end) {
@@ -116,7 +117,9 @@ function resolveSectionIndexForChar(
 
   let fallbackIndex = 0;
   for (let index = 0; index < sections.length; index += 1) {
-    const start = Number(sections[index].start_offset ?? 0);
+    const section = sections[index];
+    if (!section) continue;
+    const start = Number(section.start_offset ?? 0);
     if (charIndex >= start) {
       fallbackIndex = index;
     } else {

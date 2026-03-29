@@ -160,7 +160,7 @@ export default function EpubReader({
                 <label className="block text-xs uppercase tracking-[0.18em] text-muted">
                   Chapter
                   <select
-                    value=""
+                    defaultValue=""
                     onChange={(event) => {
                       if (event.target.value) {
                         navigateTo(event.target.value);
