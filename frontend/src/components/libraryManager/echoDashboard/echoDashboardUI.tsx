@@ -199,6 +199,12 @@ export default function EchoDashboardUI(props: any) {
         return;
       }
 
+      state.handleEchoSaved({
+        echoId,
+        clusterId: resolvedClusterId,
+        created: false,
+      });
+
       await state.createDraftBranchFromHighlight({
         text,
         sourceEchoId: echoId,

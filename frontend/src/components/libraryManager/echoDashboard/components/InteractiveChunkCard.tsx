@@ -71,6 +71,9 @@ const InteractiveChunkCard = React.memo(
         const [customTitle, setCustomTitle] = useState(chunk.title || "");
         const [selectionText, setSelectionText] = useState("");
         const contextRef = useRef<HTMLDivElement | null>(null);
+        const savedClusterIdRef = useRef<string | null>(
+            targetClusterId || String((chunk as any).cluster_id || "") || null,
+        );
 
         const getSelectionWithinContext = useCallback(() => {
             const selection = window.getSelection();
@@ -104,6 +107,14 @@ const InteractiveChunkCard = React.memo(
                 setSavedClusterId(targetClusterId);
             }
         }, [targetClusterId]);
+
+        useEffect(() => {
+            savedClusterIdRef.current =
+                savedClusterId ||
+                targetClusterId ||
+                String((chunk as any).cluster_id || "") ||
+                null;
+        }, [chunk, savedClusterId, targetClusterId]);
 
         useEffect(() => {
             if (isCollapsed) {
@@ -143,8 +154,7 @@ const InteractiveChunkCard = React.memo(
                         return {
                             echoId,
                             clusterId:
-                                savedClusterId ||
-                                targetClusterId ||
+                                savedClusterIdRef.current ||
                                 String(res.data.cluster_id || ""),
                         };
                     }
@@ -182,8 +192,11 @@ const InteractiveChunkCard = React.memo(
                     setIsSaved(true);
                     setEchoId(nextEchoId);
                     setSavedClusterId(nextClusterId || null);
+                    savedClusterIdRef.current = nextClusterId || null;
                     chunk.relation = "Saved Insight";
                     (chunk as any).chunk_id = nextEchoId;
+                    (chunk as any).echo_id = nextEchoId;
+                    (chunk as any).cluster_id = nextClusterId;
                     if (onSaveSuccess) onSaveSuccess();
                     onEchoSaved?.({
                         echoId: nextEchoId,
@@ -227,10 +240,13 @@ const InteractiveChunkCard = React.memo(
 
         const handleOpenNoteManager = async () => {
             let currentEchoRef =
-                echoId && (savedClusterId || targetClusterId)
+                echoId && (savedClusterIdRef.current || targetClusterId)
                     ? {
                           echoId,
-                          clusterId: savedClusterId || targetClusterId || "",
+                          clusterId:
+                              savedClusterIdRef.current ||
+                              targetClusterId ||
+                              "",
                       }
                     : null;
             if (!isSaved || !currentEchoRef) currentEchoRef = await handleSaveAndReturnRef();
@@ -244,10 +260,13 @@ const InteractiveChunkCard = React.memo(
             if (!nextSelection || !onCreateBranchFromHighlight) return;
 
             const currentEchoRef =
-                echoId && (savedClusterId || targetClusterId)
+                echoId && (savedClusterIdRef.current || targetClusterId)
                     ? {
                           echoId,
-                          clusterId: savedClusterId || targetClusterId || "",
+                          clusterId:
+                              savedClusterIdRef.current ||
+                              targetClusterId ||
+                              "",
                       }
                     : await handleSaveAndReturnRef();
 
