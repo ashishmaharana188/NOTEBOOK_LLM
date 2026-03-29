@@ -173,19 +173,26 @@ export default function useCognition() {
                 bootstrapBook.extension ||
                 filename.split(".").pop()?.toLowerCase() ||
                 "txt";
+            const resolvedFilename = bootstrapBook.filename || filename;
+            const resolvedLid = bootstrapBook.lid || libraryId || "";
+            const fileUrl = new URL(
+                buildApiUrl(`/reader/files/${encodeURIComponent(resolvedFilename)}`),
+            );
+            if (resolvedLid) {
+                fileUrl.searchParams.set("lid", resolvedLid);
+            }
+            if (bootstrapBook.file_fingerprint) {
+                fileUrl.searchParams.set("v", bootstrapBook.file_fingerprint);
+            }
 
             const bookObj: ReaderBook = {
-                filename: bootstrapBook.filename || filename,
+                filename: resolvedFilename,
                 title: bootstrapBook.title || filenameOrBook?.title || filename,
                 author:
                     bootstrapBook.author || filenameOrBook?.author || "Unknown",
                 extension,
-                url:
-                    bootstrapBook.url ||
-                    buildApiUrl(
-                        `/reader/files/${encodeURIComponent(filename)}`,
-                    ),
-                lid: bootstrapBook.lid || libraryId || "",
+                url: fileUrl.toString(),
+                lid: resolvedLid,
                 file_fingerprint: bootstrapBook.file_fingerprint || "",
                 initialReaderBootstrap: payload,
             };

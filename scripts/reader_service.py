@@ -119,6 +119,20 @@ class ReaderManifestService:
         should_build = force or manifest is None
         if manifest and manifest.get("file_fingerprint") != fingerprint:
             should_build = True
+        elif manifest:
+            content_meta = manifest.get("content_meta") or {}
+            cache_path = str(content_meta.get("cache_path") or "").strip()
+            missing_cache = bool(cache_path) and not os.path.exists(cache_path)
+            missing_section_support = (
+                identity["format"] in {"epub", "txt", "md"}
+                and not content_meta.get("supports_section_content")
+            )
+            missing_epub_section_index = (
+                identity["format"] == "epub"
+                and not (manifest.get("section_index") or [])
+            )
+            if missing_cache or missing_section_support or missing_epub_section_index:
+                should_build = True
 
         if should_build:
             self._schedule_build(identity, fingerprint)
