@@ -42,6 +42,29 @@ export default function SavedEchoCard({
     const [loadingContext, setLoadingContext] = useState(false);
     const contextRef = useRef<HTMLDivElement | null>(null);
 
+    const getSelectionWithinContext = useCallback(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0 || !contextRef.current) {
+            return "";
+        }
+
+        const text = selection.toString().trim();
+        if (!text || text.length < 6) {
+            return "";
+        }
+
+        const anchorNode = selection.anchorNode;
+        const focusNode = selection.focusNode;
+        if (
+            (anchorNode && !contextRef.current.contains(anchorNode)) ||
+            (focusNode && !contextRef.current.contains(focusNode))
+        ) {
+            return "";
+        }
+
+        return text;
+    }, []);
+
     useEffect(() => {
         setCustomTitle(chunk.title || "Untitled Echo");
     }, [chunk.title]);
@@ -54,31 +77,9 @@ export default function SavedEchoCard({
 
     const captureSelection = useCallback(() => {
         window.setTimeout(() => {
-            const selection = window.getSelection();
-            if (!selection || selection.rangeCount === 0 || !contextRef.current) {
-                setSelectionText("");
-                return;
-            }
-
-            const text = selection.toString().trim();
-            if (!text || text.length < 6) {
-                setSelectionText("");
-                return;
-            }
-
-            const anchorNode = selection.anchorNode;
-            const focusNode = selection.focusNode;
-            if (
-                (anchorNode && !contextRef.current.contains(anchorNode)) ||
-                (focusNode && !contextRef.current.contains(focusNode))
-            ) {
-                setSelectionText("");
-                return;
-            }
-
-            setSelectionText(text);
+            setSelectionText(getSelectionWithinContext());
         }, 0);
-    }, []);
+    }, [getSelectionWithinContext]);
 
     useEffect(() => {
         if (!isExpanded) return;
@@ -162,8 +163,9 @@ export default function SavedEchoCard({
     };
 
     const runHighlightBranchSearch = async () => {
-        if (!selectionText || !onCreateBranchFromHighlight) return;
-        await onCreateBranchFromHighlight(selectionText);
+        const nextSelection = selectionText || getSelectionWithinContext();
+        if (!nextSelection || !onCreateBranchFromHighlight) return;
+        await onCreateBranchFromHighlight(nextSelection);
         setSelectionText("");
         window.getSelection()?.removeAllRanges();
     };
@@ -229,11 +231,11 @@ export default function SavedEchoCard({
                             <button
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={runHighlightBranchSearch}
-                                disabled={!selectionText}
+                                disabled={!onCreateBranchFromHighlight}
                                 className={`px-0 py-0 transition-colors ${
                                     selectionText
                                         ? "text-slate-900 hover:text-black"
-                                        : "text-slate-300"
+                                        : "text-slate-500 hover:text-slate-900"
                                 }`}
                             >
                                 Search Highlight

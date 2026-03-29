@@ -72,6 +72,29 @@ const InteractiveChunkCard = React.memo(
         const [selectionText, setSelectionText] = useState("");
         const contextRef = useRef<HTMLDivElement | null>(null);
 
+        const getSelectionWithinContext = useCallback(() => {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0 || !contextRef.current) {
+                return "";
+            }
+
+            const text = selection.toString().trim();
+            if (!text || text.length < 6) {
+                return "";
+            }
+
+            const anchorNode = selection.anchorNode;
+            const focusNode = selection.focusNode;
+            if (
+                (anchorNode && !contextRef.current.contains(anchorNode)) ||
+                (focusNode && !contextRef.current.contains(focusNode))
+            ) {
+                return "";
+            }
+
+            return text;
+        }, []);
+
         const resolvedLinkedNoteIds = linkedNoteIds.filter(Boolean);
         const linkedNoteCount = resolvedLinkedNoteIds.length;
         const sourceLabel = (chunk as any).filename || activeBookTitle;
@@ -90,31 +113,9 @@ const InteractiveChunkCard = React.memo(
 
         const captureSelection = useCallback(() => {
             window.setTimeout(() => {
-                const selection = window.getSelection();
-                if (!selection || selection.rangeCount === 0 || !contextRef.current) {
-                    setSelectionText("");
-                    return;
-                }
-
-                const text = selection.toString().trim();
-                if (!text || text.length < 6) {
-                    setSelectionText("");
-                    return;
-                }
-
-                const anchorNode = selection.anchorNode;
-                const focusNode = selection.focusNode;
-                if (
-                    (anchorNode && !contextRef.current.contains(anchorNode)) ||
-                    (focusNode && !contextRef.current.contains(focusNode))
-                ) {
-                    setSelectionText("");
-                    return;
-                }
-
-                setSelectionText(text);
+                setSelectionText(getSelectionWithinContext());
             }, 0);
-        }, []);
+        }, [getSelectionWithinContext]);
 
         useEffect(() => {
             if (isCollapsed) return;
@@ -239,7 +240,8 @@ const InteractiveChunkCard = React.memo(
         };
 
         const handleSearchHighlight = async () => {
-            if (!selectionText || !onCreateBranchFromHighlight) return;
+            const nextSelection = selectionText || getSelectionWithinContext();
+            if (!nextSelection || !onCreateBranchFromHighlight) return;
 
             const currentEchoRef =
                 echoId && (savedClusterId || targetClusterId)
@@ -254,7 +256,7 @@ const InteractiveChunkCard = React.memo(
             }
 
             await onCreateBranchFromHighlight({
-                text: selectionText,
+                text: nextSelection,
                 echoId: currentEchoRef.echoId,
                 clusterId: currentEchoRef.clusterId,
             });
@@ -324,12 +326,12 @@ const InteractiveChunkCard = React.memo(
                             <button
                                 onMouseDown={(event) => event.preventDefault()}
                                 onClick={handleSearchHighlight}
-                                disabled={isProcessing || isCollapsed || !selectionText}
+                                disabled={isProcessing || isCollapsed || !onCreateBranchFromHighlight}
                                 title="Search highlight"
                                 className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
                                     selectionText && !isCollapsed
                                         ? "text-slate-600 hover:text-slate-900"
-                                        : "text-slate-300"
+                                        : "text-slate-500 hover:text-slate-900"
                                 }`}
                             >
                                 Search
@@ -366,7 +368,7 @@ const InteractiveChunkCard = React.memo(
                         onMouseUp={captureSelection}
                         onKeyUp={captureSelection}
                         onTouchEnd={captureSelection}
-                        className="bg-white px-4 py-4 sm:px-5 sm:py-5"
+                        className="bg-white px-4 py-4 select-text sm:px-5 sm:py-5"
                     >
                         <p className="whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800">
                             {chunk.text}
