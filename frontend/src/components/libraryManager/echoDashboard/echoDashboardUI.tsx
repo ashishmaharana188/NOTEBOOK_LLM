@@ -87,6 +87,9 @@ export default function EchoDashboardUI(props: any) {
   const visibleEchoClusters = React.useMemo(
     () =>
       echoClusters.filter((cluster: any) => {
+        if (String(state.zoomTarget || "") === String(cluster.id || "")) {
+          return true;
+        }
         const position = state.positions[cluster.id] || {
           x: 1000,
           y: 100,
@@ -98,11 +101,14 @@ export default function EchoDashboardUI(props: any) {
           height: ECHO_COLUMN_HEIGHT,
         });
       }),
-    [echoClusters, isRectVisible, state.positions],
+    [echoClusters, isRectVisible, state.positions, state.zoomTarget],
   );
   const visibleDraftBranchColumns = React.useMemo(
     () =>
       draftBranches.filter((draft: any) => {
+        if (String(state.zoomTarget || "") === String(draft.id || "")) {
+          return true;
+        }
         const position = state.positions[draft.id] || { x: 1000, y: 100 };
         return isRectVisible({
           x: position.x,
@@ -111,7 +117,7 @@ export default function EchoDashboardUI(props: any) {
           height: ECHO_COLUMN_HEIGHT,
         });
       }),
-    [draftBranches, isRectVisible, state.positions],
+    [draftBranches, isRectVisible, state.positions, state.zoomTarget],
   );
   const visibleEchoClusterIds = React.useMemo(
     () =>
