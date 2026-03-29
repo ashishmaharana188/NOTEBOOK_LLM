@@ -30,6 +30,7 @@ export default function WorkspaceShellUI(props: any) {
     isOpen,
     onClose,
     onOpen,
+    onTextSelection,
     results = [],
     recommendations = [],
     currentView,
@@ -139,7 +140,7 @@ export default function WorkspaceShellUI(props: any) {
           />
         );
       case "NOTES":
-        return <NotesSectionUI />;
+        return <NotesSectionUI onTextSelection={onTextSelection} />;
       case "SYSTEM":
         return <SystemConfigPanel />;
       default:

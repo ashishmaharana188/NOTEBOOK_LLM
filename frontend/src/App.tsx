@@ -215,6 +215,7 @@ function App() {
             onClose={() => setEchoOpen(false)}
             onOpen={() => setEchoOpen(true)}
             currentView={workspaceView}
+            onTextSelection={handleSelection}
             results={results}
             recommendations={recommendations}
             query={query}

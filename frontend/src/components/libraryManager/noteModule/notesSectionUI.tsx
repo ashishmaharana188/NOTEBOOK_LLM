@@ -19,7 +19,9 @@ import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteracti
 const NOTE_STACK_WIDTH = 650;
 const NOTE_STACK_HEIGHT = 2600;
 
-const NotesSectionUI: React.FC = () => {
+const NotesSectionUI: React.FC<{
+  onTextSelection?: (text?: string) => void;
+}> = ({ onTextSelection }) => {
   const state = useNotesSectionState();
   const { publish } = useRefreshBus();
   const { isInteracting, startInteraction, settleInteraction } =
@@ -243,6 +245,7 @@ const NotesSectionUI: React.FC = () => {
         <NotesFormUI
           groupId={state.formState.groupId}
           initialNote={state.formState.note}
+          onTextSelection={onTextSelection}
           stacks={state.stacks} // <--- ADD THIS
           groups={state.groups} // <--- ADD THIS
           onClose={() =>

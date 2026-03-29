@@ -17,7 +17,7 @@ export default function EchoTrigger({
   if (!visible || !text) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100vw-1rem)] max-w-md -translate-x-1/2 animate-in slide-in-from-bottom-4 duration-200 sm:bottom-10 sm:w-auto sm:max-w-none">
+    <div className="fixed bottom-4 left-1/2 z-[10050] w-[calc(100vw-1rem)] max-w-md -translate-x-1/2 animate-in slide-in-from-bottom-4 duration-200 sm:bottom-10 sm:w-auto sm:max-w-none">
       <div className="flex flex-col gap-3 rounded-xl border border-gray-700 bg-accent px-4 py-3 text-accent-text shadow-2xl sm:flex-row sm:items-center sm:gap-4">
         <div className="flex min-w-0 flex-col">
           <span className="text-[10px] uppercase text-gray-400 font-bold tracking-wider">

@@ -18,6 +18,7 @@ export default function NotesFormUI({
     initialNote,
     prefillContent = "",
     prefillTitle = "",
+    onTextSelection,
     onClose,
     onSave,
     stacks = [],
@@ -37,6 +38,7 @@ export default function NotesFormUI({
     const [selectedGroupId, setSelectedGroupId] = useState(
         initialNote?.group_id || groupId || "",
     );
+    const editorSurfaceRef = useRef<HTMLDivElement | null>(null);
 
     // 2. Identify the true Stack and Folder objects for the breadcrumbs
     const currentGroup = groups.find(
@@ -53,6 +55,33 @@ export default function NotesFormUI({
     useEffect(() => {
         setTitle(initialNote?.title || prefillTitle || "");
     }, [initialNote?.title, prefillTitle]);
+
+    useEffect(() => {
+        if (!onTextSelection) return;
+
+        const captureSelection = () => {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0 || !editorSurfaceRef.current) {
+                return;
+            }
+            const text = selection.toString().trim();
+            if (text.length <= 5) return;
+
+            const anchorNode = selection.anchorNode;
+            const focusNode = selection.focusNode;
+            const editorRoot = editorSurfaceRef.current;
+            const anchorInside = !!anchorNode && editorRoot.contains(anchorNode);
+            const focusInside = !!focusNode && editorRoot.contains(focusNode);
+            if (!anchorInside || !focusInside) return;
+
+            onTextSelection(text);
+        };
+
+        document.addEventListener("selectionchange", captureSelection);
+        return () => {
+            document.removeEventListener("selectionchange", captureSelection);
+        };
+    }, [onTextSelection]);
 
     // 3. Pre-fill the modal if the note already has a location
     useEffect(() => {
@@ -231,7 +260,10 @@ export default function NotesFormUI({
                     </div>
 
                     <div className="note-editor-scroll flex-1 overflow-y-auto overflow-x-visible custom-scrollbar px-4 py-8 lg:px-20 lg:py-12 bg-white">
-                        <div className="note-editor-blocknote max-w-4xl mx-auto relative">
+                        <div
+                            ref={editorSurfaceRef}
+                            className="note-editor-blocknote max-w-4xl mx-auto relative"
+                        >
                             <BlockNoteView
                                 editor={editor}
                                 theme="light"
