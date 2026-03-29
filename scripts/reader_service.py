@@ -293,6 +293,7 @@ class ReaderManifestService:
         book = epub.read_epub(file_path)
         section_index: list[dict[str, Any]] = []
         item_offsets: dict[str, int] = {}
+        section_texts: list[str] = []
         running_offset = 0
 
         for idx, item in enumerate(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)):
@@ -300,16 +301,22 @@ class ReaderManifestService:
             text = clean_text(soup.get_text(separator="\n"))
             item_name = item.get_name()
             item_offsets[item_name] = running_offset
+            start_offset = running_offset
+            end_offset = start_offset + len(text)
             section_index.append(
                 {
                     "section_index": idx,
                     "label": item_name,
                     "href": item_name,
                     "char_index": running_offset,
+                    "start_offset": start_offset,
+                    "end_offset": end_offset,
                     "char_length": len(text),
+                    "preview": text[:160],
                 }
             )
-            running_offset += len(text) + 2
+            section_texts.append(text)
+            running_offset = end_offset + 2
 
         def flatten_toc(items: Any, level: int = 1) -> list[dict[str, Any]]:
             rows: list[dict[str, Any]] = []
@@ -329,6 +336,11 @@ class ReaderManifestService:
             return rows
 
         toc = flatten_toc(book.toc)
+        cache_path = os.path.join(
+            self.cache_dir, f"{identity['book_key'].replace(':', '_')}_{fingerprint}.txt"
+        )
+        with open(cache_path, "w", encoding="utf-8") as handle:
+            handle.write("\n\n".join(section_texts))
         return {
             "format": identity["format"],
             "file_fingerprint": fingerprint,
@@ -338,8 +350,11 @@ class ReaderManifestService:
             "section_index": section_index,
             "location_map": section_index,
             "content_meta": {
-                "supports_section_content": False,
+                "supports_section_content": True,
+                "cache_path": cache_path,
                 "section_count": len(section_index),
+                "char_count": sum(len(part) for part in section_texts),
+                "word_count": sum(len(part.split()) for part in section_texts),
             },
         }
 

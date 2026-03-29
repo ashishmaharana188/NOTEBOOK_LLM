@@ -58,10 +58,24 @@ export function useReaderSession(book: ReaderBook | null) {
     const hasHydratedLocationRef = useRef(false);
     const sessionDirtyRef = useRef(false);
 
-    const isTextFormat = useMemo(() => {
-        const extension = String(book?.extension || "").toLowerCase();
-        return extension === "txt" || extension === "md";
+    const normalizedExtension = useMemo(() => {
+        return String(book?.extension || "")
+            .toLowerCase()
+            .replace(/^\./, "");
     }, [book?.extension]);
+    const isTextFormat = useMemo(() => {
+        return normalizedExtension === "txt" || normalizedExtension === "md";
+    }, [normalizedExtension]);
+    const prefersRemoteSectionReader = useMemo(() => {
+        if (typeof window === "undefined") return false;
+        const hostname = window.location.hostname.toLowerCase();
+        const isLocalHost =
+            hostname === "localhost" ||
+            hostname === "127.0.0.1" ||
+            hostname === "::1";
+        return normalizedExtension === "epub" && !isLocalHost;
+    }, [normalizedExtension]);
+    const usesSectionReader = isTextFormat || prefersRemoteSectionReader;
 
     const persistLocalCache = useCallback(
         (payload: Record<string, any>) => {
@@ -130,7 +144,7 @@ export function useReaderSession(book: ReaderBook | null) {
                         : null;
             }
 
-            if (isTextFormat) {
+            if (usesSectionReader) {
                 const initialSection = Math.max(
                     0,
                     Number(
@@ -153,7 +167,7 @@ export function useReaderSession(book: ReaderBook | null) {
         } finally {
             setIsBootstrapping(false);
         }
-    }, [book?.filename, book?.lid, isTextFormat, persistLocalCache]);
+    }, [book?.filename, book?.lid, persistLocalCache, usesSectionReader]);
 
     const flushSession = useCallback(async () => {
         if (
@@ -226,7 +240,7 @@ export function useReaderSession(book: ReaderBook | null) {
 
     const loadTextSections = useCallback(
         async (sectionIndex: number, limit = 1) => {
-            if (!book?.filename || !isTextFormat) return;
+            if (!book?.filename || !usesSectionReader) return;
             try {
                 const response = await API.get(
                     `/reader/books/${encodeURIComponent(book.filename)}/content`,
@@ -269,7 +283,7 @@ export function useReaderSession(book: ReaderBook | null) {
                 console.error("Reader text content failed", error);
             }
         },
-        [book?.filename, book?.lid, isTextFormat],
+        [book?.filename, book?.lid, usesSectionReader],
     );
 
     const createBookmark = useCallback(async () => {
@@ -392,11 +406,11 @@ export function useReaderSession(book: ReaderBook | null) {
             setReaderLocation(locationValue);
             if (typeof anchor.section_index === "number") {
                 setCurrentTextSection(anchor.section_index);
-            } else if (typeof locationValue === "number" && isTextFormat) {
+            } else if (typeof locationValue === "number" && usesSectionReader) {
                 setCurrentTextSection(locationValue);
             }
         },
-        [isTextFormat],
+        [usesSectionReader],
     );
 
     useEffect(() => {
@@ -463,7 +477,7 @@ export function useReaderSession(book: ReaderBook | null) {
                     viewState: bootstrap.session?.view_state || {},
                 };
             }
-            if (isTextFormat) {
+            if (usesSectionReader) {
                 setCurrentTextSection(
                     Math.max(
                         0,
@@ -482,9 +496,9 @@ export function useReaderSession(book: ReaderBook | null) {
         book?.filename,
         book?.initialReaderBootstrap,
         clearPendingFlush,
-        isTextFormat,
         persistLocalCache,
         refreshBootstrap,
+        usesSectionReader,
     ]);
 
     useEffect(() => {
@@ -537,7 +551,7 @@ export function useReaderSession(book: ReaderBook | null) {
     }, [book?.filename, refreshBootstrap]);
 
     useEffect(() => {
-        if (!isTextFormat || !manifest?.section_index?.length) return;
+        if (!usesSectionReader || !manifest?.section_index?.length) return;
         void loadTextSections(Math.max(0, currentTextSection - 1), 3);
         reportLocation({
             location: currentTextSection,
@@ -553,10 +567,10 @@ export function useReaderSession(book: ReaderBook | null) {
         });
     }, [
         currentTextSection,
-        isTextFormat,
         loadTextSections,
         manifest?.section_index?.length,
         reportLocation,
+        usesSectionReader,
     ]);
 
     useEffect(() => {
@@ -591,6 +605,7 @@ export function useReaderSession(book: ReaderBook | null) {
         currentTextSection,
         loadedTextSections,
         isTextFormat,
+        usesSectionReader,
         reportLocation,
         flushSession,
         refreshBootstrap,

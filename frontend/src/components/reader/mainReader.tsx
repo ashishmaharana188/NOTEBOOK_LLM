@@ -14,6 +14,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
     currentTextSection,
     loadedTextSections,
     isTextFormat,
+    usesSectionReader,
     reportLocation,
     setCurrentTextSection,
     createBookmark,
@@ -91,7 +92,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
     .toLowerCase()
     .replace(/^\./, "");
 
-  if (ext === "epub") {
+  if (ext === "epub" && !usesSectionReader) {
     return (
       <div
         className="h-full w-full relative cursor-default"
@@ -166,7 +167,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
           )
         }
         isLoadingSection={
-          isBootstrapping || (isTextFormat && !activeTextSection)
+          isBootstrapping || (usesSectionReader && !activeTextSection)
         }
         chromeVisible={chromeVisible}
         annotations={annotations}
