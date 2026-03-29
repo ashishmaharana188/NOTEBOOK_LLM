@@ -50,13 +50,7 @@ export default function useRadialGraphMath({
 
     // 3. Build the Hierarchy (Flat to Tree)
     rawLinks.forEach((link: any) => {
-      if (
-        link.type === "cross_link" ||
-        link.type === "compound_link" ||
-        link.type === "cross_pollination"
-      ) {
-        return;
-      }
+      if (link.type !== "implicit") return;
 
       const source = nodeMapById.get(link.source);
       const target = nodeMapById.get(link.target);
@@ -64,11 +58,7 @@ export default function useRadialGraphMath({
       if (source && target) {
         if (target.group === "stacks") return;
 
-        if (
-          target.group === "echo" ||
-          target.group === "notes" ||
-          target.group === source.group
-        ) {
+        if (target.group === source.group) {
           target.children.push(source);
           source.isNestedChild = true;
         }
