@@ -150,9 +150,14 @@ export default function useCanvasData(
       const sourceIsEcho = sourceId.startsWith("echo_");
       const targetIsEcho = targetId.startsWith("echo_");
 
-      if (sourceIsNote && targetIsEcho) {
-        appendUniqueId(linkedEchoIdSetsByNoteId, sourceId, targetId);
-        appendUniqueId(linkedNoteIdSetsByEchoId, targetId, sourceId);
+      if (
+        (sourceIsNote && targetIsEcho) ||
+        (sourceIsEcho && targetIsNote)
+      ) {
+        const noteId = sourceIsNote ? sourceId : targetId;
+        const echoId = sourceIsEcho ? sourceId : targetId;
+        appendUniqueId(linkedEchoIdSetsByNoteId, noteId, echoId);
+        appendUniqueId(linkedNoteIdSetsByEchoId, echoId, noteId);
       } else if (sourceIsNote && targetIsNote) {
         appendUniqueId(linkedNoteIdSetsByNoteId, sourceId, targetId);
         appendUniqueId(linkedNoteIdSetsByNoteId, targetId, sourceId);

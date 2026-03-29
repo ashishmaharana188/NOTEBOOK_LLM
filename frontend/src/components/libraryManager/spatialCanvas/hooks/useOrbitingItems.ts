@@ -375,7 +375,35 @@ export default function useOrbitingItems({
             }))
         : [];
 
-      const visibleLevelNotes = isRoot ? levelNotes : directFolderNotes;
+      const linkedFolderNotes = !isRoot
+        ? levelEchoes.flatMap((echo: any) =>
+            (notesByLinkedEchoId?.[String(echo.echo_id)] || [])
+              .filter(
+                (n: any) =>
+                  archiveStateByItemId?.[n.note_id || n.chunk_id] !== "inner" &&
+                  archiveStateByItemId?.[n.note_id || n.chunk_id] !== "outer",
+              )
+              .map((n: any) => ({
+                ...n,
+                chunk_id: String(n.note_id || n.chunk_id),
+                relation: "User Note",
+                type: "note",
+                bridge: n.title,
+                text: n.text || n.content,
+              })),
+          )
+        : [];
+
+      const visibleLevelNotes = isRoot
+        ? levelNotes
+        : Array.from(
+            new Map(
+              [...directFolderNotes, ...linkedFolderNotes].map((note: any) => [
+                String(note.note_id || note.chunk_id),
+                note,
+              ]),
+            ).values(),
+          );
 
       const pushedNoteIds = new Set();
       levelEchoes.forEach((echo: any) => {
@@ -417,8 +445,11 @@ export default function useOrbitingItems({
 
       items.push(...contextInnerArchives);
     } else if (isNotesMode && !activeFolder) {
-      const folders = (groupsByOwnerId[itemId] || [])
-        .filter((g: any) => g.group_kind !== "archive")
+      const stackFolders = (groupsByOwnerId[itemId] || []).filter(
+        (g: any) => g.group_kind !== "archive",
+      );
+
+      const folders = stackFolders
         .map((g: any) => {
           const allFolderContents = (groupContentsById?.[g.group_id] || []).filter(
             (c: any) =>
@@ -437,7 +468,43 @@ export default function useOrbitingItems({
             preview_items: allFolderContents,
           };
         });
+
+      const stackNotes = stackFolders.flatMap((g: any) =>
+        (groupContentsById?.[g.group_id] || []).filter(
+          (item: any) =>
+            (item.type === "note" || item.note_id) &&
+            archiveStateByItemId?.[item.note_id || item.chunk_id] !== "inner" &&
+            archiveStateByItemId?.[item.note_id || item.chunk_id] !== "outer",
+        ),
+      );
+
+      const rootLinkedEchoIds = Array.from(
+        new Set(
+          stackNotes.flatMap((note: any) =>
+            (linkedEchoIdsByNoteId?.[String(note.note_id || note.chunk_id)] || []).map(
+              (echoId: string) => String(echoId),
+            ),
+          ),
+        ),
+      );
+
+      const rootLinkedEchoes = rootLinkedEchoIds
+        .map((echoId: string) => echoesById?.[echoId])
+        .filter(
+          (echo: any) =>
+            echo &&
+            archiveStateByItemId?.[echo.echo_id || echo.chunk_id] !== "inner" &&
+            archiveStateByItemId?.[echo.echo_id || echo.chunk_id] !== "outer",
+        )
+        .map((echo: any) => ({
+          ...echo,
+          chunk_id: String(echo.echo_id || echo.chunk_id),
+          relation: "AI Echo",
+          type: "echo",
+        }));
+
       items.push(...folders);
+      items.push(...rootLinkedEchoes);
       items.push(...contextInnerArchives);
     } else if (isNotesMode && activeFolder) {
       const activeContents = sortByCreatedAt(
