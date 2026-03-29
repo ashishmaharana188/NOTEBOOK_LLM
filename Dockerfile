@@ -3,7 +3,8 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    TOKENIZERS_PARALLELISM=false
+    TOKENIZERS_PARALLELISM=false \
+    COGNITIVE_RUNTIME_PRESET=cloud_cpu
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -18,7 +19,6 @@ RUN pip install --index-url https://download.pytorch.org/whl/cpu torch && \
     pip install -r requirements.txt
 
 COPY scripts ./scripts
-COPY start.sh ./start.sh
 
 RUN mkdir -p \
     data/processed \
@@ -26,9 +26,8 @@ RUN mkdir -p \
     data/metadata \
     data/crawler \
     data/reader_cache \
-    stored_files/notes && \
-    chmod +x start.sh
+    stored_files/notes
 
 EXPOSE 7860
 
-CMD ["./start.sh"]
+CMD ["python", "-m", "uvicorn", "scripts.api:app", "--host", "0.0.0.0", "--port", "7860"]
