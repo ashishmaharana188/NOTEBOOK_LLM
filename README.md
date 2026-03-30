@@ -38,6 +38,40 @@ For local testing you can switch the backend from the default cloud-safe CPU run
 
 Prerequisites:
 - Run `ollama serve`
+
+## Hugging Face CLI
+
+You can manage the deployed Space from this repo with the local venv.
+
+1. Install the CLI and Python client:
+
+```bash
+npm run hf:install
+```
+
+2. Authenticate:
+
+```bash
+npm run hf:login
+npm run hf:whoami
+```
+
+3. Set your Space repo id in `.env.local`:
+
+```text
+HF_SPACE_REPO_ID=your-username/your-space-name
+```
+
+4. Manage the Space:
+
+```bash
+npm run hf:space:status
+npm run hf:space:restart
+npm run hf:space:factory-reboot
+```
+
+These commands use `scripts/manage_hf_space.py`, which wraps `huggingface_hub`
+so you can trigger a normal restart or a full factory reboot from the repo root.
 - Install a local Phi-3.5 Mini Instruct Q4 Ollama model
 - Start the backend with CUDA available for PyTorch
 

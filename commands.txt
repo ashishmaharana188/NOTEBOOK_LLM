@@ -3,6 +3,12 @@ uvicorn scripts.api:app --reload
 python -m uvicorn scripts.api:app --reload
 npm run backend:dev
 npm run frontend:dev
+npm run hf:install
+npm run hf:login
+npm run hf:whoami
+npm run hf:space:status
+npm run hf:space:restart
+npm run hf:space:factory-reboot
 
 
 git rm -r --cached .

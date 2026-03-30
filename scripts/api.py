@@ -184,6 +184,7 @@ app = FastAPI(lifespan=lifespan)
 
 UPLOAD_DIR = "stored_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(LIBRARY_DIR, exist_ok=True)
 
 # This allows the frontend to access files via https://doomprompting123-space.hf.space/files/filename.jpg
 app.mount("/stored_files", StaticFiles(directory=UPLOAD_DIR), name="files")

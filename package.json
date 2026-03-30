@@ -4,6 +4,12 @@
   "scripts": {
     "backend:dev": "cognition_env/Scripts/python.exe -m uvicorn scripts.api:app --reload --host 127.0.0.1 --port 8000",
     "frontend:dev": "npm --prefix frontend run dev",
-    "frontend:build": "npm --prefix frontend run build"
+    "frontend:build": "npm --prefix frontend run build",
+    "hf:install": "cognition_env/Scripts/python.exe -m pip install --upgrade huggingface_hub",
+    "hf:login": "cognition_env/Scripts/hf.exe auth login",
+    "hf:whoami": "cognition_env/Scripts/hf.exe auth whoami",
+    "hf:space:status": "cognition_env/Scripts/python.exe scripts/manage_hf_space.py status",
+    "hf:space:restart": "cognition_env/Scripts/python.exe scripts/manage_hf_space.py restart",
+    "hf:space:factory-reboot": "cognition_env/Scripts/python.exe scripts/manage_hf_space.py factory-reboot"
   }
 }

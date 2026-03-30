@@ -28,7 +28,8 @@ RUN mkdir -p \
     data/metadata \
     data/crawler \
     data/reader_cache \
-    stored_files/notes
+    stored_files/notes && \
+    python -c "import scripts.api; print('API_IMPORT_PREFLIGHT_OK')"
 
 EXPOSE 7860
 
