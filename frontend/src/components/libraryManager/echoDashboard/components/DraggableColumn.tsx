@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   BookOpenIcon,
-  CheckIcon,
   PencilSquareIcon, // <--- ADDED ICON
   TrashIcon,
 } from "@heroicons/react/24/outline";
@@ -142,6 +141,24 @@ const DraggableColumn = React.memo(
       };
     };
 
+    const handleSelectionToggle = useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!selectionMode || !onToggleSelect) return;
+        const target = event.target as HTMLElement | null;
+        if (
+          target?.closest("button, input, textarea, a, [data-selection-ignore='true']")
+        ) {
+          return;
+        }
+        if (window.getSelection()?.toString().trim()) {
+          return;
+        }
+        event.stopPropagation();
+        onToggleSelect();
+      },
+      [onToggleSelect, selectionMode],
+    );
+
     useEffect(() => {
       const handlePointerMove = (e: PointerEvent) => {
         if (dragState.active) {
@@ -210,13 +227,16 @@ const DraggableColumn = React.memo(
         onMouseEnter={() => setIsCanvasWheelDisabled?.(true)}
         onMouseLeave={() => setIsCanvasWheelDisabled?.(false)}
         onWheel={(e) => e.stopPropagation()}
+        onClick={handleSelectionToggle}
         className={`no-pan absolute flex flex-col bg-white/95 rounded-2xl border canvas-heavy-shell ${
           isHighlighted
             ? "border-slate-400 shadow-xl z-[9999]"
-            : "border-slate-200 shadow-xl"
+            : isSelected
+              ? "border-black shadow-xl"
+              : "border-slate-200 shadow-xl"
         } ${dragState.active ? "shadow-2xl cursor-grabbing scale-[1.01]" : ""} ${isResizing ? "select-none" : ""} ${
           reducedVisuals ? "canvas-interaction-reduced" : ""
-        }`}
+        } ${selectionMode ? "cursor-pointer" : ""}`}
         style={{
           left: 0,
           top: 0,
@@ -308,23 +328,6 @@ const DraggableColumn = React.memo(
           </div>
 
           <div className="flex items-center gap-1">
-            {selectionMode && onToggleSelect && (
-              <button
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  onToggleSelect();
-                }}
-                className={`flex h-7 w-7 items-center justify-center border transition-colors ${
-                  isSelected
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
-                }`}
-                title={isSelected ? "Unselect column" : "Select column"}
-              >
-                {isSelected && <CheckIcon className="h-4 w-4" />}
-              </button>
-            )}
-
             {/* TOP RIGHT DELETE BUTTON */}
             {onDelete && (
               <button

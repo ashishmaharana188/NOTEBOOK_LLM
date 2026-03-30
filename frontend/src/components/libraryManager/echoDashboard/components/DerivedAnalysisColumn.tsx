@@ -14,6 +14,7 @@ function DerivedEvidenceCard({
     itemKey,
     onCreateBranchFromHighlight,
     onAskRagFromHighlight,
+    onClearHighlightRagComposer,
 }: {
     derived: any;
     item: any;
@@ -31,7 +32,9 @@ function DerivedEvidenceCard({
         sourceAnchorId: string;
         selectionRefs: any[];
         contextExtras: Record<string, any>;
+        sourceKey?: string;
     }) => void;
+    onClearHighlightRagComposer?: (sourceKey?: string) => void;
 }) {
     const [selectionText, setSelectionText] = useState("");
     const [showHighlightMenu, setShowHighlightMenu] = useState(false);
@@ -41,6 +44,8 @@ function DerivedEvidenceCard({
         String(item.full_text || item.text || ""),
     );
     const contextRef = useRef<HTMLDivElement | null>(null);
+    const selectionSourceKeyRef = useRef(`derived:${derived.id}:${itemKey}`);
+    const selectionSyncKeyRef = useRef("");
 
     const sourceLabel = useMemo(
         () =>
@@ -116,6 +121,89 @@ function DerivedEvidenceCard({
         setShowHighlightMenu(false);
     }, [item.full_text, item.text, itemKey]);
 
+    useEffect(() => {
+        if (!selectionText) {
+            selectionSyncKeyRef.current = "";
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+        }
+    }, [onClearHighlightRagComposer, selectionText]);
+
+    useEffect(
+        () => () => {
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+        },
+        [onClearHighlightRagComposer],
+    );
+
+    useEffect(() => {
+        if (!onAskRagFromHighlight) return;
+
+        const trimmed = selectionText.trim();
+        if (!trimmed) {
+            selectionSyncKeyRef.current = "";
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            return;
+        }
+
+        const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}`;
+        if (selectionSyncKeyRef.current === nextSyncKey) {
+            return;
+        }
+
+        selectionSyncKeyRef.current = nextSyncKey;
+        onAskRagFromHighlight({
+            text: trimmed,
+            title: String(item.title || derived.title || "Derived Evidence"),
+            chapter: chapterLabel,
+            sourceLabel,
+            sourceAnchorId,
+            sourceKey: selectionSourceKeyRef.current,
+            selectionRefs: [
+                {
+                    kind: "derived_evidence",
+                    id: String(item.id || itemKey),
+                    label: String(item.title || derived.title || "Derived Evidence"),
+                    cluster_id: String(item.cluster_id || ""),
+                    echo_id: String(item.echo_id || derived.sourceEchoIds?.[0] || ""),
+                },
+            ],
+            contextExtras: {
+                echo_id: String(item.echo_id || derived.sourceEchoIds?.[0] || ""),
+                cluster_id: String(item.cluster_id || ""),
+                book_id: String(item.book_id || derived.title || ""),
+                library_id: String(item.library_id || ""),
+                filename: String(item.filename || ""),
+                chunk_id: String(item.chunk_id || ""),
+                chunk_ref: String(item.chunk_ref || ""),
+                source_lid: String(item.source_lid || ""),
+                full_text: String(fullText || item.text || ""),
+            },
+        });
+    }, [
+        chapterLabel,
+        derived.id,
+        derived.sourceEchoIds,
+        derived.title,
+        fullText,
+        item.book_id,
+        item.chunk_id,
+        item.chunk_ref,
+        item.cluster_id,
+        item.echo_id,
+        item.filename,
+        item.id,
+        item.library_id,
+        item.source_lid,
+        item.text,
+        item.title,
+        itemKey,
+        onAskRagFromHighlight,
+        onClearHighlightRagComposer,
+        selectionText,
+        sourceAnchorId,
+        sourceLabel,
+    ]);
+
     const toggleFullContext = async () => {
         if (showFullContext) {
             setShowFullContext(false);
@@ -163,8 +251,6 @@ function DerivedEvidenceCard({
             item,
         });
         setShowHighlightMenu(false);
-        setSelectionText("");
-        window.getSelection()?.removeAllRanges();
     };
 
     const handleAskRag = () => {
@@ -176,6 +262,7 @@ function DerivedEvidenceCard({
             chapter: chapterLabel,
             sourceLabel,
             sourceAnchorId,
+            sourceKey: selectionSourceKeyRef.current,
             selectionRefs: [
                 {
                     kind: "derived_evidence",
@@ -194,7 +281,7 @@ function DerivedEvidenceCard({
                 chunk_id: String(item.chunk_id || ""),
                 chunk_ref: String(item.chunk_ref || ""),
                 source_lid: String(item.source_lid || ""),
-                full_text: String(item.full_text || item.text || ""),
+                full_text: String(fullText || item.text || ""),
             },
         });
         setShowHighlightMenu(false);
@@ -280,7 +367,7 @@ function DerivedEvidenceCard({
                 onMouseUp={captureSelection}
                 onKeyUp={captureSelection}
                 onTouchEnd={captureSelection}
-                className="mt-3 max-h-[320px] overflow-y-auto whitespace-pre-wrap font-serif text-[14px] leading-7 text-slate-800 custom-scrollbar select-text"
+                className="mt-3 max-h-[320px] overflow-y-auto whitespace-pre-wrap font-serif text-[14px] leading-7 text-slate-800 custom-scrollbar select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900"
             >
                 {loadingContext ? (
                     <div className="flex items-center gap-3 text-sm text-slate-500">
@@ -302,6 +389,7 @@ function EvidenceBlock({
     derived,
     onCreateBranchFromHighlight,
     onAskRagFromHighlight,
+    onClearHighlightRagComposer,
 }: {
     title: string;
     items: any[];
@@ -320,7 +408,9 @@ function EvidenceBlock({
         sourceAnchorId: string;
         selectionRefs: any[];
         contextExtras: Record<string, any>;
+        sourceKey?: string;
     }) => void;
+    onClearHighlightRagComposer?: (sourceKey?: string) => void;
 }) {
     return (
         <section className="space-y-3">
@@ -349,6 +439,11 @@ function EvidenceBlock({
                                       onAskRagFromHighlight,
                                   }
                                 : {})}
+                            {...(onClearHighlightRagComposer
+                                ? {
+                                      onClearHighlightRagComposer,
+                                  }
+                                : {})}
                         />
                     ))}
                 </div>
@@ -373,6 +468,7 @@ export default function DerivedAnalysisColumn({
     onToggleSelect,
     onCreateBranchFromHighlight,
     onAskRagFromHighlight,
+    onClearHighlightRagComposer,
 }: any) {
     return (
         <DraggableColumn
@@ -462,6 +558,7 @@ export default function DerivedAnalysisColumn({
                                 derived={derived}
                                 onCreateBranchFromHighlight={onCreateBranchFromHighlight}
                                 onAskRagFromHighlight={onAskRagFromHighlight}
+                                onClearHighlightRagComposer={onClearHighlightRagComposer}
                             />
 
                             <EvidenceBlock
@@ -471,6 +568,7 @@ export default function DerivedAnalysisColumn({
                                 derived={derived}
                                 onCreateBranchFromHighlight={onCreateBranchFromHighlight}
                                 onAskRagFromHighlight={onAskRagFromHighlight}
+                                onClearHighlightRagComposer={onClearHighlightRagComposer}
                             />
 
                             <section className="space-y-3">
@@ -489,6 +587,7 @@ export default function DerivedAnalysisColumn({
                                     derived={derived}
                                     onCreateBranchFromHighlight={onCreateBranchFromHighlight}
                                     onAskRagFromHighlight={onAskRagFromHighlight}
+                                    onClearHighlightRagComposer={onClearHighlightRagComposer}
                                 />
                             </section>
 

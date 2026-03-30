@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import {
-    CheckIcon,
     ChevronDownIcon,
     ChevronUpIcon,
 } from "@heroicons/react/24/outline";
@@ -21,6 +20,7 @@ export default function SavedEchoCard({
     onShowBranches,
     onCreateBranchFromHighlight,
     onAskRagFromHighlight,
+    onClearHighlightRagComposer,
     selectionMode = false,
     isSelected = false,
     onToggleSelect,
@@ -44,7 +44,9 @@ export default function SavedEchoCard({
         sourceAnchorId: string;
         selectionRefs: any[];
         contextExtras: Record<string, any>;
+        sourceKey?: string;
     }) => void;
+    onClearHighlightRagComposer?: (sourceKey?: string) => void;
     selectionMode?: boolean;
     isSelected?: boolean;
     onToggleSelect?: () => void;
@@ -59,6 +61,12 @@ export default function SavedEchoCard({
     const [showFullContext, setShowFullContext] = useState(false);
     const [loadingContext, setLoadingContext] = useState(false);
     const contextRef = useRef<HTMLDivElement | null>(null);
+    const selectionSourceKeyRef = useRef(`saved:${clusterId}:${echoId}`);
+    const selectionSyncKeyRef = useRef("");
+    const sourceLabel = useMemo(
+        () => (chunk as any).filename || clusterTitle || "Saved Echo",
+        [chunk, clusterTitle],
+    );
 
     const getSelectionWithinContext = useCallback(() => {
         const selection = window.getSelection();
@@ -94,6 +102,20 @@ export default function SavedEchoCard({
         }
     }, [isExpanded]);
 
+    useEffect(() => {
+        if (!selectionText) {
+            selectionSyncKeyRef.current = "";
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+        }
+    }, [onClearHighlightRagComposer, selectionText]);
+
+    useEffect(
+        () => () => {
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+        },
+        [onClearHighlightRagComposer],
+    );
+
     const captureSelection = useCallback(() => {
         window.setTimeout(() => {
             setSelectionText(getSelectionWithinContext());
@@ -109,10 +131,69 @@ export default function SavedEchoCard({
         };
     }, [captureSelection, isExpanded]);
 
-    const sourceLabel = useMemo(
-        () => (chunk as any).filename || clusterTitle || "Saved Echo",
-        [chunk, clusterTitle],
-    );
+    useEffect(() => {
+        if (!onAskRagFromHighlight) return;
+        if (!isExpanded || selectionMode) {
+            selectionSyncKeyRef.current = "";
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            return;
+        }
+
+        const trimmed = selectionText.trim();
+        if (!trimmed) {
+            selectionSyncKeyRef.current = "";
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            return;
+        }
+
+        const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}`;
+        if (selectionSyncKeyRef.current === nextSyncKey) {
+            return;
+        }
+
+        selectionSyncKeyRef.current = nextSyncKey;
+        onAskRagFromHighlight({
+            text: trimmed,
+            title: customTitle || sourceLabel || "Saved Echo",
+            chapter: chunk.chapter || "Unknown Chapter",
+            sourceLabel,
+            sourceAnchorId: clusterId,
+            sourceKey: selectionSourceKeyRef.current,
+            selectionRefs: [
+                {
+                    kind: "echo",
+                    id: echoId,
+                    label: customTitle || sourceLabel || "Saved Echo",
+                    cluster_id: clusterId,
+                    echo_id: echoId,
+                },
+            ],
+            contextExtras: {
+                echo_id: echoId,
+                cluster_id: clusterId,
+                book_id: clusterTitle,
+                library_id: "",
+                filename: String((chunk as any).filename || ""),
+                chunk_id: String((chunk as any).chunk_id || ""),
+                chunk_ref: String((chunk as any).chunk_ref || ""),
+                source_lid: String((chunk as any).source_lid || ""),
+                full_text: String(fullText || chunk.text || ""),
+            },
+        });
+    }, [
+        chunk,
+        clusterId,
+        clusterTitle,
+        customTitle,
+        echoId,
+        fullText,
+        isExpanded,
+        onAskRagFromHighlight,
+        onClearHighlightRagComposer,
+        selectionMode,
+        selectionText,
+        sourceLabel,
+    ]);
 
     const handleSaveTitle = async () => {
         if (!echoId || !customTitle.trim()) return;
@@ -199,6 +280,7 @@ export default function SavedEchoCard({
             chapter: chunk.chapter || "Unknown Chapter",
             sourceLabel,
             sourceAnchorId: clusterId,
+            sourceKey: selectionSourceKeyRef.current,
             selectionRefs: [
                 {
                     kind: "echo",
@@ -213,17 +295,41 @@ export default function SavedEchoCard({
                 cluster_id: clusterId,
                 book_id: clusterTitle,
                 library_id: "",
+                filename: String((chunk as any).filename || ""),
+                chunk_id: String((chunk as any).chunk_id || ""),
+                chunk_ref: String((chunk as any).chunk_ref || ""),
+                source_lid: String((chunk as any).source_lid || ""),
+                full_text: String(fullText || chunk.text || ""),
             },
         });
         setShowHighlightMenu(false);
-        setSelectionText("");
-        window.getSelection()?.removeAllRanges();
     };
+
+    const handleSelectionToggle = useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            if (!selectionMode || !onToggleSelect) return;
+            const target = event.target as HTMLElement | null;
+            if (
+                target?.closest("button, input, textarea, a, [data-selection-ignore='true']")
+            ) {
+                return;
+            }
+            if (window.getSelection()?.toString().trim()) {
+                return;
+            }
+            event.stopPropagation();
+            onToggleSelect();
+        },
+        [onToggleSelect, selectionMode],
+    );
 
     return (
         <div
             data-cluster-id={clusterId}
-            className="mb-3 overflow-hidden border border-slate-200 bg-white shadow-sm"
+            onClick={handleSelectionToggle}
+            className={`mb-3 overflow-hidden border bg-white shadow-sm ${
+                isSelected ? "border-black" : "border-slate-200"
+            } ${selectionMode ? "cursor-pointer" : ""}`}
         >
             <div
                 className={`flex items-start gap-3 px-4 py-3 sm:px-5 ${
@@ -266,22 +372,6 @@ export default function SavedEchoCard({
                     )}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 text-[10px] font-bold uppercase tracking-[0.16em]">
-                    {selectionMode && (
-                        <button
-                            onPointerDown={(e) => {
-                                e.stopPropagation();
-                                onToggleSelect?.();
-                            }}
-                            className={`flex h-7 w-7 items-center justify-center border transition-colors ${
-                                isSelected
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
-                            }`}
-                            title={isSelected ? "Unselect echo" : "Select echo"}
-                        >
-                            {isSelected && <CheckIcon className="h-4 w-4" />}
-                        </button>
-                    )}
                     {isExpanded ? (
                         <>
                             <button
@@ -395,7 +485,7 @@ export default function SavedEchoCard({
                             onMouseUp={captureSelection}
                             onKeyUp={captureSelection}
                             onTouchEnd={captureSelection}
-                            className="max-h-[420px] overflow-y-auto px-0 py-0 font-serif text-[15px] leading-8 text-slate-800 select-text"
+                            className="max-h-[420px] overflow-y-auto px-0 py-0 font-serif text-[15px] leading-8 text-slate-800 select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900"
                         >
                             {loadingContext ? (
                                 <div className="flex items-center gap-3 text-sm text-slate-500">
@@ -403,7 +493,7 @@ export default function SavedEchoCard({
                                     Stitching full context...
                                 </div>
                             ) : (
-                                <div className="whitespace-pre-wrap">
+                                <div className="whitespace-pre-wrap selection:bg-[#f3dd73] selection:text-slate-900">
                                     {showFullContext ? fullText : chunk.text}
                                 </div>
                             )}

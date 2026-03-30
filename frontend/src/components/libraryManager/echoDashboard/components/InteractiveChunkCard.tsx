@@ -27,6 +27,7 @@ const InteractiveChunkCard = React.memo(
         onEchoSaved,
         onCreateBranchFromHighlight,
         onAskRagFromHighlight,
+        onClearHighlightRagComposer,
         selectionMode = false,
         isSelected = false,
         onToggleSelect,
@@ -66,7 +67,9 @@ const InteractiveChunkCard = React.memo(
             sourceAnchorId: string;
             selectionRefs: any[];
             contextExtras: Record<string, any>;
+            sourceKey?: string;
         }) => void;
+        onClearHighlightRagComposer?: (sourceKey?: string) => void;
         selectionMode?: boolean;
         isSelected?: boolean;
         onToggleSelect?: () => void;
@@ -90,6 +93,10 @@ const InteractiveChunkCard = React.memo(
         const [customTitle, setCustomTitle] = useState(chunk.title || "");
         const [selectionText, setSelectionText] = useState("");
         const contextRef = useRef<HTMLDivElement | null>(null);
+        const selectionSourceKeyRef = useRef(
+            `incoming:${sourceAnchorId}:${String((chunk as any).chunk_id || (chunk as any).echo_id || chunk.title || "echo")}`,
+        );
+        const selectionSyncKeyRef = useRef("");
         const savedClusterIdRef = useRef<string | null>(
             targetClusterId || String((chunk as any).cluster_id || "") || null,
         );
@@ -142,6 +149,20 @@ const InteractiveChunkCard = React.memo(
             }
         }, [isCollapsed]);
 
+        useEffect(() => {
+            if (!selectionText) {
+                selectionSyncKeyRef.current = "";
+                onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            }
+        }, [onClearHighlightRagComposer, selectionText]);
+
+        useEffect(
+            () => () => {
+                onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            },
+            [onClearHighlightRagComposer],
+        );
+
         const captureSelection = useCallback(() => {
             window.setTimeout(() => {
                 setSelectionText(getSelectionWithinContext());
@@ -156,6 +177,90 @@ const InteractiveChunkCard = React.memo(
                 document.removeEventListener("selectionchange", captureSelection);
             };
         }, [captureSelection, isCollapsed]);
+
+        useEffect(() => {
+            if (!onAskRagFromHighlight) return;
+            if (selectionMode || isCollapsed) {
+                selectionSyncKeyRef.current = "";
+                onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+                return;
+            }
+
+            const trimmed = selectionText.trim();
+            if (!trimmed) {
+                selectionSyncKeyRef.current = "";
+                onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+                return;
+            }
+
+            const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}`;
+            if (selectionSyncKeyRef.current === nextSyncKey) {
+                return;
+            }
+
+            selectionSyncKeyRef.current = nextSyncKey;
+            onAskRagFromHighlight({
+                text: trimmed,
+                title: customTitle || sourceLabel || "Selected Highlight",
+                chapter: chunk.chapter || "Unknown Chapter",
+                sourceLabel,
+                sourceAnchorId,
+                sourceKey: selectionSourceKeyRef.current,
+                selectionRefs: [
+                    {
+                        kind: echoId ? "echo" : "incoming_echo",
+                        id: echoId || String((chunk as any).chunk_id || ""),
+                        label: customTitle || sourceLabel || "Selected Highlight",
+                        cluster_id: savedClusterIdRef.current || targetClusterId || "",
+                        echo_id: echoId || "",
+                    },
+                ],
+                contextExtras: {
+                    echo_id: echoId || "",
+                    cluster_id: savedClusterIdRef.current || targetClusterId || "",
+                    book_id: bookId || activeBookTitle,
+                    library_id: libraryId || "",
+                    filename: String((chunk as any).filename || ""),
+                    chunk_id: String((chunk as any).chunk_id || ""),
+                    chunk_ref: String((chunk as any).chunk_ref || ""),
+                    source_lid: String((chunk as any).source_lid || ""),
+                    full_text: String((chunk as any).full_text || chunk.text || ""),
+                },
+            });
+        }, [
+            activeBookTitle,
+            bookId,
+            chunk,
+            customTitle,
+            echoId,
+            isCollapsed,
+            libraryId,
+            onAskRagFromHighlight,
+            onClearHighlightRagComposer,
+            selectionMode,
+            selectionText,
+            sourceAnchorId,
+            sourceLabel,
+            targetClusterId,
+        ]);
+
+        const handleSelectionToggle = useCallback(
+            (event: React.MouseEvent<HTMLDivElement>) => {
+                if (!selectionMode || !onToggleSelect) return;
+                const target = event.target as HTMLElement | null;
+                if (
+                    target?.closest("button, input, textarea, a, [data-selection-ignore='true']")
+                ) {
+                    return;
+                }
+                if (window.getSelection()?.toString().trim()) {
+                    return;
+                }
+                event.stopPropagation();
+                onToggleSelect();
+            },
+            [onToggleSelect, selectionMode],
+        );
 
         const handleSaveAndReturnRef = async () => {
             setIsProcessing(true);
@@ -300,8 +405,6 @@ const InteractiveChunkCard = React.memo(
                 clusterId: currentEchoRef.clusterId,
             });
             setShowHighlightMenu(false);
-            setSelectionText("");
-            window.getSelection()?.removeAllRanges();
         };
 
         const handleAskRag = () => {
@@ -313,6 +416,7 @@ const InteractiveChunkCard = React.memo(
                 chapter: chunk.chapter || "Unknown Chapter",
                 sourceLabel,
                 sourceAnchorId,
+                sourceKey: selectionSourceKeyRef.current,
                 selectionRefs: [
                     {
                         kind: echoId ? "echo" : "incoming_echo",
@@ -327,6 +431,11 @@ const InteractiveChunkCard = React.memo(
                     cluster_id: savedClusterIdRef.current || targetClusterId || "",
                     book_id: bookId || activeBookTitle,
                     library_id: libraryId || "",
+                    filename: String((chunk as any).filename || ""),
+                    chunk_id: String((chunk as any).chunk_id || ""),
+                    chunk_ref: String((chunk as any).chunk_ref || ""),
+                    source_lid: String((chunk as any).source_lid || ""),
+                    full_text: String((chunk as any).full_text || chunk.text || ""),
                 },
             });
             setShowHighlightMenu(false);
@@ -337,7 +446,14 @@ const InteractiveChunkCard = React.memo(
         if (isDeleted) return null;
 
         return (
-            <div className="mb-4 overflow-hidden border border-slate-200 bg-white shadow-sm transition-colors hover:border-slate-300">
+            <div
+                onClick={handleSelectionToggle}
+                className={`mb-4 overflow-hidden border bg-white shadow-sm transition-colors ${
+                    isSelected
+                        ? "border-black"
+                        : "border-slate-200 hover:border-slate-300"
+                } ${selectionMode ? "cursor-pointer" : ""}`}
+            >
                 <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
                     <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
@@ -369,22 +485,6 @@ const InteractiveChunkCard = React.memo(
                         </div>
 
                         <div className="flex shrink-0 items-center gap-1">
-                            <button
-                                onPointerDown={(e) => {
-                                    e.stopPropagation();
-                                    onToggleSelect?.();
-                                }}
-                                title={isSelected ? "Unselect echo" : "Select echo"}
-                                className={`${
-                                    selectionMode ? "flex" : "hidden"
-                                } h-8 w-8 items-center justify-center border transition-colors ${
-                                    isSelected
-                                        ? "border-slate-900 bg-slate-900 text-white"
-                                        : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
-                                }`}
-                            >
-                                {isSelected && <CheckIcon className="h-4 w-4" />}
-                            </button>
                             <button
                                 onClick={() => setIsCollapsed((prev) => !prev)}
                                 title={isCollapsed ? "Expand card" : "Minimize card"}
@@ -482,9 +582,9 @@ const InteractiveChunkCard = React.memo(
                         onMouseUp={captureSelection}
                         onKeyUp={captureSelection}
                         onTouchEnd={captureSelection}
-                        className="bg-white px-4 py-4 select-text sm:px-5 sm:py-5"
+                        className="bg-white px-4 py-4 select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900 sm:px-5 sm:py-5"
                     >
-                        <p className="whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800">
+                        <p className="whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 selection:bg-[#f3dd73] selection:text-slate-900">
                             {chunk.text}
                         </p>
                         <ExpandableChunkCard chunk={chunk} />

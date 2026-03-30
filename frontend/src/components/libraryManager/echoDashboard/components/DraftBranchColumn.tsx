@@ -20,6 +20,7 @@ export default function DraftBranchColumn({
     closeDraftBranch,
     onCreateBranchFromHighlight,
     onAskRagFromHighlight,
+    onClearHighlightRagComposer,
     isHighlighted,
     selectionMode,
     isColumnSelected,
@@ -155,6 +156,9 @@ export default function DraftBranchColumn({
                                                     }
                                                     onAskRagFromHighlight={
                                                         onAskRagFromHighlight
+                                                    }
+                                                    onClearHighlightRagComposer={
+                                                        onClearHighlightRagComposer
                                                     }
                                                     selectionMode={
                                                         selectionMode

@@ -38,6 +38,7 @@ export default function EchoDashboardUI(props: any) {
   const { isInteracting, startInteraction, settleInteraction } =
     useCanvasInteractionMode(140);
   const state = useEchoDashboardState(props);
+  const ragInputRef = React.useRef<HTMLInputElement | null>(null);
   const [isAnalyzeMenuOpen, setIsAnalyzeMenuOpen] = React.useState(false);
   const {
     recommendations = [],
@@ -562,6 +563,16 @@ export default function EchoDashboardUI(props: any) {
       state.savedGlobalClusters,
     ],
   );
+
+  React.useEffect(() => {
+    if (!state.ragComposerFocusToken || !state.activeRagComposer.visible) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      ragInputRef.current?.focus();
+      ragInputRef.current?.select();
+    });
+  }, [state.activeRagComposer.visible, state.ragComposerFocusToken]);
   const createDerivedHighlightBranch = React.useCallback(
     async ({
       text,
@@ -963,6 +974,9 @@ export default function EchoDashboardUI(props: any) {
                                                     onAskRagFromHighlight={
                                                       state.openHighlightRagComposer
                                                     }
+                                                    onClearHighlightRagComposer={
+                                                      state.clearHighlightRagComposer
+                                                    }
                                                     selectionMode={
                                                       state.selectionMode
                                                     }
@@ -1054,6 +1068,9 @@ export default function EchoDashboardUI(props: any) {
                           state.createDraftBranchFromHighlight
                         }
                         onAskRagFromHighlight={state.openHighlightRagComposer}
+                        onClearHighlightRagComposer={
+                          state.clearHighlightRagComposer
+                        }
                         isHighlighted={state.highlightedBranchClusterIds?.has?.(
                           String(draft.id),
                         )}
@@ -1111,6 +1128,9 @@ export default function EchoDashboardUI(props: any) {
                           createDerivedHighlightBranch
                         }
                         onAskRagFromHighlight={state.openHighlightRagComposer}
+                        onClearHighlightRagComposer={
+                          state.clearHighlightRagComposer
+                        }
                         onToggleSelect={() =>
                           state.toggleCanvasSelection(
                             createDerivedColumnSelection(derived),
@@ -1150,6 +1170,9 @@ export default function EchoDashboardUI(props: any) {
                           state.createDraftBranchFromHighlight
                         }
                         onAskRagFromHighlight={state.openHighlightRagComposer}
+                        onClearHighlightRagComposer={
+                          state.clearHighlightRagComposer
+                        }
                         onShowBranches={state.focusBranchesForEcho}
                         isHighlighted={state.highlightedBranchClusterIds?.has?.(
                           String(cluster.id),
@@ -1242,9 +1265,13 @@ export default function EchoDashboardUI(props: any) {
         <button
           onClick={() => {
             setIsAnalyzeMenuOpen(false);
-            state.openSelectionRagComposer();
+            if (!state.activeRagComposer.visible) {
+              state.openSelectionRagComposer();
+              return;
+            }
+            ragInputRef.current?.focus();
           }}
-          disabled={!state.selectionPayload.contexts.length}
+          disabled={!state.activeRagComposer.visible}
           className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
         >
           <ChatBubbleLeftRightIcon className="h-4 w-4" />
@@ -1262,51 +1289,32 @@ export default function EchoDashboardUI(props: any) {
         )}
       </div>
 
-      {state.ragComposerState.open && (
-        <div className="absolute inset-x-4 bottom-20 z-[2300] mx-auto max-w-2xl border border-slate-200 bg-white shadow-xl sm:bottom-24">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                Ask RAG
-              </div>
-              <div className="mt-1 text-sm text-slate-700">
-                Using {state.ragComposerState.scopeLabel || "selected context"} as grounding context.
-              </div>
+      {state.activeRagComposer.visible && (
+        <div className="absolute inset-x-4 bottom-20 z-[2300] mx-auto max-w-3xl border border-slate-200 bg-white shadow-xl sm:bottom-24">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <div className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+              {state.activeRagComposer.scopeLabel || "Selected Context"}
             </div>
-            <button
-              onClick={state.closeRagComposer}
-              className="p-1 text-slate-400 transition-colors hover:text-slate-900"
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="space-y-3 px-4 py-4">
-            <textarea
+            <input
+              ref={ragInputRef}
               value={state.ragComposerState.prompt}
               onChange={(e) => state.setRagComposerPrompt(e.target.value)}
-              placeholder="What should this context explain, compare, or answer?"
-              className="h-28 w-full resize-none border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  state.submitRagComposer();
+                }
+              }}
+              placeholder="Ask a question about this marked or selected context"
+              className="min-w-[220px] flex-1 border-none bg-transparent px-0 py-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
             />
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                Local corpus runs first. Web evidence is added when a provider is configured.
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={state.closeRagComposer}
-                  className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={state.submitRagComposer}
-                  className="inline-flex items-center gap-2 bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black"
-                >
-                  <ChatBubbleLeftRightIcon className="h-4 w-4" />
-                  Run RAG
-                </button>
-              </div>
-            </div>
+            <button
+              onClick={state.submitRagComposer}
+              className="inline-flex items-center gap-2 bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black"
+            >
+              <ChatBubbleLeftRightIcon className="h-4 w-4" />
+              Run RAG
+            </button>
           </div>
         </div>
       )}

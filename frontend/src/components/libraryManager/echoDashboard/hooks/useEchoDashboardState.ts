@@ -12,6 +12,18 @@ const CHILD_COLUMN_Y_OFFSET = 120;
 const DERIVED_COLUMN_X_OFFSET = 640;
 const DERIVED_COLUMN_Y_OFFSET = 90;
 
+const createEmptyRagComposerState = () => ({
+    prompt: "",
+    contexts: [] as any[],
+    selectionRefs: [] as any[],
+    sourceAnchorIds: [] as string[],
+    titleHint: "",
+    includeWeb: true,
+    scopeLabel: "",
+    sourceKey: "",
+    sourceType: "" as "" | "highlight" | "selection",
+});
+
 export default function useEchoDashboardState({
     isOpen,
     results = [],
@@ -42,7 +54,6 @@ export default function useEchoDashboardState({
         Record<string, any>
     >({});
     const [ragComposerState, setRagComposerState] = useState<{
-        open: boolean;
         prompt: string;
         contexts: any[];
         selectionRefs: any[];
@@ -50,16 +61,10 @@ export default function useEchoDashboardState({
         titleHint: string;
         includeWeb: boolean;
         scopeLabel: string;
-    }>({
-        open: false,
-        prompt: "",
-        contexts: [],
-        selectionRefs: [],
-        sourceAnchorIds: [],
-        titleHint: "",
-        includeWeb: true,
-        scopeLabel: "",
-    });
+        sourceKey: string;
+        sourceType: "" | "highlight" | "selection";
+    }>(() => createEmptyRagComposerState());
+    const [ragComposerFocusToken, setRagComposerFocusToken] = useState(0);
 
     const { stacks, groups, fetchStacks, fetchGroups, createNote, updateNote } =
         useNotes("echoDashboard");
@@ -668,6 +673,61 @@ export default function useEchoDashboardState({
         };
     }, [selectedItems]);
 
+    const activeRagComposer = useMemo(() => {
+        if (
+            ragComposerState.sourceType === "highlight" &&
+            ragComposerState.contexts.length > 0
+        ) {
+            return {
+                ...ragComposerState,
+                visible: true,
+            };
+        }
+
+        if (selectionPayload.contexts.length > 0) {
+            return {
+                ...ragComposerState,
+                contexts: selectionPayload.contexts,
+                selectionRefs: selectionPayload.selectionRefs,
+                sourceAnchorIds: selectionPayload.sourceAnchorIds,
+                titleHint: selectionPayload.titleHint || "",
+                includeWeb: true,
+                scopeLabel: selectionPayload.scopeLabel || "selection",
+                sourceKey: "selection",
+                sourceType: "selection" as const,
+                visible: true,
+            };
+        }
+
+        return {
+            ...ragComposerState,
+            contexts: [],
+            selectionRefs: [],
+            sourceAnchorIds: [],
+            titleHint: "",
+            scopeLabel: "",
+            sourceKey: "",
+            sourceType: "",
+            visible: false,
+        };
+    }, [ragComposerState, selectionPayload]);
+
+    useEffect(() => {
+        if (activeRagComposer.visible) return;
+        setRagComposerState((prev) => {
+            if (
+                !prev.prompt &&
+                prev.contexts.length === 0 &&
+                prev.selectionRefs.length === 0 &&
+                !prev.sourceKey &&
+                !prev.sourceType
+            ) {
+                return prev;
+            }
+            return createEmptyRagComposerState();
+        });
+    }, [activeRagComposer.visible]);
+
     const getDerivedColumnPosition = useCallback(
         (sourceAnchorIds: string[]) => {
             const anchorPositions = (sourceAnchorIds || [])
@@ -957,16 +1017,15 @@ export default function useEchoDashboardState({
             });
             return;
         }
-        setRagComposerState({
-            open: true,
-            prompt: "",
-            contexts: selectionPayload.contexts,
-            selectionRefs: selectionPayload.selectionRefs,
-            sourceAnchorIds: selectionPayload.sourceAnchorIds,
+        setRagComposerState((prev) => ({
+            ...prev,
+            sourceKey: "selection",
+            sourceType: "selection",
             titleHint: selectionPayload.titleHint || "",
-            includeWeb: true,
             scopeLabel: selectionPayload.scopeLabel || "selection",
-        });
+            includeWeb: true,
+        }));
+        setRagComposerFocusToken((prev) => prev + 1);
     }, [selectionPayload]);
 
     const openHighlightRagComposer = useCallback(
@@ -978,6 +1037,7 @@ export default function useEchoDashboardState({
             sourceAnchorId = "",
             selectionRefs = [],
             contextExtras = {},
+            sourceKey = "",
         }: {
             text: string;
             title: string;
@@ -986,45 +1046,64 @@ export default function useEchoDashboardState({
             sourceAnchorId?: string;
             selectionRefs?: any[];
             contextExtras?: Record<string, any>;
+            sourceKey?: string;
         }) => {
             const trimmed = text.trim();
             if (!trimmed) return;
-            setRagComposerState({
-                open: true,
-                prompt: "",
-                contexts: [
-                    {
-                        context_id: `highlight:${Date.now()}`,
-                        kind: "highlight",
-                        anchor_id: sourceAnchorId,
-                        title,
-                        text: trimmed,
-                        chapter,
-                        source_label: sourceLabel,
-                        ...contextExtras,
-                    },
-                ],
-                selectionRefs,
-                sourceAnchorIds: sourceAnchorId ? [sourceAnchorId] : [],
-                titleHint: title,
-                includeWeb: true,
-                scopeLabel: title,
+            const nextSourceKey =
+                sourceKey || `highlight:${sourceAnchorId || title || "context"}`;
+            setRagComposerState((prev) => {
+                const previousText = String(prev.contexts?.[0]?.text || "");
+                const shouldResetPrompt =
+                    prev.sourceType !== "highlight" ||
+                    prev.sourceKey !== nextSourceKey ||
+                    previousText !== trimmed;
+                return {
+                    prompt: shouldResetPrompt ? "" : prev.prompt,
+                    contexts: [
+                        {
+                            context_id: `highlight:${Date.now()}`,
+                            kind: "highlight",
+                            anchor_id: sourceAnchorId,
+                            title,
+                            text: trimmed,
+                            chapter,
+                            source_label: sourceLabel,
+                            ...contextExtras,
+                        },
+                    ],
+                    selectionRefs,
+                    sourceAnchorIds: sourceAnchorId ? [sourceAnchorId] : [],
+                    titleHint: title,
+                    includeWeb: true,
+                    scopeLabel: title,
+                    sourceKey: nextSourceKey,
+                    sourceType: "highlight",
+                };
             });
         },
         [],
     );
 
-    const closeRagComposer = useCallback(() => {
-        setRagComposerState({
-            open: false,
-            prompt: "",
-            contexts: [],
-            selectionRefs: [],
-            sourceAnchorIds: [],
-            titleHint: "",
-            includeWeb: true,
-            scopeLabel: "",
+    const clearHighlightRagComposer = useCallback((sourceKey?: string) => {
+        setRagComposerState((prev) => {
+            if (prev.sourceType !== "highlight") {
+                return prev;
+            }
+            if (
+                sourceKey &&
+                prev.sourceKey &&
+                String(prev.sourceKey) !== String(sourceKey)
+            ) {
+                return prev;
+            }
+            return createEmptyRagComposerState();
         });
+    }, []);
+
+    const closeRagComposer = useCallback(() => {
+        setSelectedCanvasItems({});
+        setRagComposerState(createEmptyRagComposerState());
     }, []);
 
     const setRagComposerPrompt = useCallback((prompt: string) => {
@@ -1041,8 +1120,11 @@ export default function useEchoDashboardState({
             });
             return;
         }
-        const currentComposer = ragComposerState;
-        closeRagComposer();
+        const currentComposer = activeRagComposer;
+        setRagComposerState((prev) => ({
+            ...prev,
+            prompt: "",
+        }));
         await runDerivedAnalysis({
             mode: "rag",
             prompt,
@@ -1052,7 +1134,7 @@ export default function useEchoDashboardState({
             titleHint: currentComposer.titleHint || prompt,
             includeWeb: currentComposer.includeWeb,
         });
-    }, [closeRagComposer, ragComposerState, runDerivedAnalysis]);
+    }, [activeRagComposer, ragComposerState.prompt, runDerivedAnalysis]);
 
     const runSelectionAnalysis = useCallback(
         async (mode: string) => {
@@ -1481,7 +1563,10 @@ export default function useEchoDashboardState({
         runSelectionAnalysis,
         openSelectionRagComposer,
         openHighlightRagComposer,
+        clearHighlightRagComposer,
         ragComposerState,
+        activeRagComposer,
+        ragComposerFocusToken,
         closeRagComposer,
         setRagComposerPrompt,
         submitRagComposer,

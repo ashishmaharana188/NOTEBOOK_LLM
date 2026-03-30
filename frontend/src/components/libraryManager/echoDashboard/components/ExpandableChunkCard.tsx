@@ -5,7 +5,9 @@ import { buildApiUrl } from "../../../../lib/runtimeConfig";
 
 export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [fullText, setFullText] = useState(chunk.text);
+    const [fullText, setFullText] = useState(
+        String((chunk as any).full_text || chunk.text || ""),
+    );
     const [loadingContext, setLoadingContext] = useState(false);
 
     const handleExpand = async (e: React.MouseEvent) => {
@@ -36,6 +38,7 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
             });
             if (res.data?.status === "success" && res.data?.text) {
                 setFullText(res.data.text);
+                (chunk as any).full_text = String(res.data.text);
             }
         } catch (error) {
             console.error("Failed to stitch context", error);
@@ -63,7 +66,7 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
                     <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
                         {chunk.chapter || "Unknown Chapter"}
                     </div>
-                    <div className="max-h-[280px] overflow-y-auto whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 custom-scrollbar">
+                    <div className="max-h-[280px] overflow-y-auto whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 custom-scrollbar select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900">
                         {fullText}
                     </div>
                 </div>

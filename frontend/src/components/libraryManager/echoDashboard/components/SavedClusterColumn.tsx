@@ -25,6 +25,7 @@ const SavedClusterColumn = React.memo(
         branchCountByEchoId,
         onCreateBranchFromHighlight,
         onAskRagFromHighlight,
+        onClearHighlightRagComposer,
         onShowBranches,
         isHighlighted,
         selectionMode,
@@ -161,6 +162,9 @@ const SavedClusterColumn = React.memo(
                                         }
                                         onAskRagFromHighlight={
                                             onAskRagFromHighlight
+                                        }
+                                        onClearHighlightRagComposer={
+                                            onClearHighlightRagComposer
                                         }
                                         selectionMode={selectionMode}
                                         isSelected={isEchoSelected?.(echoId)}
