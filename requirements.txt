@@ -2,6 +2,7 @@ fastapi
 uvicorn
 requests
 httpx
+numpy
 pydantic
 python-multipart
 lancedb
