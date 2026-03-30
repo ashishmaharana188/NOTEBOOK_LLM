@@ -130,6 +130,7 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
           onSaveLocation={reportLocation}
           onSelection={handleSelection}
           chromeVisible={chromeVisible}
+          toc={manifest?.toc || []}
           annotations={annotations}
           onAddBookmark={() => void createBookmark()}
           onUpdateAnnotation={updateAnnotation}

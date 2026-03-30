@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { usePdfControl } from "../../hooks/reader/usePdfControl";
 import { useReaderSetting } from "../../hooks/reader/useReaderSetting";
 import type { ReaderAnnotation, ReaderProps } from "../../types/readerBackendTypes";
 import {
+  IconList,
   IconLineHeight,
   IconMinus,
   IconPanelClose,
@@ -29,6 +30,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 interface PdfReaderComponentProps extends ReaderProps {
   chromeVisible: boolean;
+  toc?: Array<{ label?: string; page?: number }>;
   annotations: ReaderAnnotation[];
   onAddBookmark: () => void;
   onUpdateAnnotation: (
@@ -57,6 +59,7 @@ export default function PdfReader({
   onSaveLocation,
   onSelection,
   chromeVisible,
+  toc = [],
   annotations,
   onAddBookmark,
   onUpdateAnnotation,
@@ -68,17 +71,18 @@ export default function PdfReader({
     numPages,
     setNumPages,
     pageNumber,
+    goToPage,
     changePage,
     scale,
     zoomIn,
     zoomOut,
     setZoom,
-    viewMode,
-    toggleViewMode,
   } = usePdfControl(initialLocation, (loc) => onSaveLocation(loc));
   const { settings, updateSetting, themeStyles } = useReaderSetting();
   const [showPanel, setShowPanel] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const handleMouseUp = () => {
     if (!onSelection) return;
@@ -89,15 +93,70 @@ export default function PdfReader({
     }
   };
 
+  const isPaginated = settings.flow === "paginated";
+  const isSpread = isPaginated && settings.spread === "always";
+  const layoutMode =
+    settings.flow === "scrolled"
+      ? "scroll"
+      : settings.spread === "always"
+        ? "spread"
+        : "single";
+
   const pageWidth = useMemo(() => {
     if (isMobile) {
-      return viewMode === "double" ? 180 : 340;
+      return isSpread ? 180 : 340;
     }
-    if (viewMode === "double") {
+    if (isSpread) {
       return 460;
     }
     return 920;
-  }, [isMobile, viewMode]);
+  }, [isMobile, isSpread]);
+
+  const scrollPages = useMemo(() => {
+    if (!numPages || isPaginated) return [];
+    return Array.from({ length: numPages }, (_, index) => index + 1);
+  }, [isPaginated, numPages]);
+
+  const navigateToPage = (nextPage: number) => {
+    goToPage(nextPage);
+    if (!isPaginated) {
+      pageRefs.current[nextPage]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isPaginated) return;
+    const container = scrollContainerRef.current;
+    if (!container || !scrollPages.length) return;
+
+    const handleScroll = () => {
+      const containerRect = container.getBoundingClientRect();
+      const targetY = containerRect.top + Math.max(120, containerRect.height * 0.25);
+      let bestPage = pageNumber;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (const pdfPage of scrollPages) {
+        const node = pageRefs.current[pdfPage];
+        if (!node) continue;
+        const rect = node.getBoundingClientRect();
+        const distance = Math.abs(rect.top - targetY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestPage = pdfPage;
+        }
+      }
+
+      if (bestPage !== pageNumber) {
+        goToPage(bestPage);
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [goToPage, isPaginated, pageNumber, scrollPages]);
 
   const shellBg = themeStyles[settings.theme].body.background;
   const shellColor = themeStyles[settings.theme].body.color;
@@ -177,21 +236,58 @@ export default function PdfReader({
               />
             </ReaderPanelSection>
 
-            <ReaderPanelSection title="Contents" defaultOpen>
+            <ReaderPanelSection title="Contents" icon={<IconList />} defaultOpen>
               <div className="space-y-2 text-sm text-primary">
                 <div className="text-xs text-muted">
                   Page {pageNumber} of {numPages || "--"}
                 </div>
+                {toc.length > 0 ? (
+                  <>
+                    <label className="block text-xs uppercase tracking-[0.18em] text-muted">
+                      Chapter
+                      <select
+                        defaultValue=""
+                        onChange={(event) => {
+                          if (!event.target.value) return;
+                          navigateToPage(Number(event.target.value));
+                        }}
+                        className="mt-2 w-full border-b border-black/10 bg-transparent px-0 py-1 text-sm text-primary outline-none"
+                      >
+                        <option value="">Jump to chapter</option>
+                        {toc.map((item, index) => (
+                          <option
+                            key={`${item.label || "toc"}-${index}`}
+                            value={Number(item.page || 1)}
+                          >
+                            {item.label || `Page ${item.page || index + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="max-h-56 overflow-y-auto pr-2 text-sm">
+                      {toc.map((item, index) => (
+                        <button
+                          key={`${item.label || "toc"}-${index}`}
+                          onClick={() => navigateToPage(Number(item.page || 1))}
+                          className="block w-full py-1 text-left text-sm text-primary"
+                        >
+                          {item.label || `Page ${item.page || index + 1}`}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
                 <div className="flex items-center gap-5 pt-1 text-xs font-medium uppercase tracking-[0.18em]">
                 <button
-                  onClick={() => changePage(viewMode === "double" ? -2 : -1)}
+                  onClick={() => changePage(isSpread ? -2 : -1)}
                   disabled={pageNumber <= 1}
                   className="text-primary disabled:opacity-40"
                 >
                   Previous
                 </button>
                 <button
-                  onClick={() => changePage(viewMode === "double" ? 2 : 1)}
+                  onClick={() => changePage(isSpread ? 2 : 1)}
                   disabled={pageNumber >= (numPages || 9999)}
                   className="text-primary disabled:opacity-40"
                 >
@@ -234,19 +330,27 @@ export default function PdfReader({
               </div>
 
               <label className="block text-xs uppercase tracking-[0.18em] text-muted">
-                View
+                Layout
                 <select
-                  value={viewMode}
+                  value={layoutMode}
                   onChange={(event) => {
                     const nextMode = event.target.value;
-                    if (nextMode !== viewMode) {
-                      toggleViewMode();
+                    if (nextMode === "scroll") {
+                      updateSetting("flow", "scrolled");
+                      updateSetting("spread", "none");
+                    } else if (nextMode === "spread") {
+                      updateSetting("flow", "paginated");
+                      updateSetting("spread", "always");
+                    } else {
+                      updateSetting("flow", "paginated");
+                      updateSetting("spread", "none");
                     }
                   }}
                   className="mt-2 w-full bg-transparent px-0 py-1 text-sm text-primary outline-none"
                 >
+                  <option value="scroll">Scroll</option>
                   <option value="single">Single page</option>
-                  <option value="double">Spread</option>
+                  <option value="spread">Split</option>
                 </select>
               </label>
 
@@ -290,20 +394,25 @@ export default function PdfReader({
         </aside>
       ) : null}
 
-      <button
-        onClick={() => changePage(viewMode === "double" ? -2 : -1)}
-        disabled={pageNumber <= 1}
-        className="absolute left-0 top-0 bottom-0 z-30 w-[10%] cursor-w-resize bg-transparent disabled:pointer-events-none"
-        title="Previous page"
-      />
-      <button
-        onClick={() => changePage(viewMode === "double" ? 2 : 1)}
-        disabled={pageNumber >= (numPages || 9999)}
-        className="absolute right-0 top-0 bottom-0 z-30 w-[10%] cursor-e-resize bg-transparent disabled:pointer-events-none"
-        title="Next page"
-      />
+      {isPaginated ? (
+        <>
+          <button
+            onClick={() => changePage(isSpread ? -2 : -1)}
+            disabled={pageNumber <= 1}
+            className="absolute left-0 top-0 bottom-0 z-30 w-[10%] cursor-w-resize bg-transparent disabled:pointer-events-none"
+            title="Previous page"
+          />
+          <button
+            onClick={() => changePage(isSpread ? 2 : 1)}
+            disabled={pageNumber >= (numPages || 9999)}
+            className="absolute right-0 top-0 bottom-0 z-30 w-[10%] cursor-e-resize bg-transparent disabled:pointer-events-none"
+            title="Next page"
+          />
+        </>
+      ) : null}
 
       <div
+        ref={scrollContainerRef}
         className="reader-pdf-surface h-full w-full overflow-auto"
         onPointerUp={handleMouseUp}
       >
@@ -338,30 +447,52 @@ export default function PdfReader({
             }
             className="flex justify-center"
           >
-            <div
-              className={`flex items-start justify-center ${
-                viewMode === "double" ? "flex-row gap-4" : "flex-col gap-4"
-              }`}
-            >
-              <Page
-                pageNumber={pageNumber}
-                renderTextLayer
-                renderAnnotationLayer
-                scale={scale}
-                width={pageWidth}
-                className="bg-surface"
-              />
-              {viewMode === "double" && pageNumber + 1 <= (numPages || 0) ? (
+            {isPaginated ? (
+              <div
+                className={`flex items-start justify-center ${
+                  isSpread ? "flex-row gap-4" : "flex-col gap-4"
+                }`}
+              >
                 <Page
-                  pageNumber={pageNumber + 1}
+                  pageNumber={pageNumber}
                   renderTextLayer
                   renderAnnotationLayer
                   scale={scale}
                   width={pageWidth}
                   className="bg-surface"
                 />
-              ) : null}
-            </div>
+                {isSpread && pageNumber + 1 <= (numPages || 0) ? (
+                  <Page
+                    pageNumber={pageNumber + 1}
+                    renderTextLayer
+                    renderAnnotationLayer
+                    scale={scale}
+                    width={pageWidth}
+                    className="bg-surface"
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-6">
+                {scrollPages.map((pdfPage) => (
+                  <div
+                    key={`pdf-page-${pdfPage}`}
+                    ref={(node) => {
+                      pageRefs.current[pdfPage] = node;
+                    }}
+                    className="bg-surface"
+                  >
+                    <Page
+                      pageNumber={pdfPage}
+                      renderTextLayer
+                      renderAnnotationLayer
+                      scale={scale}
+                      width={pageWidth}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </Document>
         </div>
       </div>
@@ -372,7 +503,7 @@ export default function PdfReader({
         }`}
         style={{ color: shellColor }}
       >
-        {viewMode === "double" ? "Spread" : "Single"} | Page {pageNumber} /{" "}
+        {isPaginated ? (isSpread ? "Split" : "Single") : "Scroll"} | Page {pageNumber} /{" "}
         {numPages || "--"}
       </div>
     </div>

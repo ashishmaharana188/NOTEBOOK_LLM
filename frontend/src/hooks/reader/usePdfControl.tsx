@@ -8,7 +8,6 @@ export function usePdfControl(
 ) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [scale, setScale] = useState<number>(1.0);
-  const [viewMode, setViewMode] = useState<"single" | "double">("single");
 
   // Robust Page Parsing
   const [pageNumber, setPageNumber] = useState<number>(() => {
@@ -21,7 +20,6 @@ export function usePdfControl(
 
   const currentPageRef = useRef(pageNumber);
   const scaleRef = useRef(scale);
-  const viewModeRef = useRef(viewMode);
 
   useEffect(() => {
     currentPageRef.current = pageNumber;
@@ -30,10 +28,6 @@ export function usePdfControl(
   useEffect(() => {
     scaleRef.current = scale;
   }, [scale]);
-
-  useEffect(() => {
-    viewModeRef.current = viewMode;
-  }, [viewMode]);
 
   useEffect(() => {
     const p =
@@ -58,47 +52,44 @@ export function usePdfControl(
         pageLabel: String(currentPageRef.current),
         viewState: {
           scale: scaleRef.current,
-          viewMode: viewModeRef.current,
         },
       });
     };
   }, [numPages, onSaveLocation]);
 
-  const changePage = (offset: number) => {
-    const newPage = Math.min(
-      Math.max(1, pageNumber + offset),
-      numPages || 9999
-    );
-    setPageNumber(newPage);
+  const goToPage = (nextPage: number) => {
+    const safePage = Math.min(Math.max(1, nextPage), numPages || 9999);
+    setPageNumber(safePage);
     onSaveLocation({
-      location: newPage,
+      location: safePage,
       locationType: "pdf_page",
-      progressPercent: (numPages || 0) > 0 ? (newPage / (numPages || 1)) * 100 : 0,
-      pageLabel: String(newPage),
+      progressPercent:
+        (numPages || 0) > 0 ? (safePage / (numPages || 1)) * 100 : 0,
+      pageLabel: String(safePage),
       viewState: {
         scale: scaleRef.current,
-        viewMode: viewModeRef.current,
       },
     });
+  };
+
+  const changePage = (offset: number) => {
+    goToPage(pageNumber + offset);
   };
 
   const zoomIn = () => setScale((s) => Math.min(3.0, s + 0.1));
   const zoomOut = () => setScale((s) => Math.max(0.5, s - 0.1));
   const setZoom = (nextScale: number) =>
     setScale(Math.min(3.0, Math.max(0.5, nextScale)));
-  const toggleViewMode = () =>
-    setViewMode((prev) => (prev === "single" ? "double" : "single"));
 
   return {
     numPages,
     setNumPages,
     pageNumber,
+    goToPage,
     changePage,
     scale,
     zoomIn,
     zoomOut,
     setZoom,
-    viewMode,
-    toggleViewMode,
   };
 }
