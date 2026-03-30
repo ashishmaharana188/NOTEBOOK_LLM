@@ -3,10 +3,13 @@ import axios from "axios";
 import { IonIcon } from "@ionic/react";
 import {
     bookmarkOutline,
+    chatbubbleEllipsesOutline,
     checkmarkOutline,
     chevronDownOutline,
     chevronUpOutline,
+    colorWandOutline,
     createOutline,
+    searchOutline,
     trashOutline,
 } from "ionicons/icons";
 import type { EchoChunk } from "../echoTypes";
@@ -579,15 +582,16 @@ const InteractiveChunkCard = React.memo(
                                     onClick={() =>
                                         setShowHighlightMenu((prev) => !prev)
                                     }
-                                disabled={isProcessing || isCollapsed}
-                                title="Highlight actions"
-                                className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
+                                    disabled={isProcessing || isCollapsed}
+                                    title="Highlight Actions"
+                                    aria-label="Highlight Actions"
+                                    className={`flex h-8 w-8 items-center justify-center transition-colors disabled:opacity-40 ${
                                         ((selectionText || activeMarker?.quote) && !isCollapsed)
                                             ? "text-slate-700 hover:text-slate-900"
                                             : "text-slate-500 hover:text-slate-900"
                                     }`}
                                 >
-                                    Highlight
+                                    <IonIcon icon={colorWandOutline} className="h-4 w-4" />
                                 </button>
                                 {showHighlightMenu && !isCollapsed && (
                                     <div className="absolute right-0 top-9 z-30 min-w-[140px] border border-slate-200 bg-white p-1 shadow-lg">
@@ -599,7 +603,10 @@ const InteractiveChunkCard = React.memo(
                                             disabled={!onCreateBranchFromHighlight}
                                             className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
                                         >
-                                            <span>Find Echoes</span>
+                                            <span className="inline-flex items-center gap-2">
+                                                <IonIcon icon={searchOutline} className="h-3.5 w-3.5" />
+                                                <span>Find Echoes</span>
+                                            </span>
                                         </button>
                                         <button
                                             onMouseDown={(event) =>
@@ -609,7 +616,10 @@ const InteractiveChunkCard = React.memo(
                                             disabled={!onAskRagFromHighlight}
                                             className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
                                         >
-                                            <span>Ask RAG</span>
+                                            <span className="inline-flex items-center gap-2">
+                                                <IonIcon icon={chatbubbleEllipsesOutline} className="h-3.5 w-3.5" />
+                                                <span>Ask RAG</span>
+                                            </span>
                                         </button>
                                     </div>
                                 )}

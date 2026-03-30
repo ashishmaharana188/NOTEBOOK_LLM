@@ -19,11 +19,9 @@ export default function FloatingEchoModal({
     const [echo, setEcho] = useState<any>(null);
 
     useEffect(() => {
-        axios
-            .get(buildApiUrl(`/brain/echo/${echoId}`))
-            .then((res) => {
-                if (res.data.status === "success") setEcho(res.data.data);
-            });
+        axios.get(buildApiUrl(`/brain/echo/${echoId}`)).then((res) => {
+            if (res.data.status === "success") setEcho(res.data.data);
+        });
     }, [echoId]);
 
     if (!echo) return null;
@@ -38,9 +36,6 @@ export default function FloatingEchoModal({
                 {/* 1:1 COLUMN HEADER */}
                 <div className="p-4 border-b border-border-subtle flex items-center justify-between bg-canvas hover:bg-slate-100 transition-colors">
                     <div className="flex items-center gap-3 w-full pr-4">
-                        <div className="p-2 bg-surface rounded-sm shadow-sm border border-border-subtle">
-                            <IonIcon icon={bookOutline} className="w-5 h-5 text-primary" />
-                        </div>
                         <div className="overflow-hidden">
                             <h3 className="max-w-[260px] truncate text-sm font-bold leading-none tracking-tight text-primary font-sans">
                                 {echo.column_name || "Saved Cluster"}
@@ -67,7 +62,10 @@ export default function FloatingEchoModal({
                                 Source: {primarySource.filename || "Unknown"}
                             </span>
                             <span className="text-[9px] font-mono text-muted flex items-center gap-1">
-                                <IonIcon icon={sparklesOutline} className="w-3 h-3 text-purple-600" />{" "}
+                                <IonIcon
+                                    icon={sparklesOutline}
+                                    className="w-3 h-3 text-purple-600"
+                                />{" "}
                                 Linked Echo
                             </span>
                         </div>
@@ -83,7 +81,10 @@ export default function FloatingEchoModal({
                             <div className="mt-4 border-t border-slate-100 pt-3">
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
-                                        <IonIcon icon={bookOutline} className="w-3 h-3" />{" "}
+                                        <IonIcon
+                                            icon={bookOutline}
+                                            className="w-3 h-3"
+                                        />{" "}
                                         Context View
                                     </span>
                                     <span className="text-[9px] font-mono text-muted truncate max-w-[150px] text-right">
@@ -101,7 +102,10 @@ export default function FloatingEchoModal({
 
                         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-canvas/80">
                             <span className="text-[9px] font-bold text-muted uppercase tracking-widest flex items-center gap-1">
-                                <IonIcon icon={eyeOutline} className="w-3 h-3" />{" "}
+                                <IonIcon
+                                    icon={eyeOutline}
+                                    className="w-3 h-3"
+                                />{" "}
                                 Preview Mode
                             </span>
                         </div>

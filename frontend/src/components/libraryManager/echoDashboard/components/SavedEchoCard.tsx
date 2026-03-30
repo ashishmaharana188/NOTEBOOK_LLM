@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { IonIcon } from "@ionic/react";
-import { chevronDownOutline, chevronUpOutline } from "ionicons/icons";
+import {
+    bookmarkOutline,
+    chatbubbleEllipsesOutline,
+    chevronDownOutline,
+    chevronUpOutline,
+    colorWandOutline,
+    documentTextOutline,
+    gitBranchOutline,
+    trashOutline,
+} from "ionicons/icons";
 import type { EchoChunk } from "../echoTypes";
 import { buildApiUrl } from "../../../../lib/runtimeConfig";
 import {
@@ -488,13 +497,26 @@ export default function SavedEchoCard({
                         <>
                             <button
                                 onClick={toggleFullContext}
-                                className="text-slate-600 transition-colors hover:text-slate-900"
+                                title={
+                                    loadingContext
+                                        ? "Loading Context"
+                                        : showFullContext
+                                          ? "Collapse Context"
+                                          : "Read Full Context"
+                                }
+                                aria-label={
+                                    loadingContext
+                                        ? "Loading Context"
+                                        : showFullContext
+                                          ? "Collapse Context"
+                                          : "Read Full Context"
+                                }
+                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition-colors hover:text-slate-900"
                             >
-                                {loadingContext
-                                    ? "Loading Context"
-                                    : showFullContext
-                                      ? "Collapse Context"
-                                      : "Read Full Context"}
+                                <IonIcon
+                                    icon={documentTextOutline}
+                                    className={`h-4 w-4 ${loadingContext ? "animate-pulse" : ""}`}
+                                />
                             </button>
                             <div
                                 className="relative"
@@ -503,13 +525,15 @@ export default function SavedEchoCard({
                                 <button
                                     onMouseDown={(event) => event.preventDefault()}
                                     onClick={() => setShowHighlightMenu((prev) => !prev)}
+                                    title="Highlight Actions"
+                                    aria-label="Highlight Actions"
                                     className={`transition-colors ${
                                         activeSelectionText
                                             ? "text-slate-900 hover:text-black"
                                             : "text-slate-500 hover:text-slate-900"
-                                    }`}
+                                    } inline-flex h-8 w-8 items-center justify-center`}
                                 >
-                                    Highlight
+                                    <IonIcon icon={colorWandOutline} className="h-4 w-4" />
                                 </button>
                                 {showHighlightMenu && (
                                     <div className="absolute right-0 top-6 z-30 min-w-[140px] border border-slate-200 bg-white p-1 shadow-lg">
@@ -535,38 +559,53 @@ export default function SavedEchoCard({
                             {branchCount > 0 && onShowBranches && (
                                 <button
                                     onClick={onShowBranches}
-                                    className="text-slate-600 transition-colors hover:text-slate-900"
+                                    title="Show Related Branches"
+                                    aria-label="Show Related Branches"
+                                    className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition-colors hover:text-slate-900"
                                 >
-                                    Related
+                                    <IonIcon icon={gitBranchOutline} className="h-4 w-4" />
                                 </button>
                             )}
                             <button
                                 onClick={() => onManageNotes(echoId)}
-                                className="text-slate-600 transition-colors hover:text-slate-900"
+                                title={
+                                    linkedNoteIds.length > 0
+                                        ? `Linked Notes ${linkedNoteIds.length}`
+                                        : "Manage Notes"
+                                }
+                                aria-label="Manage Notes"
+                                className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition-colors hover:text-slate-900"
                             >
-                                {linkedNoteIds.length > 0 ? `Notes ${linkedNoteIds.length}` : "Notes"}
+                                <IonIcon icon={chatbubbleEllipsesOutline} className="h-4 w-4" />
                             </button>
                             <button
                                 onClick={handleSaveTitle}
                                 disabled={isSavingTitle || !customTitle.trim()}
+                                title={isSavingTitle ? "Saving" : "Save"}
+                                aria-label={isSavingTitle ? "Saving" : "Save"}
                                 className={`transition-colors ${
                                     isSavingTitle || !customTitle.trim()
                                         ? "text-slate-300"
                                         : "text-slate-600 hover:text-slate-900"
-                                }`}
+                                } inline-flex h-8 w-8 items-center justify-center`}
                             >
-                                {isSavingTitle ? "Saving" : "Save"}
+                                <IonIcon
+                                    icon={bookmarkOutline}
+                                    className={`h-4 w-4 ${isSavingTitle ? "animate-pulse" : ""}`}
+                                />
                             </button>
                             <button
                                 onClick={handleDelete}
                                 disabled={isDeleting}
+                                title="Delete"
+                                aria-label="Delete"
                                 className={`transition-colors ${
                                     isDeleting
                                         ? "text-slate-300"
                                         : "text-slate-400 hover:text-red-600"
-                                }`}
+                                } inline-flex h-8 w-8 items-center justify-center`}
                             >
-                                Delete
+                                <IonIcon icon={trashOutline} className="h-4 w-4" />
                             </button>
                             <button
                                 onClick={onToggleExpand}

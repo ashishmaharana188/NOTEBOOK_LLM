@@ -3,7 +3,11 @@ import axios from "axios";
 import { IonIcon } from "@ionic/react";
 import {
     bookmarkOutline,
+    colorWandOutline,
+    documentTextOutline,
     globeOutline,
+    linkOutline,
+    searchOutline,
     sparklesOutline,
 } from "ionicons/icons";
 import DraggableColumn from "./DraggableColumn";
@@ -365,26 +369,41 @@ function DerivedEvidenceCard({
                     {hasExpandableContext ? (
                         <button
                             onClick={toggleFullContext}
-                            className="text-slate-600 transition-colors hover:text-slate-900"
+                            title={
+                                loadingContext
+                                    ? "Loading Context"
+                                    : showFullContext
+                                      ? "Collapse Context"
+                                      : "Read Full Context"
+                            }
+                            aria-label={
+                                loadingContext
+                                    ? "Loading Context"
+                                    : showFullContext
+                                      ? "Collapse Context"
+                                      : "Read Full Context"
+                            }
+                            className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition-colors hover:text-slate-900"
                         >
-                            {loadingContext
-                                ? "Loading"
-                                : showFullContext
-                                  ? "Collapse Context"
-                                  : "Read Full Context"}
+                            <IonIcon
+                                icon={documentTextOutline}
+                                className={`h-4 w-4 ${loadingContext ? "animate-pulse" : ""}`}
+                            />
                         </button>
                     ) : null}
                     <div className="relative" data-selection-ignore="true">
                         <button
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => setShowHighlightMenu((prev) => !prev)}
+                            title="Highlight Actions"
+                            aria-label="Highlight Actions"
                             className={`transition-colors ${
                                 selectionText || activeMarker?.quote
                                     ? "text-slate-900 hover:text-black"
                                     : "text-slate-500 hover:text-slate-900"
-                            }`}
+                            } inline-flex h-8 w-8 items-center justify-center`}
                         >
-                            Highlight
+                            <IonIcon icon={colorWandOutline} className="h-4 w-4" />
                         </button>
                         {showHighlightMenu && (
                             <div className="absolute right-0 top-6 z-30 min-w-[140px] border border-slate-200 bg-white p-1 shadow-lg">
@@ -394,7 +413,10 @@ function DerivedEvidenceCard({
                                     disabled={!onCreateBranchFromHighlight}
                                     className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
                                 >
-                                    <span>Find Echoes</span>
+                                    <span className="inline-flex items-center gap-2">
+                                        <IonIcon icon={searchOutline} className="h-3.5 w-3.5" />
+                                        <span>Find Echoes</span>
+                                    </span>
                                 </button>
                                 <button
                                     onMouseDown={(event) => event.preventDefault()}
@@ -402,7 +424,10 @@ function DerivedEvidenceCard({
                                     disabled={!onAskRagFromHighlight}
                                     className="flex w-full items-center justify-between px-2 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
                                 >
-                                    <span>Ask RAG</span>
+                                    <span className="inline-flex items-center gap-2">
+                                        <IonIcon icon={sparklesOutline} className="h-3.5 w-3.5" />
+                                        <span>Ask RAG</span>
+                                    </span>
                                 </button>
                             </div>
                         )}
@@ -412,9 +437,11 @@ function DerivedEvidenceCard({
                             href={item.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-slate-600 transition-colors hover:text-slate-900"
+                            title="Open Source"
+                            aria-label="Open Source"
+                            className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition-colors hover:text-slate-900"
                         >
-                            Source
+                            <IonIcon icon={linkOutline} className="h-4 w-4" />
                         </a>
                     ) : null}
                 </div>

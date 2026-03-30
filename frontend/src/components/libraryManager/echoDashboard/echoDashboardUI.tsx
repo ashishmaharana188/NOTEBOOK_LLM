@@ -1552,147 +1552,148 @@ export default function EchoDashboardUI(props: any) {
                 </TransformWrapper>
             </div>
 
-            <div className="absolute bottom-4 right-4 z-[2200] flex items-center gap-2 border border-slate-200 bg-white/95 px-3 py-2 shadow-lg sm:bottom-6 sm:right-6">
-                <button
-                    onClick={() => {
-                        setIsAnalyzeMenuOpen(false);
-                        state.toggleSelectionMode();
-                    }}
-                    className={`px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors ${
-                        state.selectionMode
-                            ? "bg-slate-900 text-white"
-                            : "text-slate-600 hover:text-slate-900"
-                    }`}
-                >
-                    {state.selectionMode
-                        ? `Select ${state.selectedItems.length || 0}`
-                        : "Select"}
-                </button>
-
-                <div className="relative">
-                    <button
-                        onClick={() => setIsAnalyzeMenuOpen((prev) => !prev)}
-                        disabled={
-                            !state.activeAnalysisSelection.contexts.length
-                        }
-                        className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
-                    >
-                        <IonIcon icon={sparklesOutline} className="h-4 w-4" />
-                        Analyze
-                    </button>
-                    {isAnalyzeMenuOpen && (
-                        <div className="absolute bottom-12 right-0 z-[2300] min-w-[220px] border border-slate-200 bg-white p-1 shadow-lg">
-                            {[
-                                {
-                                    id: "cross_pollination",
-                                    label: "Cross-Pollination",
-                                },
-                                {
-                                    id: "friction",
-                                    label: "Friction Analysis",
-                                },
-                                {
-                                    id: "gap",
-                                    label: "Gap Analysis",
-                                },
-                            ].map((mode) => (
-                                <button
-                                    key={mode.id}
-                                    onClick={() => {
-                                        setIsAnalyzeMenuOpen(false);
-                                        state.runSelectionAnalysis(mode.id);
-                                    }}
-                                    className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-                                >
-                                    <span>{mode.label}</span>
-                                </button>
-                            ))}
+            <div className="absolute bottom-4 right-4 z-[2200] flex max-w-[calc(100vw-2rem)] flex-col items-end gap-2 sm:bottom-6 sm:right-6">
+                <div className="flex flex-wrap items-stretch justify-end gap-2">
+                    {state.activeRagComposer.visible && (
+                        <div
+                            data-selection-ignore="true"
+                            data-marker-persist="true"
+                            className="flex min-w-[320px] max-w-3xl flex-1 items-center gap-3 border border-slate-200 bg-white px-4 py-3 shadow-lg"
+                        >
+                            <div className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                {state.activeRagComposer.scopeLabel ||
+                                    "Selected Context"}
+                            </div>
+                            <input
+                                data-selection-ignore="true"
+                                ref={ragInputRef}
+                                value={state.ragComposerState.prompt}
+                                onChange={(e) =>
+                                    state.setRagComposerPrompt(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        state.submitRagComposer();
+                                    }
+                                }}
+                                placeholder="Ask a question about this marked or selected context"
+                                className="min-w-[180px] flex-1 border-none bg-transparent px-0 py-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                            />
+                            <button
+                                data-selection-ignore="true"
+                                onClick={state.closeRagComposer}
+                                className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
+                            >
+                                Clear
+                            </button>
+                            <button
+                                data-selection-ignore="true"
+                                onClick={state.submitRagComposer}
+                                className="inline-flex items-center gap-2 bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black"
+                            >
+                                <IonIcon
+                                    icon={chatbubbleEllipsesOutline}
+                                    className="h-4 w-4"
+                                />
+                                Run RAG
+                            </button>
                         </div>
                     )}
-                </div>
 
-                <button
-                    onClick={() => {
-                        setIsAnalyzeMenuOpen(false);
-                        if (!state.activeRagComposer.visible) {
-                            state.openSelectionRagComposer();
-                            return;
-                        }
-                        ragInputRef.current?.focus();
-                    }}
-                    disabled={!state.activeRagComposer.visible}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
-                >
-                    <IonIcon
-                        icon={chatbubbleEllipsesOutline}
-                        className="h-4 w-4"
-                    />
-                    Ask RAG
-                </button>
-
-                {(state.selectionMode && state.selectedItems.length > 0) ||
-                state.activeAnalysisSelection.sourceType === "highlight" ? (
-                    <button
-                        onClick={() => {
-                            state.clearSelections();
-                            state.closeRagComposer();
-                        }}
-                        className="inline-flex items-center gap-1 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
-                    >
-                        <IonIcon icon={closeOutline} className="h-4 w-4" />
-                        Clear
-                    </button>
-                ) : null}
-            </div>
-
-            {state.activeRagComposer.visible && (
-                <div
-                    data-selection-ignore="true"
-                    data-marker-persist="true"
-                    className="absolute inset-x-4 bottom-20 z-[2300] mx-auto max-w-3xl border border-slate-200 bg-white shadow-xl sm:bottom-24"
-                >
-                    <div className="flex top-10 flex-wrap items-center gap-3 px-4 py-3">
-                        <div className="shrink-0 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                            {state.activeRagComposer.scopeLabel ||
-                                "Selected Context"}
-                        </div>
-                        <input
-                            data-selection-ignore="true"
-                            ref={ragInputRef}
-                            value={state.ragComposerState.prompt}
-                            onChange={(e) =>
-                                state.setRagComposerPrompt(e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    state.submitRagComposer();
-                                }
+                    <div className="flex items-center gap-2 border border-slate-200 bg-white/95 px-3 py-2 shadow-lg">
+                        <button
+                            onClick={() => {
+                                setIsAnalyzeMenuOpen(false);
+                                state.toggleSelectionMode();
                             }}
-                            placeholder="Ask a question about this marked or selected context"
-                            className="min-w-[220px] flex-1 border-none bg-transparent px-0 py-0 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                        />
-                        <button
-                            data-selection-ignore="true"
-                            onClick={state.closeRagComposer}
-                            className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
+                            className={`px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors ${
+                                state.selectionMode
+                                    ? "bg-slate-900 text-white"
+                                    : "text-slate-600 hover:text-slate-900"
+                            }`}
                         >
-                            Clear
+                            {state.selectionMode
+                                ? `Select ${state.selectedItems.length || 0}`
+                                : "Select"}
                         </button>
+
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsAnalyzeMenuOpen((prev) => !prev)}
+                                disabled={
+                                    !state.activeAnalysisSelection.contexts.length
+                                }
+                                className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
+                            >
+                                <IonIcon icon={sparklesOutline} className="h-4 w-4" />
+                                Analyze
+                            </button>
+                            {isAnalyzeMenuOpen && (
+                                <div className="absolute bottom-12 right-0 z-[2300] min-w-[220px] border border-slate-200 bg-white p-1 shadow-lg">
+                                    {[
+                                        {
+                                            id: "cross_pollination",
+                                            label: "Cross-Pollination",
+                                        },
+                                        {
+                                            id: "friction",
+                                            label: "Friction Analysis",
+                                        },
+                                        {
+                                            id: "gap",
+                                            label: "Gap Analysis",
+                                        },
+                                    ].map((mode) => (
+                                        <button
+                                            key={mode.id}
+                                            onClick={() => {
+                                                setIsAnalyzeMenuOpen(false);
+                                                state.runSelectionAnalysis(mode.id);
+                                            }}
+                                            className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                                        >
+                                            <span>{mode.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
                         <button
-                            data-selection-ignore="true"
-                            onClick={state.submitRagComposer}
-                            className="inline-flex items-center gap-2 bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-black"
+                            onClick={() => {
+                                setIsAnalyzeMenuOpen(false);
+                                if (!state.activeRagComposer.visible) {
+                                    state.openSelectionRagComposer();
+                                    return;
+                                }
+                                ragInputRef.current?.focus();
+                            }}
+                            className="inline-flex items-center gap-2 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 transition-colors hover:text-slate-900"
                         >
                             <IonIcon
                                 icon={chatbubbleEllipsesOutline}
                                 className="h-4 w-4"
                             />
-                            Run RAG
+                            Ask RAG
                         </button>
+
+                        {(state.selectionMode && state.selectedItems.length > 0) ||
+                        state.activeAnalysisSelection.sourceType === "highlight" ? (
+                            <button
+                                onClick={() => {
+                                    state.clearSelections();
+                                    state.closeRagComposer();
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
+                            >
+                                <IonIcon icon={closeOutline} className="h-4 w-4" />
+                                Clear
+                            </button>
+                        ) : null}
                     </div>
                 </div>
-            )}
+            </div>
 
             {state.echoNoteState.isOpen && (
                 <NotesFormUI
