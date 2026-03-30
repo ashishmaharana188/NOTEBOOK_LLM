@@ -14,6 +14,7 @@ from scripts.parsers import clean_text
 
 
 logger = logging.getLogger(__name__)
+READER_MANIFEST_VERSION = 2
 
 
 def compute_file_fingerprint(file_path: str) -> str:
@@ -109,6 +110,70 @@ def _resolve_epub_section_label(item_name: str, soup: BeautifulSoup) -> str:
     return fallback[:140] or item_name
 
 
+def _normalize_epub_href(href: str) -> str:
+    normalized = str(href or "").strip().split("#")[0].strip()
+    normalized = normalized.replace("\\", "/").lstrip("./")
+    return normalized
+
+
+def _extract_epub_block_text(soup: BeautifulSoup) -> str:
+    for tag_name in ("script", "style", "noscript"):
+        for tag in soup.find_all(tag_name):
+            tag.decompose()
+
+    block_selectors = (
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "p",
+        "blockquote",
+        "li",
+        "pre",
+    )
+    blocks: list[str] = []
+    for node in soup.find_all(block_selectors):
+        text = clean_text(node.get_text(separator=" "))
+        if text:
+            blocks.append(text)
+
+    if blocks:
+        return "\n\n".join(blocks)
+
+    return clean_text(soup.get_text(separator="\n\n"))
+
+
+def _extract_epub_toc_rows(items: Any, level: int = 1) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in items or []:
+        if isinstance(item, (tuple, list)):
+            head = item[0] if item else None
+            children = []
+            if len(item) > 1:
+                second = item[1]
+                if isinstance(second, (tuple, list)):
+                    children = list(second)
+                else:
+                    children = list(item[1:])
+            rows.extend(_extract_epub_toc_rows([head], level))
+            rows.extend(_extract_epub_toc_rows(children, level + 1))
+            continue
+
+        href = _normalize_epub_href(getattr(item, "href", ""))
+        label = clean_text(str(getattr(item, "title", "") or "").strip())
+        if href or label:
+            rows.append(
+                {
+                    "label": label or href or f"Section {len(rows) + 1}",
+                    "level": level,
+                    "href": href,
+                }
+            )
+    return rows
+
+
 class ReaderManifestService:
     def __init__(self, graph_db, library_dir: str, cache_dir: str):
         self.graph_db = graph_db
@@ -148,6 +213,8 @@ class ReaderManifestService:
 
         should_build = force or manifest is None
         if manifest and manifest.get("file_fingerprint") != fingerprint:
+            should_build = True
+        elif manifest and int(manifest.get("manifest_version") or 0) != READER_MANIFEST_VERSION:
             should_build = True
         elif manifest:
             content_meta = manifest.get("content_meta") or {}
@@ -264,6 +331,7 @@ class ReaderManifestService:
         self.graph_db.upsert_reader_manifest(
             identity["filename"],
             {
+                "manifest_version": READER_MANIFEST_VERSION,
                 "format": identity["format"],
                 "file_fingerprint": fingerprint,
                 "status": "building",
@@ -297,6 +365,7 @@ class ReaderManifestService:
             self.graph_db.upsert_reader_manifest(
                 identity["filename"],
                 {
+                    "manifest_version": READER_MANIFEST_VERSION,
                     "format": identity["format"],
                     "file_fingerprint": fingerprint,
                     "status": "error",
@@ -359,6 +428,7 @@ class ReaderManifestService:
                 )
 
             return {
+                "manifest_version": READER_MANIFEST_VERSION,
                 "format": identity["format"],
                 "file_fingerprint": fingerprint,
                 "status": "ready",
@@ -382,13 +452,23 @@ class ReaderManifestService:
         item_offsets: dict[str, int] = {}
         section_texts: list[str] = []
         running_offset = 0
+        toc_rows = _extract_epub_toc_rows(book.toc)
+        toc_label_by_href = {
+            _normalize_epub_href(row.get("href")): row.get("label")
+            for row in toc_rows
+            if row.get("href") and row.get("label")
+        }
 
         for idx, item in enumerate(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)):
             soup = BeautifulSoup(item.get_content(), "html.parser")
-            text = clean_text(soup.get_text(separator="\n"))
+            text = _extract_epub_block_text(soup)
             item_name = item.get_name()
-            item_label = _resolve_epub_section_label(item_name, soup)
-            item_offsets[item_name] = running_offset
+            normalized_item_name = _normalize_epub_href(item_name)
+            item_label = (
+                clean_text(str(toc_label_by_href.get(normalized_item_name) or ""))
+                or _resolve_epub_section_label(item_name, soup)
+            )
+            item_offsets[normalized_item_name] = running_offset
             if not text:
                 continue
             start_offset = running_offset
@@ -408,30 +488,23 @@ class ReaderManifestService:
             section_texts.append(text)
             running_offset = end_offset + 2
 
-        def flatten_toc(items: Any, level: int = 1) -> list[dict[str, Any]]:
-            rows: list[dict[str, Any]] = []
-            for item in items:
-                if isinstance(item, (tuple, list)):
-                    rows.extend(flatten_toc(item[1:], level + 1))
-                elif isinstance(item, epub.Link):
-                    href = item.href.split("#")[0]
-                    rows.append(
-                        {
-                            "label": item.title,
-                            "level": level,
-                            "href": item.href,
-                            "char_index": item_offsets.get(href, 0),
-                        }
-                    )
-            return rows
-
-        toc = flatten_toc(book.toc)
+        toc = [
+            {
+                **row,
+                "char_index": item_offsets.get(
+                    _normalize_epub_href(str(row.get("href") or "")),
+                    0,
+                ),
+            }
+            for row in toc_rows
+        ]
         cache_path = os.path.join(
             self.cache_dir, f"{identity['book_key'].replace(':', '_')}_{fingerprint}.txt"
         )
         with open(cache_path, "w", encoding="utf-8") as handle:
             handle.write("\n\n".join(section_texts))
         return {
+            "manifest_version": READER_MANIFEST_VERSION,
             "format": identity["format"],
             "file_fingerprint": fingerprint,
             "status": "ready",
@@ -471,6 +544,7 @@ class ReaderManifestService:
         ]
 
         return {
+            "manifest_version": READER_MANIFEST_VERSION,
             "format": identity["format"],
             "file_fingerprint": fingerprint,
             "status": "ready",

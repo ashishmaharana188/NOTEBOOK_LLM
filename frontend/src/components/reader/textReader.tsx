@@ -151,6 +151,13 @@ function buildSectionOptions(
   }));
 }
 
+function buildScrollParagraphs(content: string) {
+  return String(content || "")
+    .split(/\n\s*\n+/)
+    .map((paragraph) => paragraph.replace(/\s*\n+\s*/g, " ").trim())
+    .filter(Boolean);
+}
+
 export default function TextReader({
   book,
   content,
@@ -200,6 +207,10 @@ export default function TextReader({
       normalizeSectionLabel(sectionLabel, currentSectionIndex)
     );
   }, [currentSectionIndex, sectionLabel, sectionOptions]);
+  const scrollParagraphs = useMemo(
+    () => buildScrollParagraphs(deferredContent),
+    [deferredContent],
+  );
 
   const isPaginated = settings.flow === "paginated";
   const spreadRequested = settings.spread === "always";
@@ -592,7 +603,7 @@ export default function TextReader({
         </aside>
       ) : null}
 
-      {(isPaginated || sectionCount > 1) && (
+      {isPaginated && (
         <>
           <button
             onClick={handlePrev}
@@ -684,17 +695,29 @@ export default function TextReader({
               }}
             >
               <div
-                className="whitespace-pre-wrap"
+                className="space-y-5"
                 style={{
                   color: themeStyles[settings.theme].body.color,
                   fontFamily: settings.fontFamily,
                   lineHeight: settings.lineHeight,
                   fontSize: `${fontSizePx}px`,
-                  textAlign: "justify",
                   maxWidth: "100%",
                 }}
               >
-                {content || "No content available."}
+                {scrollParagraphs.length ? (
+                  scrollParagraphs.map((paragraph, index) => (
+                    <p
+                      key={`paragraph-${currentSectionIndex}-${index}`}
+                      style={{
+                        textAlign: "justify",
+                      }}
+                    >
+                      {paragraph}
+                    </p>
+                  ))
+                ) : (
+                  "No content available."
+                )}
               </div>
             </div>
           </div>
