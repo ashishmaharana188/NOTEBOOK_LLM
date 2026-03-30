@@ -101,6 +101,22 @@ RAG/analysis columns.
 Set these in `.env.local` for local development, or as Hugging Face Space
 variables/secrets for cloud deployment.
 
+For Hugging Face Spaces, open the Space repository page, go to `Settings`,
+then `Variables and secrets`, and add:
+
+Variables:
+
+```text
+COGNITIVE_WEB_RAG_PROVIDER=gemini_search
+COGNITIVE_GEMINI_MODEL=gemini-2.5-flash-lite
+```
+
+Secret:
+
+```text
+COGNITIVE_GEMINI_API_KEY=your_gemini_api_key
+```
+
 - Install a local Phi-3.5 Mini Instruct Q4 Ollama model
 - Start the backend with CUDA available for PyTorch
 
