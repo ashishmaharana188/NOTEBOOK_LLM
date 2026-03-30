@@ -23,7 +23,7 @@ export default function useEchoDashboardState({
     notes = [],
     libraryId = "",
 }: any) {
-    const { ensureRolesThen } = useModelRuntime();
+    const { ensureRolesThen, runtime } = useModelRuntime();
     const [expandedStackId, setExpandedStackId] = useState<string | null>(null);
     const [topZIndex, setTopZIndex] = useState(10);
     const [zIndexes, setZIndexes] = useState<Record<string, number>>({});
@@ -221,6 +221,18 @@ export default function useEchoDashboardState({
             }),
         [derivedColumns, expandedEchoIdSet],
     );
+
+    const analysisRequiredRoles = useMemo(() => {
+        const reasoningProfile = String(
+            runtime?.config?.reasoning_profile || "",
+        );
+        const reasoningProvider = String(
+            runtime?.catalog?.reasoning?.[reasoningProfile]?.provider || "",
+        );
+        return reasoningProvider === "ollama"
+            ? (["embedding", "reasoning"] as const)
+            : (["embedding"] as const);
+    }, [runtime]);
 
     const branchesBySourceEchoId = useMemo(() => {
         const next: Record<string, any[]> = {};
@@ -777,17 +789,32 @@ export default function useEchoDashboardState({
             setZoomTarget(derivedId);
 
             try {
-                const res = await ensureRolesThen(["embedding", "reasoning"], () =>
-                    axios.post(buildApiUrl("/echo/analysis/run"), {
-                        mode,
-                        prompt,
-                        contexts,
-                        selection_refs: selectionRefs,
-                        include_web: includeWeb,
-                        title_hint: titleHint,
-                    }),
+                const res = await ensureRolesThen(
+                    [...analysisRequiredRoles],
+                    () =>
+                        axios.post(buildApiUrl("/echo/analysis/run"), {
+                            mode,
+                            prompt,
+                            contexts,
+                            selection_refs: selectionRefs,
+                            include_web: includeWeb,
+                            title_hint: titleHint,
+                        }),
                 );
-                if (!res) return;
+                if (!res) {
+                    setDerivedColumns((prev) =>
+                        prev.map((column: any) =>
+                            String(column.id) === String(derivedId)
+                                ? {
+                                      ...column,
+                                      isLoading: false,
+                                      errorMessage: "Analysis cancelled.",
+                                  }
+                                : column,
+                        ),
+                    );
+                    return;
+                }
                 const payload = res.data?.data || res.data || {};
 
                 setDerivedColumns((prev) =>
@@ -835,7 +862,13 @@ export default function useEchoDashboardState({
                             : column,
                     ),
                 );
-            } catch (error) {
+            } catch (error: any) {
+                const errorPayload =
+                    error?.response?.data?.detail || error?.response?.data || {};
+                const errorMessage =
+                    errorPayload?.message ||
+                    error?.message ||
+                    "The analysis could not be completed right now.";
                 console.error("Derived analysis failed", error);
                 setDerivedColumns((prev) =>
                     prev.map((column: any) =>
@@ -843,21 +876,19 @@ export default function useEchoDashboardState({
                             ? {
                                   ...column,
                                   isLoading: false,
-                                  errorMessage:
-                                      "The analysis could not be completed right now.",
+                                  errorMessage,
                               }
                             : column,
                     ),
                 );
                 notify({
                     title: "Analysis Failed",
-                    message:
-                        "The analysis could not be completed right now.",
+                    message: errorMessage,
                     tone: "error",
                 });
             }
         },
-        [ensureRolesThen, getDerivedColumnPosition],
+        [analysisRequiredRoles, ensureRolesThen, getDerivedColumnPosition],
     );
 
     const closeDerivedColumn = useCallback((derivedId: string) => {

@@ -1356,18 +1356,22 @@ class ModelRuntimeManager:
     def analyze_relations_batch(self, highlight_text: str, chunks_list: List[str]):
         if not chunks_list:
             return []
+        active_profile = (
+            self._role_state["reasoning"].get("profile")
+            or self._config["reasoning_profile"]
+        )
+        if self._reasoning_provider(active_profile) != "ollama":
+            return json.dumps(
+                [
+                    {"relation": "EXPAND", "bridge": "Semantic Match"}
+                    for _ in chunks_list
+                ]
+            )
         self.require_roles_ready(["reasoning"])
         if not self._role_state["reasoning"]["loaded"]:
             self.load_reasoning_model(profile=self._config["reasoning_profile"])
         self._begin_use("reasoning")
         try:
-            if self._reasoning_provider(self._role_state["reasoning"]["profile"]) != "ollama":
-                return json.dumps(
-                    [
-                        {"relation": "EXPAND", "bridge": "Semantic Match"}
-                        for _ in chunks_list
-                    ]
-                )
             resolved_model = self._resolve_ollama_model_name(
                 self.get_resolved_reasoning_model_tag(
                     profile=self._role_state["reasoning"]["profile"],
@@ -1395,13 +1399,17 @@ class ModelRuntimeManager:
         temperature: float = 0.2,
         num_predict: int = 700,
     ) -> Dict[str, Any]:
+        active_profile = (
+            self._role_state["reasoning"].get("profile")
+            or self._config["reasoning_profile"]
+        )
+        if self._reasoning_provider(active_profile) != "ollama":
+            return fallback
         self.require_roles_ready(["reasoning"])
         if not self._role_state["reasoning"]["loaded"]:
             self.load_reasoning_model(profile=self._config["reasoning_profile"])
         self._begin_use("reasoning")
         try:
-            if self._reasoning_provider(self._role_state["reasoning"]["profile"]) != "ollama":
-                return fallback
             resolved_model = self._resolve_ollama_model_name(
                 self.get_resolved_reasoning_model_tag(
                     profile=self._role_state["reasoning"]["profile"],

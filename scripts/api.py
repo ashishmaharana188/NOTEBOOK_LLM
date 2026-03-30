@@ -691,7 +691,7 @@ def get_saved_echoes_endpoint():
 @app.post("/echo/analysis/run")
 def run_echo_analysis_endpoint(request: EchoAnalysisRunRequest):
     try:
-        runtime_manager.require_roles_ready(["embedding", "reasoning"])
+        runtime_manager.require_roles_ready(["embedding"])
         result = run_analysis(
             mode=request.mode,
             prompt=request.prompt,
