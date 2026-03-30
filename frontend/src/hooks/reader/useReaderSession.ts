@@ -90,16 +90,7 @@ export function useReaderSession(book: ReaderBook | null) {
     const isTextFormat = useMemo(() => {
         return normalizedExtension === "txt" || normalizedExtension === "md";
     }, [normalizedExtension]);
-    const prefersRemoteSectionReader = useMemo(() => {
-        if (typeof window === "undefined") return false;
-        const hostname = window.location.hostname.toLowerCase();
-        const isLocalHost =
-            hostname === "localhost" ||
-            hostname === "127.0.0.1" ||
-            hostname === "::1";
-        return normalizedExtension === "epub" && !isLocalHost;
-    }, [normalizedExtension]);
-    const usesSectionReader = isTextFormat || prefersRemoteSectionReader;
+    const usesSectionReader = isTextFormat;
 
     useEffect(() => {
         sessionRef.current = session;
@@ -545,7 +536,12 @@ export function useReaderSession(book: ReaderBook | null) {
     ]);
 
     useEffect(() => {
-        if (!book?.filename || !manifest || manifest.status !== "building")
+        if (
+            !usesSectionReader ||
+            !book?.filename ||
+            !manifest ||
+            manifest.status !== "building"
+        )
             return;
         if (bootstrapPollRef.current)
             window.clearInterval(bootstrapPollRef.current);
@@ -558,7 +554,7 @@ export function useReaderSession(book: ReaderBook | null) {
                 bootstrapPollRef.current = null;
             }
         };
-    }, [book?.filename, manifest, refreshBootstrap]);
+    }, [book?.filename, manifest, refreshBootstrap, usesSectionReader]);
 
     useEffect(() => {
         if (!usesSectionReader) return;
