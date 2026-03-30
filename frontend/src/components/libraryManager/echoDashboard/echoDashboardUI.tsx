@@ -23,6 +23,7 @@ import SavedClusterColumn from "./components/SavedClusterColumn";
 import FloatingNoteModal from "./modals/FloatingNoteModal";
 import useEchoDashboardState from "./hooks/useEchoDashboardState";
 import { useRefreshBus } from "../../system/RefreshBusProvider";
+import { notify } from "../../system/AppNotifications";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import useCanvasViewport from "../../../hooks/appTools/useCanvasViewport";
 import useCanvasInteractionMode from "../../../hooks/appTools/useCanvasInteractionMode";
@@ -289,6 +290,11 @@ export default function EchoDashboardUI(props: any) {
       cluster_id: clusterId || String(chunk.cluster_id || ""),
       book_id: bookId || "",
       library_id: itemLibraryId || "",
+      filename: String(chunk.filename || ""),
+      chunk_id: String(chunk.chunk_id || ""),
+      chunk_ref: String(chunk.chunk_ref || chunk.source_chunk_ref || ""),
+      source_lid: String(chunk.source_lid || ""),
+      full_text: String(chunk.full_text || chunk.text || chunk.bridge || ""),
     }),
     [],
   );
@@ -553,6 +559,84 @@ export default function EchoDashboardUI(props: any) {
       libraryId,
       state.createDraftBranchFromHighlight,
       state.handleEchoSaved,
+      state.savedGlobalClusters,
+    ],
+  );
+  const createDerivedHighlightBranch = React.useCallback(
+    async ({
+      text,
+      derived,
+      item,
+    }: {
+      text: string;
+      derived: any;
+      item: any;
+    }) => {
+      const nextSelection = String(text || "").trim();
+      if (!nextSelection) return;
+
+      const sourceEchoId = String(
+        item?.echo_id ||
+          derived?.sourceEchoIds?.find?.((value: any) => String(value || "").trim()) ||
+          derived?.contexts?.find?.((context: any) =>
+            String(context?.echo_id || "").trim(),
+          )?.echo_id ||
+          "",
+      );
+      const parentClusterId = String(
+        item?.cluster_id ||
+          derived?.selectionRefs?.find?.((ref: any) =>
+            String(ref?.cluster_id || "").trim(),
+          )?.cluster_id ||
+          derived?.contexts?.find?.((context: any) =>
+            String(context?.cluster_id || "").trim(),
+          )?.cluster_id ||
+          "",
+      );
+
+      const parentCluster = (state.savedGlobalClusters || []).find(
+        (entry: any) =>
+          String(entry.id || entry.cluster_id || "") === String(parentClusterId),
+      );
+
+      if (!sourceEchoId || !parentClusterId || !parentCluster) {
+        notify({
+          title: "Branch Search Unavailable",
+          message:
+            "This derived section is not anchored to a saved echo yet. Run highlight search from a saved echo, or save the derived result first.",
+          tone: "warning",
+        });
+        return;
+      }
+
+      state.handleEchoSaved({
+        echoId: sourceEchoId,
+        clusterId: parentClusterId,
+        created: false,
+      });
+
+      await state.createDraftBranchFromHighlight({
+        text: nextSelection,
+        sourceEchoId,
+        parentClusterId,
+        parentClusterTitle:
+          parentCluster.title || item?.title || derived?.title || activeBookTitle,
+        bookId:
+          item?.book_id ||
+          parentCluster.book_id ||
+          parentCluster.title ||
+          activeBookTitle,
+        libraryId: item?.library_id || parentCluster.library_id || libraryId,
+        spawnBasePosition: state.positions[derived.id] || activeColumnPos,
+      });
+    },
+    [
+      activeBookTitle,
+      activeColumnPos,
+      libraryId,
+      state.createDraftBranchFromHighlight,
+      state.handleEchoSaved,
+      state.positions,
       state.savedGlobalClusters,
     ],
   );
@@ -1023,6 +1107,10 @@ export default function EchoDashboardUI(props: any) {
                         isSelected={state.isCanvasItemSelected(
                           `derived-column:${derived.id}`,
                         )}
+                        onCreateBranchFromHighlight={
+                          createDerivedHighlightBranch
+                        }
+                        onAskRagFromHighlight={state.openHighlightRagComposer}
                         onToggleSelect={() =>
                           state.toggleCanvasSelection(
                             createDerivedColumnSelection(derived),

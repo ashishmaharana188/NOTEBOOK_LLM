@@ -72,6 +72,35 @@ npm run hf:space:factory-reboot
 
 These commands use `scripts/manage_hf_space.py`, which wraps `huggingface_hub`
 so you can trigger a normal restart or a full factory reboot from the repo root.
+
+You can also configure Space variables and secrets from the CLI:
+
+```bash
+cognition_env/Scripts/python.exe scripts/manage_hf_space.py set-variable KEY VALUE
+cognition_env/Scripts/python.exe scripts/manage_hf_space.py set-secret KEY VALUE
+```
+
+## Web RAG
+
+The analysis/RAG columns can include live web evidence if the backend is
+configured with a provider.
+
+Recommended hosted path: Gemini Search grounding.
+
+```text
+COGNITIVE_WEB_RAG_PROVIDER=gemini_search
+COGNITIVE_GEMINI_API_KEY=your_gemini_api_key
+COGNITIVE_GEMINI_MODEL=gemini-2.5-flash-lite
+```
+
+The backend sends the selected context and user prompt to Gemini with the
+`google_search` tool enabled. Gemini returns a grounded answer plus source
+metadata, and the app uses that as `web_evidence` in the derived
+RAG/analysis columns.
+
+Set these in `.env.local` for local development, or as Hugging Face Space
+variables/secrets for cloud deployment.
+
 - Install a local Phi-3.5 Mini Instruct Q4 Ollama model
 - Start the backend with CUDA available for PyTorch
 

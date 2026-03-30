@@ -9,8 +9,6 @@ npm run hf:whoami
 npm run hf:space:status
 npm run hf:space:restart
 npm run hf:space:factory-reboot
-
-
 git rm -r --cached .
 git add .
 git commit -am 'git cache cleared'

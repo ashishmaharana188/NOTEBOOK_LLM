@@ -424,6 +424,11 @@ class AnalysisContextItem(BaseModel):
     cluster_id: str = ""
     book_id: str = ""
     library_id: str = ""
+    filename: str = ""
+    chunk_id: str = ""
+    chunk_ref: str = ""
+    source_lid: str = ""
+    full_text: str = ""
 
 
 class AnalysisSelectionRef(BaseModel):

@@ -8,10 +8,16 @@ from typing import Any, Dict, List
 import requests
 
 from scripts.db_manager import db
-from scripts.model_runtime import runtime_manager
+from scripts.log_sanitizer import safe_error_detail, summarize_text_for_log
+from scripts.model_runtime import RuntimeLoadError, RuntimeNotReadyError, runtime_manager
 from scripts.vectorize import get_embedding
 
 logger = logging.getLogger(__name__)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_FILES = (
+    os.path.join(BASE_DIR, ".env"),
+    os.path.join(BASE_DIR, ".env.local"),
+)
 
 SUPPORTED_ANALYSIS_MODES = {
     "cross_pollination": "Cross-Pollination",
@@ -81,6 +87,35 @@ STOP_WORDS = {
 }
 
 
+def _load_env_file(path: str) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    if not os.path.exists(path):
+        return values
+
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("\"'")
+            if key:
+                values[key] = value
+    return values
+
+
+def _get_env_value(name: str, default: str = "") -> str:
+    runtime_value = str(os.getenv(name, "")).strip()
+    if runtime_value:
+        return runtime_value
+    for env_file in ENV_FILES:
+        file_values = _load_env_file(env_file)
+        if file_values.get(name):
+            return str(file_values[name]).strip()
+    return default
+
+
 def _normalize_mode(mode: str) -> str:
     normalized = str(mode or "").strip().lower().replace("-", "_").replace(" ", "_")
     if normalized not in SUPPORTED_ANALYSIS_MODES:
@@ -119,6 +154,11 @@ def _normalize_contexts(contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "cluster_id": str(item.get("cluster_id") or ""),
                 "book_id": str(item.get("book_id") or ""),
                 "library_id": str(item.get("library_id") or ""),
+                "filename": str(item.get("filename") or ""),
+                "chunk_id": str(item.get("chunk_id") or ""),
+                "chunk_ref": str(item.get("chunk_ref") or ""),
+                "source_lid": str(item.get("source_lid") or ""),
+                "full_text": str(item.get("full_text") or text),
             }
         )
     return normalized
@@ -162,6 +202,32 @@ def _build_query_text(mode: str, prompt: str, contexts: List[Dict[str, Any]]) ->
     return "\n".join([header, *context_titles, *text_samples]).strip()
 
 
+def _build_web_query_text(mode: str, prompt: str, contexts: List[Dict[str, Any]]) -> str:
+    prompt_text = str(prompt or "").strip()
+    context_titles = [
+        str(ctx.get("title") or "").strip()
+        for ctx in contexts[:4]
+        if str(ctx.get("title") or "").strip()
+    ]
+    keyword_source = " ".join(
+        [
+            prompt_text,
+            *context_titles,
+            *[str(ctx.get("text") or "") for ctx in contexts[:4]],
+        ]
+    )
+    keywords = _extract_keywords(keyword_source, limit=8)
+
+    parts = [
+        prompt_text,
+        *context_titles[:3],
+        " ".join(keywords),
+        SUPPORTED_ANALYSIS_MODES.get(mode, "analysis"),
+    ]
+    compact_query = " ".join(part for part in parts if part).strip()
+    return compact_query[:240] if compact_query else SUPPORTED_ANALYSIS_MODES.get(mode, "analysis")
+
+
 def _format_local_evidence(results: List[Dict[str, Any]], source_kind: str) -> List[Dict[str, Any]]:
     formatted = []
     seen = set()
@@ -180,8 +246,11 @@ def _format_local_evidence(results: List[Dict[str, Any]], source_kind: str) -> L
                 "year": str(row.get("year") or ""),
                 "filename": str(row.get("filename") or ""),
                 "source_lid": str(row.get("book_id") or ""),
+                "chunk_id": str(row.get("chunk_id") or ""),
+                "chunk_ref": str(row.get("chunk_ref") or ""),
                 "chapter": str(row.get("chapter") or "Unknown Chapter"),
                 "text": _trim(str(row.get("text") or ""), 420),
+                "full_text": str(row.get("text") or ""),
                 "similarity": similarity,
                 "url": "",
             }
@@ -193,7 +262,9 @@ class BaseWebEvidenceProvider:
     def is_configured(self) -> bool:
         return False
 
-    def search(self, query: str, limit: int = 5) -> Dict[str, Any]:
+    def search(
+        self, query: str, limit: int = 5, grounded_prompt: str = ""
+    ) -> Dict[str, Any]:
         return {"status": "disabled", "results": []}
 
 
@@ -203,14 +274,18 @@ class DisabledWebEvidenceProvider(BaseWebEvidenceProvider):
 
 class GenericJsonWebEvidenceProvider(BaseWebEvidenceProvider):
     def __init__(self):
-        self.endpoint = os.getenv("COGNITIVE_WEB_RAG_ENDPOINT", "").strip()
-        self.api_key = os.getenv("COGNITIVE_WEB_RAG_API_KEY", "").strip()
-        self.timeout_seconds = int(os.getenv("COGNITIVE_WEB_RAG_TIMEOUT_SECONDS", "15"))
+        self.endpoint = _get_env_value("COGNITIVE_WEB_RAG_ENDPOINT")
+        self.api_key = _get_env_value("COGNITIVE_WEB_RAG_API_KEY")
+        self.timeout_seconds = int(
+            _get_env_value("COGNITIVE_WEB_RAG_TIMEOUT_SECONDS", "15")
+        )
 
     def is_configured(self) -> bool:
         return bool(self.endpoint)
 
-    def search(self, query: str, limit: int = 5) -> Dict[str, Any]:
+    def search(
+        self, query: str, limit: int = 5, grounded_prompt: str = ""
+    ) -> Dict[str, Any]:
         if not self.is_configured():
             return {"status": "disabled", "results": []}
 
@@ -241,8 +316,11 @@ class GenericJsonWebEvidenceProvider(BaseWebEvidenceProvider):
                     "year": str(item.get("year") or ""),
                     "filename": "",
                     "source_lid": "",
+                    "chunk_id": "",
+                    "chunk_ref": "",
                     "chapter": str(item.get("section") or ""),
                     "text": _trim(str(item.get("snippet") or item.get("text") or ""), 420),
+                    "full_text": str(item.get("text") or item.get("snippet") or ""),
                     "similarity": int(item.get("score") or 0),
                     "url": str(item.get("url") or ""),
                 }
@@ -251,8 +329,215 @@ class GenericJsonWebEvidenceProvider(BaseWebEvidenceProvider):
         return {"status": "success", "results": normalized}
 
 
+def _build_gemini_grounded_prompt(
+    mode: str, prompt: str, contexts: List[Dict[str, Any]]
+) -> str:
+    context_blocks = "\n\n".join(
+        [
+            f"[Context {index + 1}] {ctx.get('title') or 'Selected Context'}"
+            + (
+                f" | {ctx.get('chapter') or ctx.get('source_label')}"
+                if ctx.get("chapter") or ctx.get("source_label")
+                else ""
+            )
+            + f"\n{_trim(ctx.get('full_text') or ctx.get('text') or '', 700)}"
+            for index, ctx in enumerate(contexts[:4])
+        ]
+    )
+    mode_label = SUPPORTED_ANALYSIS_MODES.get(mode, "Analysis")
+    task_instruction = {
+        "rag": (
+            "Answer the user question directly. Use the selected context as the primary frame, "
+            "and use Google Search grounding only when it adds relevant outside information."
+        ),
+        "cross_pollination": (
+            "Find non-obvious bridges between the selected context and relevant grounded external material."
+        ),
+        "friction": (
+            "Identify tensions, contradictions, or incompatible assumptions between the selected context "
+            "and grounded external information."
+        ),
+        "gap": (
+            "Identify missing perspectives, weakly supported areas, and useful directions for follow-up research."
+        ),
+    }.get(mode, "Analyze the selected context using grounded web information.")
+
+    return (
+        f"Mode: {mode_label}\n"
+        f"Task: {task_instruction}\n"
+        f"User prompt: {prompt or 'No explicit prompt was provided.'}\n\n"
+        f"Selected context:\n{context_blocks or 'No explicit context provided.'}\n\n"
+        "Return plain text only. Do not emit JSON. Do not fabricate citations or URLs."
+    )
+
+
+def _extract_gemini_answer_text(payload: Dict[str, Any]) -> str:
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        return ""
+    content = (candidates[0] or {}).get("content") or {}
+    parts = content.get("parts") or []
+    texts = [str(part.get("text") or "").strip() for part in parts if part.get("text")]
+    return "\n".join(text for text in texts if text).strip()
+
+
+def _format_gemini_grounding_evidence(
+    payload: Dict[str, Any], limit: int = 5
+) -> List[Dict[str, Any]]:
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        return []
+
+    grounding_metadata = (candidates[0] or {}).get("groundingMetadata") or {}
+    grounding_chunks = grounding_metadata.get("groundingChunks") or []
+    grounding_supports = grounding_metadata.get("groundingSupports") or []
+
+    support_map: Dict[int, List[str]] = {}
+    for support in grounding_supports:
+        segment = (support or {}).get("segment") or {}
+        segment_text = str(segment.get("text") or "").strip()
+        if not segment_text:
+            continue
+        for chunk_index in (support or {}).get("groundingChunkIndices") or []:
+            try:
+                index = int(chunk_index)
+            except Exception:
+                continue
+            support_map.setdefault(index, [])
+            if segment_text not in support_map[index]:
+                support_map[index].append(segment_text)
+
+    normalized: List[Dict[str, Any]] = []
+    for index, chunk in enumerate(grounding_chunks[:limit]):
+        web_source = (chunk or {}).get("web") or {}
+        uri = str(web_source.get("uri") or "").strip()
+        title = str(web_source.get("title") or "").strip() or "Google Search Result"
+        support_text = "\n\n".join(support_map.get(index, [])).strip()
+        normalized.append(
+            {
+                "id": uri or f"gemini-search-{index}",
+                "source_kind": "web",
+                "title": title,
+                "author": "Google Search",
+                "year": "",
+                "filename": "",
+                "source_lid": "",
+                "chunk_id": "",
+                "chunk_ref": "",
+                "chapter": "",
+                "text": _trim(support_text or title, 420),
+                "full_text": support_text or title,
+                "similarity": max(0, 100 - (index * 8)),
+                "url": uri,
+            }
+        )
+    return normalized
+
+
+class GeminiSearchWebEvidenceProvider(BaseWebEvidenceProvider):
+    def __init__(self):
+        self.api_key = _get_env_value("COGNITIVE_GEMINI_API_KEY")
+        self.model = _get_env_value(
+            "COGNITIVE_GEMINI_MODEL", "gemini-2.5-flash-lite"
+        )
+        self.timeout_seconds = int(
+            _get_env_value("COGNITIVE_WEB_RAG_TIMEOUT_SECONDS", "15")
+        )
+
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+
+    def search(
+        self, query: str, limit: int = 5, grounded_prompt: str = ""
+    ) -> Dict[str, Any]:
+        if not self.is_configured():
+            return {"status": "disabled", "results": []}
+
+        logger.info(
+            "Gemini web grounding started model=%s limit=%s %s %s",
+            self.model,
+            limit,
+            summarize_text_for_log("query", query),
+            summarize_text_for_log("grounded_prompt", grounded_prompt),
+        )
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+            params={"key": self.api_key},
+            json={
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": grounded_prompt or query}],
+                    }
+                ],
+                "tools": [{"google_search": {}}],
+            },
+            timeout=self.timeout_seconds,
+        )
+        if response.status_code >= 400:
+            detail = ""
+            try:
+                payload = response.json() or {}
+                detail = str(
+                    (payload.get("error") or {}).get("message")
+                    or payload.get("message")
+                    or payload.get("detail")
+                    or ""
+                ).strip()
+            except Exception:
+                detail = ""
+
+            if response.status_code == 403:
+                message = (
+                    "Gemini Search grounding returned 403. Check that the Gemini API key is valid "
+                    "and that this project has access to the Gemini API."
+                )
+            else:
+                message = f"Gemini Search grounding returned HTTP {response.status_code}."
+            if detail:
+                message = f"{message} {detail}"
+            logger.warning(
+                "Gemini web grounding failed model=%s status=%s reason=%s",
+                self.model,
+                response.status_code,
+                safe_error_detail(message),
+            )
+            return {"status": "error", "results": [], "message": message}
+
+        payload = response.json() or {}
+        answer_text = _extract_gemini_answer_text(payload)
+        normalized = _format_gemini_grounding_evidence(payload, limit=limit)
+        candidates = payload.get("candidates") or []
+        grounding_metadata = (
+            (candidates[0] or {}).get("groundingMetadata") if candidates else {}
+        ) or {}
+        query_count = len(grounding_metadata.get("webSearchQueries") or [])
+
+        logger.info(
+            "Gemini web grounding succeeded model=%s sources=%s queries=%s %s",
+            self.model,
+            len(normalized),
+            query_count,
+            summarize_text_for_log("answer", answer_text),
+        )
+
+        return {
+            "status": "success",
+            "results": normalized,
+            "message": (
+                "Grounded web evidence was included via Gemini Search."
+                if normalized or answer_text
+                else "Gemini Search returned no grounded web evidence."
+            ),
+            "answer_text": answer_text,
+            "queries": grounding_metadata.get("webSearchQueries") or [],
+        }
+
+
 def _get_web_provider() -> BaseWebEvidenceProvider:
-    provider = os.getenv("COGNITIVE_WEB_RAG_PROVIDER", "disabled").strip().lower()
+    provider = _get_env_value("COGNITIVE_WEB_RAG_PROVIDER", "disabled").strip().lower()
+    if provider == "gemini_search":
+        return GeminiSearchWebEvidenceProvider()
     if provider == "generic_json":
         return GenericJsonWebEvidenceProvider()
     return DisabledWebEvidenceProvider()
@@ -289,6 +574,7 @@ def _heuristic_payload(
     contexts: List[Dict[str, Any]],
     local_evidence: List[Dict[str, Any]],
     web_evidence: List[Dict[str, Any]],
+    grounded_web_answer: str = "",
 ) -> Dict[str, Any]:
     context_blob = " ".join(ctx["text"] for ctx in contexts[:4])
     evidence_blob = " ".join(item["text"] for item in local_evidence[:4])
@@ -328,15 +614,27 @@ def _heuristic_payload(
         ]
     else:
         summary = (
-            f"{answer_seed} was answered using {len(contexts)} selected context item(s), "
-            f"{len(local_evidence)} local evidence item(s), and {len(web_evidence)} web evidence item(s). "
-            f"The most recurrent terms were {', '.join(top_terms[:3]) or 'not strongly clustered'}."
+            grounded_web_answer
+            if grounded_web_answer
+            else (
+                f"{answer_seed} was answered using {len(contexts)} selected context item(s), "
+                f"{len(local_evidence)} local evidence item(s), and {len(web_evidence)} web evidence item(s). "
+                f"The most recurrent terms were {', '.join(top_terms[:3]) or 'not strongly clustered'}."
+            )
         )
-        bullets = [
-            "This answer is grounded first in the selected context and then expanded through retrieval.",
-            "Inspect the evidence sections below before saving the result into the echo tree.",
-            "Refine the question if you want a narrower answer or different evidence balance.",
-        ]
+        bullets = (
+            [
+                "Grounded with Google Search via Gemini.",
+                "Inspect the evidence sections below before saving the result into the echo tree.",
+                "Refine the question if you want a narrower answer or different evidence balance.",
+            ]
+            if grounded_web_answer
+            else [
+                "This answer is grounded first in the selected context and then expanded through retrieval.",
+                "Inspect the evidence sections below before saving the result into the echo tree.",
+                "Refine the question if you want a narrower answer or different evidence balance.",
+            ]
+        )
 
     follow_ups = [f"Expand on {term}" for term in top_terms[:3]]
 
@@ -354,6 +652,7 @@ def _build_llm_prompt(
     contexts: List[Dict[str, Any]],
     local_evidence: List[Dict[str, Any]],
     web_evidence: List[Dict[str, Any]],
+    grounded_web_answer: str = "",
 ) -> str:
     contexts_text = "\n".join(
         [
@@ -373,6 +672,11 @@ def _build_llm_prompt(
             for index, item in enumerate(web_evidence[:4])
         ]
     )
+    grounded_answer_text = (
+        f"\nGemini grounded answer:\n{_trim(grounded_web_answer, 900)}\n"
+        if grounded_web_answer
+        else ""
+    )
     mode_label = SUPPORTED_ANALYSIS_MODES.get(mode, "Analysis")
     return f"""You are synthesizing a derived analysis column for a research canvas.
 Mode: {mode_label}
@@ -386,6 +690,7 @@ Local evidence:
 
 Web evidence:
 {web_text or "No web evidence available."}
+{grounded_answer_text}
 
 Respond only as valid JSON with this shape:
 {{
@@ -409,32 +714,66 @@ def run_analysis(
     normalized_contexts = _normalize_contexts(contexts or [])
     normalized_selection_refs = _normalize_selection_refs(selection_refs or [])
 
+    logger.info(
+        "Derived analysis started mode=%s include_web=%s contexts=%s selections=%s provider=%s %s",
+        normalized_mode,
+        bool(include_web),
+        len(normalized_contexts),
+        len(normalized_selection_refs),
+        _get_env_value("COGNITIVE_WEB_RAG_PROVIDER", "disabled").strip().lower()
+        or "disabled",
+        summarize_text_for_log("prompt", prompt),
+    )
+
     if not normalized_contexts:
         raise ValueError("At least one context item is required to run an analysis.")
 
     query_text = _build_query_text(normalized_mode, prompt, normalized_contexts)
+    web_query_text = _build_web_query_text(normalized_mode, prompt, normalized_contexts)
     local_evidence = _search_local_evidence(query_text)
+    logger.info(
+        "Derived analysis local retrieval completed mode=%s local_evidence=%s %s",
+        normalized_mode,
+        len(local_evidence),
+        summarize_text_for_log("web_query", web_query_text),
+    )
 
     web_provider = _get_web_provider()
     web_status = "disabled"
     web_message = "Web retrieval is not configured."
     web_evidence: List[Dict[str, Any]] = []
+    grounded_web_answer = ""
 
     if include_web:
         if web_provider.is_configured():
             try:
-                provider_result = web_provider.search(query_text, limit=5)
+                provider_result = web_provider.search(
+                    web_query_text,
+                    limit=5,
+                    grounded_prompt=_build_gemini_grounded_prompt(
+                        normalized_mode,
+                        prompt,
+                        normalized_contexts,
+                    ),
+                )
+                grounded_web_answer = str(
+                    provider_result.get("answer_text") or ""
+                ).strip()
                 web_status = provider_result.get("status") or "success"
                 web_evidence = provider_result.get("results") or []
-                web_message = (
+                web_message = str(provider_result.get("message") or "").strip() or (
                     "Live web evidence was included."
                     if web_evidence
                     else "The provider returned no web evidence."
                 )
             except Exception as error:
-                logger.error(f"Web evidence search failed: {error}")
+                logger.error(
+                    "Web evidence search failed for %s reason=%s",
+                    web_provider.__class__.__name__,
+                    safe_error_detail(error),
+                )
                 web_status = "error"
-                web_message = "Live web retrieval failed for this request."
+                web_message = str(error) or "Live web retrieval failed for this request."
         else:
             web_status = "disabled"
             web_message = "Live web retrieval is available only after provider keys are configured."
@@ -442,26 +781,43 @@ def run_analysis(
         web_status = "skipped"
         web_message = "Web retrieval was skipped for this request."
 
+    logger.info(
+        "Derived analysis web stage completed mode=%s provider=%s status=%s web_results=%s %s",
+        normalized_mode,
+        web_provider.__class__.__name__,
+        web_status,
+        len(web_evidence),
+        summarize_text_for_log("grounded_answer", grounded_web_answer),
+    )
+
     fallback_payload = _heuristic_payload(
         normalized_mode,
         prompt,
         normalized_contexts,
         local_evidence,
         web_evidence,
+        grounded_web_answer=grounded_web_answer,
     )
-    synthesized = runtime_manager.generate_structured_json(
-        _build_llm_prompt(
-            normalized_mode,
-            prompt,
-            normalized_contexts,
-            local_evidence,
-            web_evidence,
-        ),
-        fallback=fallback_payload,
-        timeout=90,
-        temperature=0.2,
-        num_predict=700,
-    )
+    try:
+        synthesized = runtime_manager.generate_structured_json(
+            _build_llm_prompt(
+                normalized_mode,
+                prompt,
+                normalized_contexts,
+                local_evidence,
+                web_evidence,
+                grounded_web_answer=grounded_web_answer,
+            ),
+            fallback=fallback_payload,
+            timeout=90,
+            temperature=0.2,
+            num_predict=700,
+        )
+    except (RuntimeNotReadyError, RuntimeLoadError):
+        logger.warning(
+            "Structured analysis synthesis fell back to heuristic payload because reasoning was not ready."
+        )
+        synthesized = fallback_payload
 
     title = str(synthesized.get("title") or "").strip() or (
         title_hint.strip() if title_hint else fallback_payload["title"]
@@ -482,6 +838,17 @@ def run_analysis(
         )
         if str(item).strip()
     ][:4]
+
+    logger.info(
+        "Derived analysis completed mode=%s web_status=%s local_evidence=%s web_evidence=%s bullets=%s follow_ups=%s %s",
+        normalized_mode,
+        web_status,
+        len(local_evidence),
+        len(web_evidence),
+        len(bullets),
+        len(follow_ups),
+        summarize_text_for_log("summary", summary),
+    )
 
     return {
         "mode": normalized_mode,
