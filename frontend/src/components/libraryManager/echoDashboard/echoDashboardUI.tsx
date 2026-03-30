@@ -126,7 +126,7 @@ export default function EchoDashboardUI(props: any) {
   );
   const visibleDerivedColumns = React.useMemo(
     () =>
-      (state.derivedColumns || []).filter((derived: any) => {
+      (state.visibleDerivedColumns || []).filter((derived: any) => {
         if (String(state.zoomTarget || "") === String(derived.id || "")) {
           return true;
         }
@@ -138,7 +138,7 @@ export default function EchoDashboardUI(props: any) {
           height: ECHO_COLUMN_HEIGHT,
         });
       }),
-    [isRectVisible, state.derivedColumns, state.positions, state.zoomTarget],
+    [isRectVisible, state.positions, state.visibleDerivedColumns, state.zoomTarget],
   );
   const visibleEchoClusterIds = React.useMemo(
     () =>
@@ -198,7 +198,7 @@ export default function EchoDashboardUI(props: any) {
       }
       if (
         draftBranches.some((draft: any) => String(draft.id) === String(columnId)) ||
-        (state.derivedColumns || []).some(
+        (state.visibleDerivedColumns || []).some(
           (derived: any) => String(derived.id) === String(columnId),
         )
       ) {
@@ -206,11 +206,11 @@ export default function EchoDashboardUI(props: any) {
       }
       return SAVED_COLUMN_WIDTH;
     },
-    [draftBranches, state.activeColumnId, state.derivedColumns],
+    [draftBranches, state.activeColumnId, state.visibleDerivedColumns],
   );
   const visibleDerivedEdges = React.useMemo(
     () =>
-      (state.derivedColumns || []).flatMap((derived: any) =>
+      (visibleDerivedColumns || []).flatMap((derived: any) =>
         (derived.sourceAnchorIds || [])
           .filter(Boolean)
           .map((anchorId: string) => ({
@@ -238,8 +238,8 @@ export default function EchoDashboardUI(props: any) {
       ),
     [
       isRectVisible,
-      state.derivedColumns,
       state.positions,
+      visibleDerivedColumns,
       visibleEchoClusterIds,
     ],
   );

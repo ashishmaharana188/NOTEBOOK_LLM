@@ -204,6 +204,24 @@ export default function useEchoDashboardState({
         [draftBranches, expandedEchoIdSet],
     );
 
+    const visibleDerivedColumns = useMemo(
+        () =>
+            derivedColumns.filter((column: any) => {
+                const sourceEchoIds = Array.isArray(column.sourceEchoIds)
+                    ? column.sourceEchoIds
+                          .map((echoId: any) => String(echoId || ""))
+                          .filter(Boolean)
+                    : [];
+                if (sourceEchoIds.length === 0) {
+                    return true;
+                }
+                return sourceEchoIds.some((echoId: string) =>
+                    expandedEchoIdSet.has(echoId),
+                );
+            }),
+        [derivedColumns, expandedEchoIdSet],
+    );
+
     const branchesBySourceEchoId = useMemo(() => {
         const next: Record<string, any[]> = {};
         const pushBranch = (sourceEchoId: string, branch: any) => {
@@ -709,6 +727,23 @@ export default function useEchoDashboardState({
                 .toString(36)
                 .slice(2, 7)}`;
             const nextPos = getDerivedColumnPosition(sourceAnchorIds || []);
+            const sourceEchoIds = Array.from(
+                new Set(
+                    [
+                        ...(contexts || []).map((context: any) =>
+                            String(context?.echo_id || ""),
+                        ),
+                        ...(selectionRefs || []).map((ref: any) =>
+                            String(
+                                ref?.echo_id ||
+                                    (String(ref?.kind || "").includes("echo")
+                                        ? ref?.id
+                                        : ""),
+                            ),
+                        ),
+                    ].filter(Boolean),
+                ),
+            );
 
             setPositions((prev) => ({
                 ...prev,
@@ -726,6 +761,7 @@ export default function useEchoDashboardState({
                     contexts,
                     selectionRefs,
                     sourceAnchorIds: sourceAnchorIds || [],
+                    sourceEchoIds,
                     localEvidence: [],
                     webEvidence: [],
                     webStatus: includeWeb ? "pending" : "skipped",
@@ -1373,6 +1409,7 @@ export default function useEchoDashboardState({
         draftBranches,
         visibleDraftBranches,
         derivedColumns,
+        visibleDerivedColumns,
         expandedEchoByCluster,
         branchesBySourceEchoId,
         highlightedBranchClusterIds,
