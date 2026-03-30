@@ -1,9 +1,10 @@
 import React from "react";
+import { IonIcon } from "@ionic/react";
 import {
-  ChatBubbleLeftRightIcon,
-  SparklesIcon,
-  XMarkIcon,
-} from "@heroicons/react/24/outline";
+  chatbubbleEllipsesOutline,
+  closeOutline,
+  sparklesOutline,
+} from "ionicons/icons";
 
 interface EchoTriggerProps {
   visible: boolean;
@@ -51,7 +52,7 @@ export default function EchoTrigger({
             onClick={onSearch}
             className="flex items-center gap-2 rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white shadow-lg transition-colors hover:bg-purple-500"
           >
-            <SparklesIcon className="w-4 h-4" />
+            <IonIcon icon={sparklesOutline} className="w-4 h-4" />
             Find Echoes
           </button>
 
@@ -61,7 +62,7 @@ export default function EchoTrigger({
             onClick={() => setIsPromptOpen((prev) => !prev)}
             className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white shadow-lg transition-colors hover:bg-black"
           >
-            <ChatBubbleLeftRightIcon className="w-4 h-4" />
+            <IonIcon icon={chatbubbleEllipsesOutline} className="w-4 h-4" />
             Ask RAG
           </button>
 
@@ -70,7 +71,7 @@ export default function EchoTrigger({
             onClick={onDismiss}
             className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-accent-hover"
           >
-            <XMarkIcon className="w-4 h-4" />
+            <IonIcon icon={closeOutline} className="w-4 h-4" />
           </button>
         </div>
 
@@ -104,7 +105,7 @@ export default function EchoTrigger({
                 }}
                 className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-900 transition-colors hover:bg-slate-100"
               >
-                <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                <IonIcon icon={chatbubbleEllipsesOutline} className="h-4 w-4" />
                 Run RAG
               </button>
             </div>

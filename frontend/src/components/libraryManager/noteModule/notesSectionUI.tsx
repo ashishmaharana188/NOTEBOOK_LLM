@@ -1,10 +1,14 @@
 import React from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { IonIcon } from "@ionic/react";
 import {
-  MagnifyingGlassPlusIcon,
-  MagnifyingGlassMinusIcon,
-  ViewfinderCircleIcon,
-} from "@heroicons/react/24/outline";
+  addOutline,
+  checkmarkOutline,
+  closeOutline,
+  folderOpenOutline,
+  removeOutline,
+  scanOutline,
+} from "ionicons/icons";
 
 import NotesFormUI from "./notesFormUI";
 import AutoZoomTrigger from "./components/AutoZoomTrigger";
@@ -176,7 +180,7 @@ const NotesSectionUI: React.FC<{
                   onClick={() => zoomIn(0.2)}
                   className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
                 >
-                  <MagnifyingGlassPlusIcon className="w-5 h-5" />
+                  <IonIcon icon={addOutline} className="w-5 h-5" />
                 </button>
                 <div className="text-[10px] font-mono font-bold text-center text-muted py-1 border-y border-gray-100 w-full">
                   {Math.round(canvasScale * 100)}%
@@ -185,13 +189,13 @@ const NotesSectionUI: React.FC<{
                   onClick={() => zoomOut(0.2)}
                   className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-md transition-colors"
                 >
-                  <MagnifyingGlassMinusIcon className="w-5 h-5" />
+                  <IonIcon icon={removeOutline} className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => zoomToElement("canvas-container", 1, 600)}
                   className="p-2 text-gray-600 hover:text-primary hover:bg-gray-100 rounded-md transition-colors mt-1 border-t border-gray-100 flex flex-col items-center justify-center"
                 >
-                  <ViewfinderCircleIcon className="w-5 h-5" />
+                  <IonIcon icon={scanOutline} className="w-5 h-5" />
                 </button>
               </div>
             </React.Fragment>
@@ -215,9 +219,10 @@ const NotesSectionUI: React.FC<{
             <div className="flex justify-end gap-2 mt-1">
               <button
                 onClick={() => state.setIsCreatingStack(false)}
-                className="text-xs font-bold text-muted hover:text-gray-800"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-slate-100 hover:text-gray-800"
+                title="Cancel"
               >
-                Cancel
+                <IonIcon icon={closeOutline} className="h-4 w-4" />
               </button>
               <button
                 onClick={() => {
@@ -225,18 +230,20 @@ const NotesSectionUI: React.FC<{
                   state.setIsCreatingStack(false);
                   state.setDraftStackTitle("");
                 }}
-                className="text-xs font-bold bg-accent text-accent-text px-3 py-1 rounded hover:bg-accent-hover"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-text transition-colors hover:bg-accent-hover"
+                title="Save Stack"
               >
-                Save Stack
+                <IonIcon icon={checkmarkOutline} className="h-4 w-4" />
               </button>
             </div>
           </div>
         ) : (
           <button
             onClick={() => state.setIsCreatingStack(true)}
-            className="px-4 py-2 bg-accent text-accent-text text-sm font-bold rounded shadow-lg hover:bg-accent-hover transition border border-gray-700"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-700 bg-accent text-accent-text shadow-lg transition hover:bg-accent-hover"
+            title="Create Stack"
           >
-            + New Stack
+            <IonIcon icon={folderOpenOutline} className="h-5 w-5" />
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import React from "react";
-import { PencilSquareIcon, SparklesIcon } from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import { createOutline, sparklesOutline } from "ionicons/icons";
 
 export default function InteractiveNoteCard({
   note,
@@ -13,7 +14,7 @@ export default function InteractiveNoteCard({
       <div className="flex justify-between items-center mb-3 border-b border-slate-100 pb-2">
         <div className="flex items-center gap-2">
           <span className="text-[9px] font-bold text-primary uppercase tracking-widest flex items-center gap-1">
-            <PencilSquareIcon className="w-3 h-3 text-muted" /> User Note
+            <IonIcon icon={createOutline} className="w-3 h-3 text-muted" /> User Note
           </span>
           {/* SAFE CHECK: Renders the Sparkles button if a valid link exists */}
           {note.linked_echo_id &&
@@ -27,7 +28,7 @@ export default function InteractiveNoteCard({
                 className="text-muted hover:text-purple-600 transition-colors bg-purple-50 p-1 rounded-sm border border-purple-100"
                 title="View Source Echo"
               >
-                <SparklesIcon className="w-3 h-3" />
+                <IonIcon icon={sparklesOutline} className="w-3 h-3" />
               </button>
             )}
         </div>

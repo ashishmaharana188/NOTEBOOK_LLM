@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import {
+    checkmarkOutline,
+    closeOutline,
+    folderOpenOutline,
+} from "ionicons/icons";
 
 // --- BLOCKNOTE IMPORTS ---
 import "@blocknote/core/fonts/inter.css";
@@ -255,7 +260,7 @@ export default function NotesFormUI({
                             className="ml-6 p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors shrink-0"
                             title="Close Editor"
                         >
-                            <XMarkIcon className="w-7 h-7" />
+                            <IonIcon icon={closeOutline} className="w-7 h-7" />
                         </button>
                     </div>
 
@@ -279,9 +284,14 @@ export default function NotesFormUI({
                                 className="shrink-0 px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded-md shadow-sm hover:border-slate-400 hover:text-slate-900 transition-colors"
                                 title="Change note location"
                             >
-                                {currentStack && currentGroup
-                                    ? `${currentStack.title} / ${currentGroup.title}`
-                                    : "Unfiled"}
+                                <span className="inline-flex items-center gap-2">
+                                    <IonIcon icon={folderOpenOutline} className="h-4 w-4" />
+                                    <span>
+                                        {currentStack && currentGroup
+                                            ? `${currentStack.title} / ${currentGroup.title}`
+                                            : "Unfiled"}
+                                    </span>
+                                </span>
                             </button>
 
                             {/* Tags Input */}
@@ -299,13 +309,14 @@ export default function NotesFormUI({
                                 onClick={onClose}
                                 className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 rounded-md transition-colors"
                             >
-                                Cancel
+                                <IonIcon icon={closeOutline} className="h-4 w-4" />
                             </button>
                             <button
                                 onClick={handleMainSaveClick}
                                 className="px-6 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-md hover:bg-blue-700 shadow-md transition-all active:scale-95"
+                                title="Save Document"
                             >
-                                Save Document
+                                <IonIcon icon={checkmarkOutline} className="h-4 w-4" />
                             </button>
                         </div>
                     </div>

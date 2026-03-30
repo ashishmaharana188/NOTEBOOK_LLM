@@ -1,17 +1,24 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { IonIcon } from "@ionic/react";
 import {
-    BookmarkSquareIcon,
-    CheckIcon,
-    ChevronDownIcon,
-    ChevronUpIcon,
-    PencilSquareIcon,
-    TrashIcon,
-} from "@heroicons/react/24/outline";
+    bookmarkOutline,
+    checkmarkOutline,
+    chevronDownOutline,
+    chevronUpOutline,
+    createOutline,
+    trashOutline,
+} from "ionicons/icons";
 import type { EchoChunk } from "../echoTypes";
 import ExpandableChunkCard from "./ExpandableChunkCard";
 import { useModelRuntime } from "../../../system/ModelRuntimeProvider";
 import { buildApiUrl } from "../../../../lib/runtimeConfig";
+import {
+    createMarkerFromSelection,
+    createMarkerFromQuote,
+    renderMarkedText,
+    type EchoMarker,
+} from "../utils/markerUtils";
 
 const InteractiveChunkCard = React.memo(
     ({
@@ -92,7 +99,9 @@ const InteractiveChunkCard = React.memo(
         );
         const [customTitle, setCustomTitle] = useState(chunk.title || "");
         const [selectionText, setSelectionText] = useState("");
+        const [activeMarker, setActiveMarker] = useState<EchoMarker | null>(null);
         const contextRef = useRef<HTMLDivElement | null>(null);
+        const containerRef = useRef<HTMLDivElement | null>(null);
         const selectionSourceKeyRef = useRef(
             `incoming:${sourceAnchorId}:${String((chunk as any).chunk_id || (chunk as any).echo_id || chunk.title || "echo")}`,
         );
@@ -104,12 +113,12 @@ const InteractiveChunkCard = React.memo(
         const getSelectionWithinContext = useCallback(() => {
             const selection = window.getSelection();
             if (!selection || selection.rangeCount === 0 || !contextRef.current) {
-                return "";
+                return null;
             }
 
             const text = selection.toString().trim();
-            if (!text || text.length < 6) {
-                return "";
+            if (!text || text.length < 2) {
+                return null;
             }
 
             const anchorNode = selection.anchorNode;
@@ -118,11 +127,24 @@ const InteractiveChunkCard = React.memo(
                 (anchorNode && !contextRef.current.contains(anchorNode)) ||
                 (focusNode && !contextRef.current.contains(focusNode))
             ) {
-                return "";
+                return null;
             }
 
-            return text;
-        }, []);
+            const marker =
+                createMarkerFromSelection(
+                contextRef.current,
+                String(chunk.text || ""),
+                "excerpt",
+            ) ||
+                createMarkerFromQuote(
+                    String(chunk.text || ""),
+                    text,
+                    "excerpt",
+                );
+            if (!marker) return null;
+
+            return { text, marker };
+        }, [chunk]);
 
         const resolvedLinkedNoteIds = linkedNoteIds.filter(Boolean);
         const linkedNoteCount = resolvedLinkedNoteIds.length;
@@ -145,16 +167,12 @@ const InteractiveChunkCard = React.memo(
         useEffect(() => {
             if (isCollapsed) {
                 setSelectionText("");
+                setActiveMarker(null);
                 setShowHighlightMenu(false);
-            }
-        }, [isCollapsed]);
-
-        useEffect(() => {
-            if (!selectionText) {
                 selectionSyncKeyRef.current = "";
                 onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
             }
-        }, [onClearHighlightRagComposer, selectionText]);
+        }, [isCollapsed, onClearHighlightRagComposer]);
 
         useEffect(
             () => () => {
@@ -165,9 +183,21 @@ const InteractiveChunkCard = React.memo(
 
         const captureSelection = useCallback(() => {
             window.setTimeout(() => {
-                setSelectionText(getSelectionWithinContext());
+                const payload = getSelectionWithinContext();
+                if (!payload) return;
+                setSelectionText(payload.text);
+                setActiveMarker(payload.marker);
             }, 0);
         }, [getSelectionWithinContext]);
+
+        const clearEphemeralHighlight = useCallback(() => {
+            setSelectionText("");
+            setActiveMarker(null);
+            setShowHighlightMenu(false);
+            selectionSyncKeyRef.current = "";
+            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            window.getSelection()?.removeAllRanges();
+        }, [onClearHighlightRagComposer]);
 
         useEffect(() => {
             if (isCollapsed) return;
@@ -180,20 +210,18 @@ const InteractiveChunkCard = React.memo(
 
         useEffect(() => {
             if (!onAskRagFromHighlight) return;
-            if (selectionMode || isCollapsed) {
+            if (isCollapsed) {
                 selectionSyncKeyRef.current = "";
                 onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
                 return;
             }
 
             const trimmed = selectionText.trim();
-            if (!trimmed) {
-                selectionSyncKeyRef.current = "";
-                onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+            if (!trimmed || !activeMarker) {
                 return;
             }
 
-            const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}`;
+            const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}:${activeMarker.marker_id || activeMarker.start_offset || 0}`;
             if (selectionSyncKeyRef.current === nextSyncKey) {
                 return;
             }
@@ -225,10 +253,12 @@ const InteractiveChunkCard = React.memo(
                     chunk_ref: String((chunk as any).chunk_ref || ""),
                     source_lid: String((chunk as any).source_lid || ""),
                     full_text: String((chunk as any).full_text || chunk.text || ""),
+                    marker: activeMarker,
                 },
             });
         }, [
             activeBookTitle,
+            activeMarker,
             bookId,
             chunk,
             customTitle,
@@ -237,12 +267,34 @@ const InteractiveChunkCard = React.memo(
             libraryId,
             onAskRagFromHighlight,
             onClearHighlightRagComposer,
-            selectionMode,
             selectionText,
             sourceAnchorId,
             sourceLabel,
             targetClusterId,
         ]);
+
+        useEffect(() => {
+            if (!activeMarker?.quote || isCollapsed) return;
+            const handlePointerDown = (event: MouseEvent) => {
+                const target = event.target as HTMLElement | null;
+                if (
+                    target?.closest(
+                        "[data-selection-ignore='true'], [data-marker-persist='true']",
+                    )
+                ) {
+                    return;
+                }
+                if (containerRef.current?.contains(target as Node)) {
+                    return;
+                }
+                clearEphemeralHighlight();
+            };
+
+            document.addEventListener("mousedown", handlePointerDown);
+            return () => {
+                document.removeEventListener("mousedown", handlePointerDown);
+            };
+        }, [activeMarker, clearEphemeralHighlight, isCollapsed]);
 
         const handleSelectionToggle = useCallback(
             (event: React.MouseEvent<HTMLDivElement>) => {
@@ -381,8 +433,15 @@ const InteractiveChunkCard = React.memo(
         };
 
         const handleSearchHighlight = async () => {
-            const nextSelection = selectionText || getSelectionWithinContext();
+            const nextSelection =
+                selectionText.trim() || getSelectionWithinContext();
             if (!nextSelection || !onCreateBranchFromHighlight) return;
+            const nextSelectionText =
+                (typeof nextSelection === "string"
+                    ? nextSelection
+                    : nextSelection?.text) ||
+                "";
+            if (!nextSelectionText) return;
 
             const currentEchoRef =
                 echoId && (savedClusterIdRef.current || targetClusterId)
@@ -400,7 +459,7 @@ const InteractiveChunkCard = React.memo(
             }
 
             await onCreateBranchFromHighlight({
-                text: nextSelection,
+                text: nextSelectionText,
                 echoId: currentEchoRef.echoId,
                 clusterId: currentEchoRef.clusterId,
             });
@@ -408,8 +467,13 @@ const InteractiveChunkCard = React.memo(
         };
 
         const handleAskRag = () => {
-            const nextSelection = selectionText || getSelectionWithinContext();
-            if (!nextSelection || !onAskRagFromHighlight) return;
+            const payload = getSelectionWithinContext();
+            const nextSelection =
+                (payload?.text || selectionText || "").trim();
+            const nextMarker = payload?.marker || activeMarker;
+            if (!nextSelection || !nextMarker || !onAskRagFromHighlight) return;
+            setSelectionText(nextSelection);
+            setActiveMarker(nextMarker);
             onAskRagFromHighlight({
                 text: nextSelection,
                 title: customTitle || sourceLabel || "Selected Highlight",
@@ -436,17 +500,17 @@ const InteractiveChunkCard = React.memo(
                     chunk_ref: String((chunk as any).chunk_ref || ""),
                     source_lid: String((chunk as any).source_lid || ""),
                     full_text: String((chunk as any).full_text || chunk.text || ""),
+                    marker: nextMarker,
                 },
             });
             setShowHighlightMenu(false);
-            setSelectionText("");
-            window.getSelection()?.removeAllRanges();
         };
 
         if (isDeleted) return null;
 
         return (
             <div
+                ref={containerRef}
                 onClick={handleSelectionToggle}
                 className={`mb-4 overflow-hidden border bg-white shadow-sm transition-colors ${
                     isSelected
@@ -491,9 +555,9 @@ const InteractiveChunkCard = React.memo(
                                 className="flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-900"
                             >
                                 {isCollapsed ? (
-                                    <ChevronDownIcon className="h-4 w-4" />
+                                    <IonIcon icon={chevronDownOutline} className="h-4 w-4" />
                                 ) : (
-                                    <ChevronUpIcon className="h-4 w-4" />
+                                    <IonIcon icon={chevronUpOutline} className="h-4 w-4" />
                                 )}
                             </button>
                             <button
@@ -502,23 +566,23 @@ const InteractiveChunkCard = React.memo(
                                 title="Manage notes"
                                 className="flex h-8 w-8 items-center justify-center text-slate-500 transition-colors hover:text-slate-900 disabled:opacity-50"
                             >
-                                <PencilSquareIcon className="h-4 w-4" />
+                                <IonIcon icon={createOutline} className="h-4 w-4" />
                             </button>
                             {linkedNoteCount > 0 && (
                                 <span className="px-1 text-[10px] font-bold text-slate-500">
                                     {linkedNoteCount}
                                 </span>
                             )}
-                            <div className="relative">
+                            <div className="relative" data-selection-ignore="true">
                                 <button
                                     onMouseDown={(event) => event.preventDefault()}
                                     onClick={() =>
                                         setShowHighlightMenu((prev) => !prev)
                                     }
-                                    disabled={isProcessing || isCollapsed}
-                                    title="Highlight actions"
-                                    className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
-                                        selectionText && !isCollapsed
+                                disabled={isProcessing || isCollapsed}
+                                title="Highlight actions"
+                                className={`flex h-8 items-center justify-center px-1 text-[10px] font-bold uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
+                                        ((selectionText || activeMarker?.quote) && !isCollapsed)
                                             ? "text-slate-700 hover:text-slate-900"
                                             : "text-slate-500 hover:text-slate-900"
                                     }`}
@@ -559,9 +623,9 @@ const InteractiveChunkCard = React.memo(
                                 {isProcessing ? (
                                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-transparent" />
                                 ) : isSaved ? (
-                                    <CheckIcon className="h-4 w-4" />
+                                    <IonIcon icon={checkmarkOutline} className="h-4 w-4" />
                                 ) : (
-                                    <BookmarkSquareIcon className="h-4 w-4" />
+                                    <IonIcon icon={bookmarkOutline} className="h-4 w-4" />
                                 )}
                             </button>
                             <button
@@ -570,7 +634,7 @@ const InteractiveChunkCard = React.memo(
                                 title="Remove card"
                                 className="flex h-8 w-8 items-center justify-center text-slate-400 transition-colors hover:text-red-600 disabled:opacity-50"
                             >
-                                <TrashIcon className="h-4 w-4" />
+                                <IonIcon icon={trashOutline} className="h-4 w-4" />
                             </button>
                         </div>
                     </div>
@@ -579,13 +643,21 @@ const InteractiveChunkCard = React.memo(
                 {!isCollapsed && (
                     <div
                         ref={contextRef}
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
                         onMouseUp={captureSelection}
                         onKeyUp={captureSelection}
                         onTouchEnd={captureSelection}
-                        className="bg-white px-4 py-4 select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900 sm:px-5 sm:py-5"
+                        className="no-pan bg-white px-4 py-4 select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900 sm:px-5 sm:py-5"
+                        style={{ userSelect: "text", WebkitUserSelect: "text" }}
                     >
                         <p className="whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 selection:bg-[#f3dd73] selection:text-slate-900">
-                            {chunk.text}
+                            {renderMarkedText(
+                                String(chunk.text || ""),
+                                [],
+                                activeMarker,
+                                `incoming:${selectionSourceKeyRef.current}`,
+                            )}
                         </p>
                         <ExpandableChunkCard chunk={chunk} />
                     </div>

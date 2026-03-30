@@ -44,7 +44,7 @@ from scripts.build_db import ingest_csvs
 # --- INTERNAL IMPORTS ---
 from scripts.log_sanitizer import configure_runtime_logging, summarize_text_for_log
 from scripts.db_manager import DBManager, graph_db
-from scripts.analysis_engine import run_analysis
+from scripts.analysis_engine import SUPPORTED_ANALYSIS_MODES, run_analysis
 from scripts.echo_engine import get_echo_context
 from scripts.graph_engine import add_custom_edge, add_custom_node, get_core_graph
 from scripts.ingest_queue import ingest_queue_manager
@@ -429,6 +429,7 @@ class AnalysisContextItem(BaseModel):
     chunk_ref: str = ""
     source_lid: str = ""
     full_text: str = ""
+    marker: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AnalysisSelectionRef(BaseModel):
@@ -460,6 +461,11 @@ class EchoAnalysisSaveRequest(BaseModel):
     web_evidence: List[Dict[str, Any]] = Field(default_factory=list)
     follow_ups: List[str] = Field(default_factory=list)
     source_anchor_ids: List[str] = Field(default_factory=list)
+    parent_cluster_id: str = ""
+    source_echo_id: str = ""
+    target_cluster_id: str = ""
+    make_active: bool = False
+    origin_context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SpatialMetadataItem(BaseModel):
@@ -486,6 +492,7 @@ class ClusterSpawnRequest(BaseModel):
     source_echo_id: str = ""
     title: str = ""
     make_active: bool = True
+    origin_context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ClusterActivateRequest(BaseModel):
@@ -719,20 +726,166 @@ def run_echo_analysis_endpoint(request: EchoAnalysisRunRequest):
 @app.post("/echo/analysis/save")
 def save_echo_analysis_endpoint(request: EchoAnalysisSaveRequest):
     try:
-        import uuid
+        normalized_mode = str(request.mode or "analysis").strip().lower() or "analysis"
+        mode_label = SUPPORTED_ANALYSIS_MODES.get(normalized_mode, request.mode or "Analysis")
+        column_kind = "rag" if normalized_mode == "rag" else "analysis"
+        normalized_contexts = [item.dict() for item in request.contexts]
+        normalized_selection_refs = [item.dict() for item in request.selection_refs]
 
-        cluster_id = f"cluster_{uuid.uuid4().hex[:8]}"
-        echo_id = f"echo_{uuid.uuid4().hex[:8]}"
-        cluster_title = request.title.strip() or "Derived Analysis"
+        def _first_non_empty(items, key):
+            for item in items:
+                value = str(item.get(key) or "").strip()
+                if value:
+                    return value
+            return ""
 
-        graph_db.create_cluster(
-            cluster_id=cluster_id,
-            book_id=cluster_title,
-            library_id=None,
-            title=cluster_title,
-            is_active=False,
+        origin_context = dict(request.origin_context or {})
+        if not origin_context:
+            origin_context = next(
+                (
+                    {
+                        k: v
+                        for k, v in ctx.items()
+                        if k not in {"marker"} and str(v or "").strip()
+                    }
+                    for ctx in normalized_contexts
+                    if str(ctx.get("text") or "").strip()
+                ),
+                {},
+            )
+        if not origin_context:
+            origin_context = {
+                "title": request.title.strip() or mode_label,
+                "text": request.prompt.strip() or request.summary.strip(),
+                "chapter": "",
+                "source_label": "",
+            }
+
+        parent_cluster_id = (
+            str(request.parent_cluster_id or "").strip()
+            or str(origin_context.get("cluster_id") or "").strip()
+            or _first_non_empty(normalized_contexts, "cluster_id")
+            or _first_non_empty(normalized_selection_refs, "cluster_id")
+        )
+        source_echo_id = (
+            str(request.source_echo_id or "").strip()
+            or str(origin_context.get("echo_id") or "").strip()
+            or _first_non_empty(normalized_contexts, "echo_id")
+            or _first_non_empty(normalized_selection_refs, "echo_id")
         )
 
+        source_anchor_ids = []
+        for value in [
+            *(request.source_anchor_ids or []),
+            *[ctx.get("anchor_id") for ctx in normalized_contexts],
+            parent_cluster_id,
+        ]:
+            anchor_id = str(value or "").strip()
+            if anchor_id and anchor_id not in source_anchor_ids:
+                source_anchor_ids.append(anchor_id)
+
+        target_cluster_id = str(request.target_cluster_id or "").strip()
+        if not target_cluster_id and parent_cluster_id:
+            target_cluster_id = (
+                graph_db.find_cluster_by_parent_source_mode(
+                    parent_cluster_id=parent_cluster_id,
+                    source_echo_id=source_echo_id,
+                    column_kind=column_kind,
+                    mode=normalized_mode,
+                )
+                or ""
+            )
+
+        parent_cluster = graph_db.get_cluster(parent_cluster_id) if parent_cluster_id else None
+        target_cluster = graph_db.get_cluster(target_cluster_id) if target_cluster_id else None
+
+        cluster_book_id = (
+            (target_cluster or {}).get("book_id")
+            or (parent_cluster or {}).get("book_id")
+            or str(origin_context.get("book_id") or "").strip()
+            or request.title.strip()
+            or mode_label
+        )
+        cluster_library_id = (
+            (target_cluster or {}).get("library_id")
+            or (parent_cluster or {}).get("library_id")
+            or str(origin_context.get("library_id") or "").strip()
+            or None
+        )
+
+        base_title = (
+            str(origin_context.get("title") or "").strip()
+            or request.title.strip()
+            or mode_label
+        )
+        if target_cluster:
+            cluster_title = str(target_cluster.get("title") or "").strip() or base_title
+        else:
+            cluster_title = base_title
+            if mode_label.lower() not in cluster_title.lower():
+                cluster_title = f"{cluster_title} {mode_label}".strip()
+
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        next_column_metadata = dict((target_cluster or {}).get("column_metadata") or {})
+        existing_source_contexts = list(next_column_metadata.get("source_contexts") or [])
+        context_key = str(origin_context.get("context_id") or origin_context.get("title") or cluster_title)
+        trimmed_origin_context = {
+            key: value
+            for key, value in origin_context.items()
+            if key != "marker" and value not in (None, "")
+        }
+        trimmed_origin_context["saved_at"] = now
+        trimmed_origin_context["context_key"] = context_key
+        deduped_source_contexts = [trimmed_origin_context]
+        for item in existing_source_contexts:
+            if str(item.get("context_key") or "") == context_key:
+                continue
+            deduped_source_contexts.append(item)
+
+        source_echo_ids = []
+        for value in [
+            source_echo_id,
+            *[ctx.get("echo_id") for ctx in normalized_contexts],
+        ]:
+            next_echo_id = str(value or "").strip()
+            if next_echo_id and next_echo_id not in source_echo_ids:
+                source_echo_ids.append(next_echo_id)
+
+        next_column_metadata.update(
+            {
+                "column_kind": column_kind,
+                "mode": normalized_mode,
+                "mode_label": mode_label,
+                "origin_context": trimmed_origin_context,
+                "source_contexts": deduped_source_contexts[:16],
+                "source_anchor_ids": source_anchor_ids,
+                "source_echo_ids": source_echo_ids,
+                "updated_at": now,
+            }
+        )
+
+        cluster_id = target_cluster_id or f"cluster_{uuid.uuid4().hex[:8]}"
+        if not target_cluster_id:
+            graph_db.create_cluster(
+                cluster_id=cluster_id,
+                book_id=cluster_book_id,
+                parent_cluster_id=parent_cluster_id or None,
+                library_id=cluster_library_id,
+                source_echo_id=source_echo_id or None,
+                title=cluster_title,
+                is_active=bool(request.make_active),
+                column_metadata=next_column_metadata,
+            )
+        else:
+            graph_db.update_cluster_metadata(cluster_id, next_column_metadata)
+            if request.make_active:
+                graph_db.set_active_cluster(
+                    cluster_id,
+                    str(target_cluster.get("book_id") or cluster_book_id),
+                    str(target_cluster.get("library_id") or cluster_library_id or ""),
+                )
+
+        echo_id = f"echo_{uuid.uuid4().hex[:8]}"
         graph_db.save_compound_echo(
             echo_id=echo_id,
             cluster_id=cluster_id,
@@ -742,33 +895,62 @@ def save_echo_analysis_endpoint(request: EchoAnalysisSaveRequest):
                     "title": cluster_title,
                     "highlight": request.summary,
                     "context": request.prompt or request.mode,
-                    "filename": cluster_title,
-                    "source_lid": "",
-                    "original_chunk_id": "",
-                    "source_chunk_ref": "",
-                    "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "filename": str(origin_context.get("filename") or cluster_title),
+                    "source_lid": str(origin_context.get("source_lid") or ""),
+                    "original_chunk_id": str(origin_context.get("chunk_id") or ""),
+                    "source_chunk_ref": str(origin_context.get("chunk_ref") or ""),
+                    "date": now,
                 }
             ],
             weight=1,
-            title=cluster_title,
+            title=request.title.strip() or cluster_title,
             analysis_metadata={
-                "mode": request.mode,
+                "mode": normalized_mode,
+                "mode_label": mode_label,
+                "column_kind": column_kind,
                 "prompt": request.prompt,
                 "include_web": bool(request.include_web),
-                "contexts": [item.dict() for item in request.contexts],
-                "selection_refs": [item.dict() for item in request.selection_refs],
+                "contexts": normalized_contexts,
+                "origin_context": trimmed_origin_context,
+                "selection_refs": normalized_selection_refs,
                 "local_evidence": request.local_evidence,
                 "web_evidence": request.web_evidence,
                 "follow_ups": request.follow_ups,
-                "source_anchor_ids": request.source_anchor_ids,
-                "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "source_anchor_ids": source_anchor_ids,
+                "saved_at": now,
             },
         )
+
+        for ctx in normalized_contexts:
+            marker = dict(ctx.get("marker") or {})
+            marker_echo_id = str(ctx.get("echo_id") or "").strip()
+            if not marker_echo_id or not str(marker.get("quote") or "").strip():
+                continue
+
+            existing_metadata = graph_db.get_echo_analysis_metadata(marker_echo_id)
+            saved_markers = list(existing_metadata.get("saved_markers") or [])
+            marker_id = str(marker.get("marker_id") or f"marker_{uuid.uuid4().hex[:8]}")
+            marker["marker_id"] = marker_id
+            marker["linked_cluster_id"] = cluster_id
+            marker["linked_echo_id"] = echo_id
+            marker["mode"] = normalized_mode
+            marker["saved_at"] = now
+            marker["source_context_title"] = str(trimmed_origin_context.get("title") or "")
+
+            next_saved_markers = [marker]
+            for existing_marker in saved_markers:
+                if str(existing_marker.get("marker_id") or "") == marker_id:
+                    continue
+                next_saved_markers.append(existing_marker)
+
+            existing_metadata["saved_markers"] = next_saved_markers[:32]
+            graph_db.update_echo_analysis_metadata(marker_echo_id, existing_metadata)
 
         return {
             "status": "success",
             "cluster_id": cluster_id,
             "echo_id": echo_id,
+            "reused_cluster": bool(target_cluster_id),
         }
     except Exception as e:
         logger.error(f"Saving derived analysis failed: {e}")
@@ -1941,11 +2123,32 @@ def save_spatial_metadata_endpoint(request: SpatialMetadataBulkRequest):
 @app.post("/brain/cluster/spawn")
 def spawn_cluster_endpoint(request: ClusterSpawnRequest):
     try:
-        import uuid
-
-        from scripts.db_manager import graph_db
-
         new_id = f"cluster_{uuid.uuid4().hex[:8]}"
+        origin_context = {
+            key: value
+            for key, value in dict(request.origin_context or {}).items()
+            if value not in (None, "")
+        }
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        column_metadata = {}
+        if origin_context:
+            origin_context["saved_at"] = now
+            column_metadata = {
+                "column_kind": "branch",
+                "origin_context": origin_context,
+                "source_contexts": [origin_context],
+                "source_anchor_ids": [
+                    value
+                    for value in [str(request.parent_cluster_id or "").strip()]
+                    if value
+                ],
+                "source_echo_ids": [
+                    value
+                    for value in [str(request.source_echo_id or "").strip()]
+                    if value
+                ],
+                "updated_at": now,
+            }
         graph_db.create_cluster(
             new_id,
             request.book_id,
@@ -1954,7 +2157,30 @@ def spawn_cluster_endpoint(request: ClusterSpawnRequest):
             source_echo_id=(request.source_echo_id or "").strip() or None,
             title=(request.title or "").strip() or None,
             is_active=bool(request.make_active),
+            column_metadata=column_metadata,
         )
+
+        source_echo_id = str(request.source_echo_id or "").strip()
+        if source_echo_id and str(origin_context.get("text") or "").strip():
+            existing_metadata = graph_db.get_echo_analysis_metadata(source_echo_id)
+            saved_markers = list(existing_metadata.get("saved_markers") or [])
+            marker = dict(origin_context.get("marker") or {})
+            marker_id = str(marker.get("marker_id") or f"marker_{uuid.uuid4().hex[:8]}")
+            marker["marker_id"] = marker_id
+            marker["quote"] = str(marker.get("quote") or origin_context.get("text") or "")
+            marker["linked_cluster_id"] = new_id
+            marker["mode"] = "branch"
+            marker["saved_at"] = now
+            marker["source_context_title"] = str(origin_context.get("title") or "")
+            existing_metadata["saved_markers"] = [
+                marker,
+                *[
+                    existing_marker
+                    for existing_marker in saved_markers
+                    if str(existing_marker.get("marker_id") or "") != marker_id
+                ],
+            ][:32]
+            graph_db.update_echo_analysis_metadata(source_echo_id, existing_metadata)
         return {"status": "success", "cluster_id": new_id}
     except Exception as e:
         return {"status": "error", "message": str(e)}

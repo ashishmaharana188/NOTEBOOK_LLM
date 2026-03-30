@@ -1,12 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { IonIcon } from "@ionic/react";
 import {
-    BookmarkSquareIcon,
-    GlobeAltIcon,
-    SparklesIcon,
-} from "@heroicons/react/24/outline";
+    bookmarkOutline,
+    globeOutline,
+    sparklesOutline,
+} from "ionicons/icons";
 import DraggableColumn from "./DraggableColumn";
 import { buildApiUrl } from "../../../../lib/runtimeConfig";
+import {
+    createMarkerFromSelection,
+    createMarkerFromQuote,
+    renderMarkedText,
+    type EchoMarker,
+} from "../utils/markerUtils";
 
 function DerivedEvidenceCard({
     derived,
@@ -37,6 +44,7 @@ function DerivedEvidenceCard({
     onClearHighlightRagComposer?: (sourceKey?: string) => void;
 }) {
     const [selectionText, setSelectionText] = useState("");
+    const [activeMarker, setActiveMarker] = useState<EchoMarker | null>(null);
     const [showHighlightMenu, setShowHighlightMenu] = useState(false);
     const [showFullContext, setShowFullContext] = useState(false);
     const [loadingContext, setLoadingContext] = useState(false);
@@ -44,6 +52,7 @@ function DerivedEvidenceCard({
         String(item.full_text || item.text || ""),
     );
     const contextRef = useRef<HTMLDivElement | null>(null);
+    const cardRef = useRef<HTMLElement | null>(null);
     const selectionSourceKeyRef = useRef(`derived:${derived.id}:${itemKey}`);
     const selectionSyncKeyRef = useRef("");
 
@@ -77,35 +86,60 @@ function DerivedEvidenceCard({
             ),
         [item.chunk_id, item.filename, item.full_text, item.text],
     );
+    const displayText = showFullContext ? fullText : String(item.text || "");
 
     const getSelectionWithinContext = useCallback(() => {
         const selection = window.getSelection();
         if (!selection || selection.rangeCount === 0 || !contextRef.current) {
-            return "";
+            return null;
         }
 
         const text = selection.toString().trim();
-        if (!text || text.length < 6) {
-            return "";
+        if (!text || text.length < 2) {
+            return null;
         }
 
         const anchorNode = selection.anchorNode;
         const focusNode = selection.focusNode;
         if (
-            (anchorNode && !contextRef.current.contains(anchorNode)) ||
-            (focusNode && !contextRef.current.contains(focusNode))
-        ) {
-            return "";
+                (anchorNode && !contextRef.current.contains(anchorNode)) ||
+                (focusNode && !contextRef.current.contains(focusNode))
+            ) {
+            return null;
         }
 
-        return text;
-    }, []);
+        const marker =
+            createMarkerFromSelection(
+            contextRef.current,
+            displayText,
+            showFullContext ? "full" : "excerpt",
+        ) ||
+            createMarkerFromQuote(
+                displayText,
+                text,
+                showFullContext ? "full" : "excerpt",
+            );
+        if (!marker) return null;
+        return { text, marker };
+    }, [displayText, showFullContext]);
 
     const captureSelection = useCallback(() => {
         window.setTimeout(() => {
-            setSelectionText(getSelectionWithinContext());
+            const payload = getSelectionWithinContext();
+            if (!payload) return;
+            setSelectionText(payload.text);
+            setActiveMarker(payload.marker);
         }, 0);
     }, [getSelectionWithinContext]);
+
+    const clearEphemeralHighlight = useCallback(() => {
+        setSelectionText("");
+        setActiveMarker(null);
+        setShowHighlightMenu(false);
+        selectionSyncKeyRef.current = "";
+        onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+        window.getSelection()?.removeAllRanges();
+    }, [onClearHighlightRagComposer]);
 
     useEffect(() => {
         document.addEventListener("selectionchange", captureSelection);
@@ -118,15 +152,9 @@ function DerivedEvidenceCard({
         setFullText(String(item.full_text || item.text || ""));
         setShowFullContext(false);
         setSelectionText("");
+        setActiveMarker(null);
         setShowHighlightMenu(false);
     }, [item.full_text, item.text, itemKey]);
-
-    useEffect(() => {
-        if (!selectionText) {
-            selectionSyncKeyRef.current = "";
-            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
-        }
-    }, [onClearHighlightRagComposer, selectionText]);
 
     useEffect(
         () => () => {
@@ -139,13 +167,11 @@ function DerivedEvidenceCard({
         if (!onAskRagFromHighlight) return;
 
         const trimmed = selectionText.trim();
-        if (!trimmed) {
-            selectionSyncKeyRef.current = "";
-            onClearHighlightRagComposer?.(selectionSourceKeyRef.current);
+        if (!trimmed || !activeMarker) {
             return;
         }
 
-        const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}`;
+        const nextSyncKey = `${selectionSourceKeyRef.current}:${trimmed}:${activeMarker.marker_id || activeMarker.start_offset || 0}`;
         if (selectionSyncKeyRef.current === nextSyncKey) {
             return;
         }
@@ -177,9 +203,11 @@ function DerivedEvidenceCard({
                 chunk_ref: String(item.chunk_ref || ""),
                 source_lid: String(item.source_lid || ""),
                 full_text: String(fullText || item.text || ""),
+                marker: activeMarker,
             },
         });
     }, [
+        activeMarker,
         chapterLabel,
         derived.id,
         derived.sourceEchoIds,
@@ -203,6 +231,29 @@ function DerivedEvidenceCard({
         sourceAnchorId,
         sourceLabel,
     ]);
+
+    useEffect(() => {
+        if (!activeMarker?.quote) return;
+        const handlePointerDown = (event: MouseEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (
+                target?.closest(
+                    "[data-selection-ignore='true'], [data-marker-persist='true']",
+                )
+            ) {
+                return;
+            }
+            if (cardRef.current?.contains(target as Node)) {
+                return;
+            }
+            clearEphemeralHighlight();
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+        };
+    }, [activeMarker, clearEphemeralHighlight]);
 
     const toggleFullContext = async () => {
         if (showFullContext) {
@@ -243,7 +294,8 @@ function DerivedEvidenceCard({
     };
 
     const handleSearchHighlight = async () => {
-        const nextSelection = selectionText || getSelectionWithinContext();
+        const payload = getSelectionWithinContext();
+        const nextSelection = (payload?.text || selectionText || "").trim();
         if (!nextSelection || !onCreateBranchFromHighlight) return;
         await onCreateBranchFromHighlight({
             text: nextSelection,
@@ -254,8 +306,12 @@ function DerivedEvidenceCard({
     };
 
     const handleAskRag = () => {
-        const nextSelection = selectionText || getSelectionWithinContext();
-        if (!nextSelection || !onAskRagFromHighlight) return;
+        const payload = getSelectionWithinContext();
+        const nextSelection = (payload?.text || selectionText || "").trim();
+        const nextMarker = payload?.marker || activeMarker;
+        if (!nextSelection || !nextMarker || !onAskRagFromHighlight) return;
+        setSelectionText(nextSelection);
+        setActiveMarker(nextMarker);
         onAskRagFromHighlight({
             text: nextSelection,
             title: String(item.title || derived.title || "Derived Evidence"),
@@ -282,15 +338,17 @@ function DerivedEvidenceCard({
                 chunk_ref: String(item.chunk_ref || ""),
                 source_lid: String(item.source_lid || ""),
                 full_text: String(fullText || item.text || ""),
+                marker: nextMarker,
             },
         });
         setShowHighlightMenu(false);
-        setSelectionText("");
-        window.getSelection()?.removeAllRanges();
     };
 
     return (
-        <article className="border border-slate-200 bg-white px-4 py-4 shadow-sm">
+        <article
+            ref={cardRef}
+            className="border border-slate-200 bg-white px-4 py-4 shadow-sm"
+        >
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <h4 className="truncate text-sm font-semibold tracking-[-0.02em] text-slate-900">
@@ -316,12 +374,12 @@ function DerivedEvidenceCard({
                                   : "Read Full Context"}
                         </button>
                     ) : null}
-                    <div className="relative">
+                    <div className="relative" data-selection-ignore="true">
                         <button
                             onMouseDown={(event) => event.preventDefault()}
                             onClick={() => setShowHighlightMenu((prev) => !prev)}
                             className={`transition-colors ${
-                                selectionText
+                                selectionText || activeMarker?.quote
                                     ? "text-slate-900 hover:text-black"
                                     : "text-slate-500 hover:text-slate-900"
                             }`}
@@ -364,10 +422,13 @@ function DerivedEvidenceCard({
 
             <div
                 ref={contextRef}
+                onMouseDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
                 onMouseUp={captureSelection}
                 onKeyUp={captureSelection}
                 onTouchEnd={captureSelection}
-                className="mt-3 max-h-[320px] overflow-y-auto whitespace-pre-wrap font-serif text-[14px] leading-7 text-slate-800 custom-scrollbar select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900"
+                className="no-pan mt-3 max-h-[320px] overflow-y-auto whitespace-pre-wrap font-serif text-[14px] leading-7 text-slate-800 custom-scrollbar select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900"
+                style={{ userSelect: "text", WebkitUserSelect: "text" }}
             >
                 {loadingContext ? (
                     <div className="flex items-center gap-3 text-sm text-slate-500">
@@ -375,7 +436,12 @@ function DerivedEvidenceCard({
                         Stitching full context...
                     </div>
                 ) : (
-                    showFullContext ? fullText : item.text
+                    renderMarkedText(
+                        displayText,
+                        [],
+                        activeMarker,
+                        `derived:${derived.id}:${itemKey}`,
+                    )
                 )}
             </div>
         </article>
@@ -502,8 +568,19 @@ export default function DerivedAnalysisColumn({
                                 disabled={derived.isLoading || !derived.summary}
                                 className="inline-flex items-center gap-1 text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
                             >
-                                <BookmarkSquareIcon className="h-4 w-4" />
+                                <IonIcon icon={bookmarkOutline} className="h-4 w-4" />
                                 Save
+                            </button>
+                            <button
+                                onClick={() =>
+                                    saveDerivedColumn(derived.id, {
+                                        makeActive: true,
+                                    })
+                                }
+                                disabled={derived.isLoading || !derived.summary}
+                                className="inline-flex items-center gap-1 text-slate-600 transition-colors hover:text-slate-900 disabled:opacity-40"
+                            >
+                                Make Active
                             </button>
                         </div>
                     </div>
@@ -526,9 +603,25 @@ export default function DerivedAnalysisColumn({
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            <section className="border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                            <section className="px-1">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                    Source Context
+                                </div>
+                                <div className="mt-2 whitespace-pre-wrap font-serif text-[14px] leading-7 text-slate-800">
+                                    {derived.originContext?.title ? (
+                                        <div className="mb-1 text-[13px] font-semibold text-slate-900">
+                                            {derived.originContext.title}
+                                        </div>
+                                    ) : null}
+                                    {derived.originContext?.text ||
+                                        derived.contexts?.[0]?.text ||
+                                        "No explicit context was attached to this run."}
+                                </div>
+                            </section>
+
+                            <section className="px-1">
                                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                                    <SparklesIcon className="h-4 w-4" />
+                                    <IonIcon icon={sparklesOutline} className="h-4 w-4" />
                                     Summary
                                 </div>
                                 <p className="mt-3 whitespace-pre-wrap font-serif text-[15px] leading-8 text-slate-800">
@@ -552,16 +645,6 @@ export default function DerivedAnalysisColumn({
                             </section>
 
                             <EvidenceBlock
-                                title="Working Context"
-                                items={derived.contexts || []}
-                                emptyMessage="No explicit context was attached to this run."
-                                derived={derived}
-                                onCreateBranchFromHighlight={onCreateBranchFromHighlight}
-                                onAskRagFromHighlight={onAskRagFromHighlight}
-                                onClearHighlightRagComposer={onClearHighlightRagComposer}
-                            />
-
-                            <EvidenceBlock
                                 title="Local Corpus"
                                 items={derived.localEvidence || []}
                                 emptyMessage="No local evidence was returned."
@@ -573,7 +656,7 @@ export default function DerivedAnalysisColumn({
 
                             <section className="space-y-3">
                                 <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                                    <GlobeAltIcon className="h-4 w-4" />
+                                    <IonIcon icon={globeOutline} className="h-4 w-4" />
                                     Web Sources
                                 </div>
                                 <div className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">

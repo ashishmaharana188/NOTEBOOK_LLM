@@ -237,6 +237,7 @@ class GraphDBManager:
                 is_active INTEGER DEFAULT 1,
                 parent_cluster_id TEXT,
                 source_echo_id TEXT,
+                column_metadata TEXT DEFAULT '{}',
                 archive_group_id TEXT,
                 archive_group_title TEXT,
                 cover_media TEXT,
@@ -257,6 +258,12 @@ class GraphDBManager:
 
         try:
             c.execute("ALTER TABLE echo_clusters ADD COLUMN source_echo_id TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            c.execute(
+                "ALTER TABLE echo_clusters ADD COLUMN column_metadata TEXT DEFAULT '{}'"
+            )
         except sqlite3.OperationalError:
             pass
 
@@ -408,6 +415,10 @@ class GraphDBManager:
             c.execute("ALTER TABLE echo_clusters ADD COLUMN cover_media TEXT")
         if len(columns) > 0 and "title" not in columns:
             c.execute("ALTER TABLE echo_clusters ADD COLUMN title TEXT")
+        if len(columns) > 0 and "column_metadata" not in columns:
+            c.execute(
+                "ALTER TABLE echo_clusters ADD COLUMN column_metadata TEXT DEFAULT '{}'"
+            )
 
         # --- NEW MIGRATION: ADD TITLE TO CLUSTERS ---
         if len(columns) > 0 and "title" not in columns:
@@ -971,9 +982,11 @@ class GraphDBManager:
         source_echo_id=None,
         title=None,
         is_active=True,
+        column_metadata=None,
     ):
         """Saves BOTH the display string and the indestructible library ID."""
         c = self.conn.cursor()
+        column_metadata_json = json.dumps(column_metadata or {})
         if is_active and library_id:
             c.execute(
                 "UPDATE echo_clusters SET is_active = 0 WHERE library_id = ?",
@@ -993,9 +1006,10 @@ class GraphDBManager:
                 parent_cluster_id,
                 library_id,
                 source_echo_id,
+                column_metadata,
                 title
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 cluster_id,
@@ -1004,10 +1018,81 @@ class GraphDBManager:
                 parent_cluster_id,
                 library_id,
                 source_echo_id,
+                column_metadata_json,
                 title,
             ),
         )
         self.conn.commit()
+
+    def get_cluster(self, cluster_id):
+        c = self.conn.cursor()
+        c.execute(
+            """
+            SELECT cluster_id, book_id, library_id, is_active, parent_cluster_id,
+                   source_echo_id, column_metadata, title
+            FROM echo_clusters
+            WHERE cluster_id = ?
+        """,
+            (cluster_id,),
+        )
+        row = c.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        try:
+            data["column_metadata"] = (
+                json.loads(data.get("column_metadata") or "{}") or {}
+            )
+        except Exception:
+            data["column_metadata"] = {}
+        return data
+
+    def update_cluster_metadata(self, cluster_id, column_metadata):
+        c = self.conn.cursor()
+        c.execute(
+            """
+            UPDATE echo_clusters
+            SET column_metadata = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE cluster_id = ?
+        """,
+            (json.dumps(column_metadata or {}), cluster_id),
+        )
+        self.conn.commit()
+
+    def find_cluster_by_parent_source_mode(
+        self,
+        parent_cluster_id=None,
+        source_echo_id=None,
+        column_kind="",
+        mode="",
+    ):
+        c = self.conn.cursor()
+        c.execute(
+            """
+            SELECT cluster_id, column_metadata
+            FROM echo_clusters
+            WHERE COALESCE(parent_cluster_id, '') = ?
+              AND COALESCE(source_echo_id, '') = ?
+            ORDER BY created_at DESC
+        """,
+            (
+                str(parent_cluster_id or ""),
+                str(source_echo_id or ""),
+            ),
+        )
+        for row in c.fetchall():
+            try:
+                metadata = json.loads(row["column_metadata"] or "{}") or {}
+            except Exception:
+                metadata = {}
+            if column_kind and str(metadata.get("column_kind") or "") != str(
+                column_kind
+            ):
+                continue
+            if mode and str(metadata.get("mode") or "") != str(mode):
+                continue
+            return str(row["cluster_id"])
+        return None
 
     def set_active_cluster(self, cluster_id, book_id, library_id=None):
         c = self.conn.cursor()
@@ -1072,6 +1157,31 @@ class GraphDBManager:
         self.add_edge(
             echo_id, cluster_id, edge_type="implicit", context_text="Cluster Member"
         )
+
+    def get_echo_analysis_metadata(self, echo_id):
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT analysis_metadata FROM user_echoes WHERE echo_id = ?", (echo_id,)
+        )
+        row = c.fetchone()
+        if not row:
+            return {}
+        try:
+            return json.loads(row["analysis_metadata"] or "{}") or {}
+        except Exception:
+            return {}
+
+    def update_echo_analysis_metadata(self, echo_id, analysis_metadata):
+        c = self.conn.cursor()
+        c.execute(
+            """
+            UPDATE user_echoes
+            SET analysis_metadata = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE echo_id = ?
+        """,
+            (json.dumps(analysis_metadata or {}), echo_id),
+        )
+        self.conn.commit()
 
     def update_echo_title(self, echo_id: str, title: str, chunk_id: str = ""):
         c = self.conn.cursor()
@@ -1142,7 +1252,7 @@ class GraphDBManager:
         c.execute(
             """
             SELECT c.cluster_id, c.book_id, c.library_id, c.is_active, c.parent_cluster_id,
-                   c.source_echo_id,
+                   c.source_echo_id, c.column_metadata,
                    c.cover_media, c.archive_group_id, c.archive_group_title, c.title as custom_title, c.orbit_layout,
                    e.echo_id, e.ai_insight, e.weight, e.sources, e.title, e.tags, e.quick_thoughts, e.analysis_metadata, e.group_id,
                    lib.title as true_library_title
@@ -1174,6 +1284,14 @@ class GraphDBManager:
                     layout = json.loads(r["orbit_layout"]) if r["orbit_layout"] else []
                 except:
                     layout = []
+                try:
+                    column_metadata = (
+                        json.loads(r["column_metadata"])
+                        if r["column_metadata"]
+                        else {}
+                    )
+                except:
+                    column_metadata = {}
 
                 clusters[cid] = {
                     "id": cid,
@@ -1183,6 +1301,7 @@ class GraphDBManager:
                     "is_active": bool(r["is_active"]),
                     "parent_cluster_id": r["parent_cluster_id"],
                     "source_echo_id": r["source_echo_id"],
+                    "column_metadata": column_metadata,
                     "cover_media": r["cover_media"],
                     "archive_group_id": r["archive_group_id"],
                     "archive_group_title": r["archive_group_title"],

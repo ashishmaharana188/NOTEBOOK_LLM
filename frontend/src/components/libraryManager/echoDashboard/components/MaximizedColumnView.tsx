@@ -1,5 +1,6 @@
 import React from "react";
-import { BookOpenIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import { bookOutline, closeOutline } from "ionicons/icons";
 import InteractiveChunkCard from "./InteractiveChunkCard";
 
 export default function MaximizedColumnView({
@@ -21,7 +22,7 @@ export default function MaximizedColumnView({
         <div className="px-10 py-8 border-b border-slate-200 bg-white flex justify-between items-center shrink-0 shadow-sm z-10">
           <div className="flex gap-6 items-center">
             <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-              <BookOpenIcon className="w-8 h-8 text-indigo-600" />
+              <IonIcon icon={bookOutline} className="w-8 h-8 text-indigo-600" />
             </div>
             <div>
               <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">
@@ -37,7 +38,7 @@ export default function MaximizedColumnView({
             onClick={onClose}
             className="p-3 text-slate-400 bg-slate-100 hover:text-red-600 hover:bg-red-50 rounded-full transition-all active:scale-90 border border-transparent hover:border-red-200 shadow-sm"
           >
-            <XMarkIcon className="w-6 h-6" />
+            <IonIcon icon={closeOutline} className="w-6 h-6" />
           </button>
         </div>
 

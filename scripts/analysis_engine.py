@@ -159,6 +159,7 @@ def _normalize_contexts(contexts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 "chunk_ref": str(item.get("chunk_ref") or ""),
                 "source_lid": str(item.get("source_lid") or ""),
                 "full_text": str(item.get("full_text") or text),
+                "marker": dict(item.get("marker") or {}),
             }
         )
     return normalized

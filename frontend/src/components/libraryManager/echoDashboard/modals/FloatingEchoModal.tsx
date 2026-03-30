@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import { closeOutline } from "ionicons/icons";
 import DraggableColumn from "../components/DraggableColumn";
 import InteractiveChunkCard from "../components/InteractiveChunkCard";
 import { buildApiUrl } from "../../../../lib/runtimeConfig";
@@ -67,7 +68,7 @@ export default function FloatingEchoModal({
                     onClick={onClose}
                     className="absolute top-4 right-4 z-[110] p-1 bg-surface/50 hover:bg-red-50 text-muted hover:text-red-500 rounded-sm transition-colors"
                 >
-                    <XMarkIcon className="w-5 h-5" />
+                    <IonIcon icon={closeOutline} className="w-5 h-5" />
                 </button>
             </div>
         </div>

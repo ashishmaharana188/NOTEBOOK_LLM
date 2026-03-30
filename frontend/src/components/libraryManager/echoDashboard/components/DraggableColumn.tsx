@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import {
-  BookOpenIcon,
-  PencilSquareIcon, // <--- ADDED ICON
-  TrashIcon,
-} from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import { bookOutline, createOutline, trashOutline } from "ionicons/icons";
 
 const DEFAULT_COLUMN_WIDTH = 420;
 const DEFAULT_COLUMN_HEIGHT = 750;
@@ -260,7 +257,7 @@ const DraggableColumn = React.memo(
         >
           <div className="flex items-center gap-3 w-full pr-4">
             <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-100 pointer-events-none">
-              <BookOpenIcon className="w-5 h-5 text-blue-600" />
+              <IonIcon icon={bookOutline} className="w-5 h-5 text-blue-600" />
             </div>
 
             <div className="overflow-hidden flex-1">
@@ -316,7 +313,7 @@ const DraggableColumn = React.memo(
                       className="opacity-0 group-hover/title:opacity-100 p-1 -m-1 text-slate-400 hover:text-blue-600 transition-opacity"
                       title="Rename Column"
                     >
-                      <PencilSquareIcon className="w-3.5 h-3.5" />
+                      <IonIcon icon={createOutline} className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -338,7 +335,7 @@ const DraggableColumn = React.memo(
                 className="p-1.5 -m-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover/header:opacity-100"
                 title="Delete Column & Branches"
               >
-                <TrashIcon className="w-4 h-4" />
+                <IonIcon icon={trashOutline} className="w-4 h-4" />
               </button>
             )}
           </div>

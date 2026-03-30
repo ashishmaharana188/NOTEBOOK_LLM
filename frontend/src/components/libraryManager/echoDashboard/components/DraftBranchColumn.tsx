@@ -152,6 +152,44 @@ export default function DraftBranchColumn({
                                                                 draft.bookId,
                                                             libraryId:
                                                                 draft.libraryId,
+                                                            originContext: {
+                                                                title:
+                                                                    chunk.title ||
+                                                                    group.title ||
+                                                                    "Source Echo",
+                                                                text,
+                                                                chapter:
+                                                                    chunk.chapter ||
+                                                                    "Unknown Chapter",
+                                                                source_label:
+                                                                    chunk.filename ||
+                                                                    group.title ||
+                                                                    "",
+                                                                echo_id:
+                                                                    echoId,
+                                                                cluster_id:
+                                                                    clusterId,
+                                                                book_id:
+                                                                    draft.bookId,
+                                                                library_id:
+                                                                    draft.libraryId,
+                                                                filename: String(
+                                                                    chunk.filename ||
+                                                                        "",
+                                                                ),
+                                                                chunk_id: String(
+                                                                    chunk.chunk_id ||
+                                                                        "",
+                                                                ),
+                                                                chunk_ref: String(
+                                                                    chunk.chunk_ref ||
+                                                                        "",
+                                                                ),
+                                                                source_lid: String(
+                                                                    chunk.source_lid ||
+                                                                        "",
+                                                                ),
+                                                            },
                                                         })
                                                     }
                                                     onAskRagFromHighlight={

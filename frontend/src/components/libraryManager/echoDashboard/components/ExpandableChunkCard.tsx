@@ -66,7 +66,12 @@ export default function ExpandableChunkCard({ chunk }: { chunk: EchoChunk }) {
                     <div className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
                         {chunk.chapter || "Unknown Chapter"}
                     </div>
-                    <div className="max-h-[280px] overflow-y-auto whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 custom-scrollbar select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900">
+                    <div
+                        onMouseDown={(event) => event.stopPropagation()}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        className="no-pan max-h-[280px] overflow-y-auto whitespace-pre-wrap font-serif text-[15px] leading-7 text-slate-800 custom-scrollbar select-text cursor-text selection:bg-[#f3dd73] selection:text-slate-900"
+                        style={{ userSelect: "text", WebkitUserSelect: "text" }}
+                    >
                         {fullText}
                     </div>
                 </div>

@@ -24,6 +24,13 @@ const createEmptyRagComposerState = () => ({
     sourceType: "" as "" | "highlight" | "selection",
 });
 
+const DERIVED_MODE_LABELS: Record<string, string> = {
+    rag: "Prompted RAG",
+    cross_pollination: "Cross-Pollination",
+    friction: "Friction Analysis",
+    gap: "Gap Analysis",
+};
+
 export default function useEchoDashboardState({
     isOpen,
     results = [],
@@ -165,6 +172,35 @@ export default function useEchoDashboardState({
         return linkMap;
     }, [globalNotes, manualLinks]);
 
+    const clusterById = useMemo(
+        () =>
+            Object.fromEntries(
+                (savedGlobalClusters || []).map((cluster: any) => [
+                    String(cluster.id || cluster.cluster_id || ""),
+                    cluster,
+                ]),
+            ),
+        [savedGlobalClusters],
+    );
+
+    const savedEchoById = useMemo(() => {
+        const next: Record<string, any> = {};
+        (savedGlobalClusters || []).forEach((cluster: any) => {
+            (cluster.chunks || []).forEach((chunk: any) => {
+                const echoId = String(chunk.echo_id || chunk.chunk_id || "");
+                if (!echoId) return;
+                next[echoId] = {
+                    ...chunk,
+                    cluster_id: String(cluster.id || cluster.cluster_id || ""),
+                    cluster_title: cluster.title,
+                    cluster_book_id: cluster.book_id,
+                    cluster_library_id: cluster.library_id,
+                };
+            });
+        });
+        return next;
+    }, [savedGlobalClusters]);
+
     const expandedEchoIds = useMemo(
         () =>
             Object.values(expandedEchoByCluster)
@@ -261,6 +297,147 @@ export default function useEchoDashboardState({
 
         return next;
     }, [draftBranches, savedGlobalClusters]);
+
+    const resolveClusterOriginContext = useCallback(
+        (cluster: any) => {
+            const metadataOrigin = cluster?.column_metadata?.origin_context;
+            if (metadataOrigin && (metadataOrigin.text || metadataOrigin.title)) {
+                return metadataOrigin;
+            }
+
+            const sourceEchoId = String(cluster?.source_echo_id || "");
+            if (sourceEchoId && savedEchoById[sourceEchoId]) {
+                const sourceEcho = savedEchoById[sourceEchoId];
+                return {
+                    context_id: `source-echo:${sourceEchoId}`,
+                    title:
+                        sourceEcho.title ||
+                        sourceEcho.cluster_title ||
+                        "Source Echo",
+                    text: sourceEcho.full_text || sourceEcho.text || sourceEcho.bridge || "",
+                    chapter: sourceEcho.chapter || "",
+                    source_label:
+                        sourceEcho.filename ||
+                        sourceEcho.cluster_title ||
+                        cluster?.title ||
+                        "",
+                    echo_id: sourceEchoId,
+                    cluster_id: String(sourceEcho.cluster_id || ""),
+                    book_id: String(sourceEcho.cluster_book_id || cluster?.book_id || ""),
+                    library_id: String(
+                        sourceEcho.cluster_library_id || cluster?.library_id || "",
+                    ),
+                    filename: String(sourceEcho.filename || ""),
+                    chunk_id: String(sourceEcho.chunk_id || ""),
+                    chunk_ref: String(sourceEcho.chunk_ref || ""),
+                    source_lid: String(sourceEcho.source_lid || ""),
+                    full_text: String(
+                        sourceEcho.full_text || sourceEcho.text || sourceEcho.bridge || "",
+                    ),
+                };
+            }
+
+            return {
+                context_id: `cluster:${String(cluster?.id || cluster?.cluster_id || "")}`,
+                title: String(cluster?.title || cluster?.book_id || "Column Origin"),
+                text: "",
+                chapter: "",
+                source_label: String(cluster?.title || cluster?.book_id || ""),
+                cluster_id: String(cluster?.id || cluster?.cluster_id || ""),
+                book_id: String(cluster?.book_id || ""),
+                library_id: String(cluster?.library_id || ""),
+                filename: "",
+                chunk_id: "",
+                chunk_ref: "",
+                source_lid: "",
+                full_text: "",
+            };
+        },
+        [savedEchoById],
+    );
+
+    const resolveDerivedSaveTarget = useCallback(
+        ({
+            mode,
+            contexts,
+            selectionRefs,
+            titleHint,
+            sourceAnchorIds,
+        }: {
+            mode: string;
+            contexts: any[];
+            selectionRefs: any[];
+            titleHint?: string;
+            sourceAnchorIds?: string[];
+        }) => {
+            const primaryContext =
+                (contexts || []).find(
+                    (context: any) =>
+                        context?.echo_id || context?.cluster_id || context?.text,
+                ) || {};
+            const primaryRef =
+                (selectionRefs || []).find(
+                    (ref: any) => ref?.echo_id || ref?.cluster_id || ref?.id,
+                ) || {};
+            const parentClusterId =
+                String(primaryContext?.cluster_id || "") ||
+                String(primaryRef?.cluster_id || "") ||
+                String((sourceAnchorIds || [])[0] || "");
+            const sourceEchoId =
+                String(primaryContext?.echo_id || "") ||
+                String(primaryRef?.echo_id || "");
+            const columnKind = mode === "rag" ? "rag" : "analysis";
+            const reusableTargetCluster = (savedGlobalClusters || []).find(
+                (cluster: any) =>
+                    String(cluster.parent_cluster_id || "") === parentClusterId &&
+                    String(cluster.source_echo_id || "") === sourceEchoId &&
+                    String(cluster.column_metadata?.column_kind || "") ===
+                        columnKind &&
+                    String(cluster.column_metadata?.mode || "") === String(mode),
+            );
+            const originContext = {
+                ...resolveClusterOriginContext(clusterById[parentClusterId]),
+                ...primaryContext,
+            };
+            if (!originContext.title) {
+                originContext.title = titleHint || DERIVED_MODE_LABELS[mode] || "Derived";
+            }
+            if (!originContext.text) {
+                originContext.text = String(
+                    primaryContext?.full_text ||
+                        primaryContext?.text ||
+                        primaryContext?.bridge ||
+                        "",
+                );
+            }
+
+            const dedupedAnchorIds = Array.from(
+                new Set(
+                    [
+                        ...(sourceAnchorIds || []).map((value) => String(value || "")),
+                        ...((contexts || []).map((ctx: any) =>
+                            String(ctx?.anchor_id || ctx?.cluster_id || ""),
+                        ) || []),
+                        parentClusterId,
+                    ].filter(Boolean),
+                ),
+            );
+
+            return {
+                parentClusterId,
+                sourceEchoId,
+                targetClusterId: String(
+                    reusableTargetCluster?.id ||
+                        reusableTargetCluster?.cluster_id ||
+                        "",
+                ),
+                columnKind,
+                originContext,
+                sourceAnchorIds: dedupedAnchorIds,
+            };
+        },
+        [clusterById, resolveClusterOriginContext, savedGlobalClusters],
+    );
 
     const highlightedBranchClusterIds = useMemo(
         () =>
@@ -712,6 +889,27 @@ export default function useEchoDashboardState({
         };
     }, [ragComposerState, selectionPayload]);
 
+    const activeAnalysisSelection = useMemo(() => {
+        if (
+            ragComposerState.sourceType === "highlight" &&
+            ragComposerState.contexts.length > 0
+        ) {
+            return {
+                contexts: ragComposerState.contexts,
+                selectionRefs: ragComposerState.selectionRefs,
+                sourceAnchorIds: ragComposerState.sourceAnchorIds,
+                titleHint: ragComposerState.titleHint || "",
+                scopeLabel: ragComposerState.scopeLabel || "highlight",
+                sourceType: "highlight" as const,
+            };
+        }
+
+        return {
+            ...selectionPayload,
+            sourceType: "selection" as const,
+        };
+    }, [ragComposerState, selectionPayload]);
+
     useEffect(() => {
         if (activeRagComposer.visible) return;
         setRagComposerState((prev) => {
@@ -816,6 +1014,13 @@ export default function useEchoDashboardState({
                     ].filter(Boolean),
                 ),
             );
+            const saveTarget = resolveDerivedSaveTarget({
+                mode,
+                contexts,
+                selectionRefs,
+                titleHint,
+                sourceAnchorIds,
+            });
 
             setPositions((prev) => ({
                 ...prev,
@@ -832,8 +1037,13 @@ export default function useEchoDashboardState({
                     followUps: [],
                     contexts,
                     selectionRefs,
-                    sourceAnchorIds: sourceAnchorIds || [],
+                    sourceAnchorIds: saveTarget.sourceAnchorIds || sourceAnchorIds || [],
                     sourceEchoIds,
+                    parentClusterId: saveTarget.parentClusterId || "",
+                    sourceEchoId: saveTarget.sourceEchoId || "",
+                    targetClusterId: saveTarget.targetClusterId || "",
+                    originContext: saveTarget.originContext || {},
+                    columnKind: saveTarget.columnKind || "",
                     localEvidence: [],
                     webEvidence: [],
                     webStatus: includeWeb ? "pending" : "skipped",
@@ -916,6 +1126,15 @@ export default function useEchoDashboardState({
                                       typeof payload.include_web === "boolean"
                                           ? payload.include_web
                                           : includeWeb,
+                                  parentClusterId:
+                                      saveTarget.parentClusterId || "",
+                                  sourceEchoId: saveTarget.sourceEchoId || "",
+                                  targetClusterId:
+                                      saveTarget.targetClusterId || "",
+                                  originContext:
+                                      saveTarget.originContext || {},
+                                  columnKind:
+                                      saveTarget.columnKind || "",
                                   isLoading: false,
                                   errorMessage: "",
                               }
@@ -948,7 +1167,12 @@ export default function useEchoDashboardState({
                 });
             }
         },
-        [analysisRequiredRoles, ensureRolesThen, getDerivedColumnPosition],
+        [
+            analysisRequiredRoles,
+            ensureRolesThen,
+            getDerivedColumnPosition,
+            resolveDerivedSaveTarget,
+        ],
     );
 
     const closeDerivedColumn = useCallback((derivedId: string) => {
@@ -963,7 +1187,7 @@ export default function useEchoDashboardState({
     }, []);
 
     const saveDerivedColumn = useCallback(
-        async (derivedId: string) => {
+        async (derivedId: string, options?: { makeActive?: boolean }) => {
             const target = derivedColumns.find(
                 (column: any) => String(column.id) === String(derivedId),
             );
@@ -982,6 +1206,11 @@ export default function useEchoDashboardState({
                     web_evidence: target.webEvidence || [],
                     follow_ups: target.followUps || [],
                     source_anchor_ids: target.sourceAnchorIds || [],
+                    parent_cluster_id: target.parentClusterId || "",
+                    source_echo_id: target.sourceEchoId || "",
+                    target_cluster_id: target.targetClusterId || "",
+                    make_active: Boolean(options?.makeActive),
+                    origin_context: target.originContext || {},
                 });
 
                 if (res.data?.status !== "success" || !res.data?.cluster_id) {
@@ -1138,11 +1367,11 @@ export default function useEchoDashboardState({
 
     const runSelectionAnalysis = useCallback(
         async (mode: string) => {
-            if (!selectionPayload.contexts.length) {
+            if (!activeAnalysisSelection.contexts.length) {
                 notify({
                     title: "Nothing Selected",
                     message:
-                        "Select a column or echo before running an analysis.",
+                        "Highlight text or select a column or echo before running an analysis.",
                     tone: "warning",
                 });
                 return;
@@ -1150,14 +1379,14 @@ export default function useEchoDashboardState({
             await runDerivedAnalysis({
                 mode,
                 prompt: "",
-                contexts: selectionPayload.contexts,
-                selectionRefs: selectionPayload.selectionRefs,
-                sourceAnchorIds: selectionPayload.sourceAnchorIds,
-                titleHint: selectionPayload.titleHint || "",
+                contexts: activeAnalysisSelection.contexts,
+                selectionRefs: activeAnalysisSelection.selectionRefs,
+                sourceAnchorIds: activeAnalysisSelection.sourceAnchorIds,
+                titleHint: activeAnalysisSelection.titleHint || "",
                 includeWeb: true,
             });
         },
-        [runDerivedAnalysis, selectionPayload],
+        [activeAnalysisSelection, runDerivedAnalysis],
     );
 
     const closeDraftBranch = useCallback((draftId: string) => {
@@ -1202,6 +1431,7 @@ export default function useEchoDashboardState({
                 source_echo_id: existingDraft.sourceEchoId,
                 title: existingDraft.title,
                 make_active: false,
+                origin_context: existingDraft.originContext || {},
             });
 
             if (res.data?.status !== "success" || !res.data?.cluster_id) {
@@ -1246,6 +1476,7 @@ export default function useEchoDashboardState({
             bookId,
             libraryId,
             spawnBasePosition,
+            originContext = {},
         }: {
             text: string;
             sourceEchoId: string;
@@ -1254,6 +1485,7 @@ export default function useEchoDashboardState({
             bookId: string;
             libraryId: string;
             spawnBasePosition?: { x: number; y: number };
+            originContext?: Record<string, any>;
         }) => {
             const highlightText = text.trim();
             if (!highlightText) return;
@@ -1293,6 +1525,7 @@ export default function useEchoDashboardState({
                     parentClusterTitle,
                     bookId,
                     libraryId,
+                    originContext,
                     resultGroups: [],
                     recommendations: [],
                     isLoading: true,
@@ -1526,6 +1759,7 @@ export default function useEchoDashboardState({
         expandedEchoByCluster,
         branchesBySourceEchoId,
         highlightedBranchClusterIds,
+        resolveClusterOriginContext,
         viewingEchoNotes,
         setViewingEchoNotes,
         localLinkedNotes,
@@ -1560,6 +1794,7 @@ export default function useEchoDashboardState({
         isCanvasItemSelected,
         selectedItems,
         selectionPayload,
+        activeAnalysisSelection,
         runSelectionAnalysis,
         openSelectionRagComposer,
         openHighlightRagComposer,

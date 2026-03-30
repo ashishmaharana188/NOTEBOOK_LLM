@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { PlusIcon } from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import { addOutline, createOutline } from "ionicons/icons";
 import type {
   NoteStack,
   NoteGroup,
@@ -281,7 +282,7 @@ const NoteStackColumn = React.memo(
                   onChange={(e) => handleUploadCover(e, stack.stack_id)}
                   onClick={(e) => e.stopPropagation()}
                 />
-                <PlusIcon className="w-4 h-4" />
+                <IonIcon icon={addOutline} className="w-4 h-4" />
               </label>
             </div>
             {isRenamingStack ? (
@@ -337,19 +338,7 @@ const NoteStackColumn = React.memo(
                   onPointerDown={(e) => e.stopPropagation()}
                   className="text-gray-400 hover:text-blue-500 opacity-0 group-hover/stack:opacity-100 transition-opacity"
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                    />
-                  </svg>
+                  <IonIcon icon={createOutline} className="w-4 h-4" />
                 </button>
               </div>
             )}

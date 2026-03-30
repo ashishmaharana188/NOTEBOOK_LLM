@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
-import { CheckIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { IonIcon } from "@ionic/react";
+import { addOutline, checkmarkOutline } from "ionicons/icons";
 import DraggableColumn from "./DraggableColumn";
 import SavedEchoCard from "./SavedEchoCard";
 
@@ -28,6 +29,7 @@ const SavedClusterColumn = React.memo(
         onClearHighlightRagComposer,
         onShowBranches,
         isHighlighted,
+        originContext,
         selectionMode,
         isColumnSelected,
         onToggleColumnSelect,
@@ -88,7 +90,7 @@ const SavedClusterColumn = React.memo(
                                 }`}
                             >
                                 {cluster.is_active && (
-                                    <CheckIcon className="h-3.5 w-3.5" />
+                                    <IonIcon icon={checkmarkOutline} className="h-3.5 w-3.5" />
                                 )}
                                 {cluster.is_active ? "Active Target" : "Make Active"}
                             </button>
@@ -104,15 +106,32 @@ const SavedClusterColumn = React.memo(
                                 }
                                 className="inline-flex items-center gap-1 px-0 py-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 transition-colors hover:text-slate-900"
                             >
-                                <PlusIcon className="h-3.5 w-3.5" />
+                                <IonIcon icon={addOutline} className="h-3.5 w-3.5" />
                                 Empty Branch
                             </button>
                         </div>
+                        {originContext?.title || originContext?.text ? (
+                            <div className="mt-4 border-t border-slate-100 pt-3">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                    Source Context
+                                </div>
+                                {originContext?.title ? (
+                                    <div className="mt-2 text-[13px] font-semibold text-slate-900">
+                                        {originContext.title}
+                                    </div>
+                                ) : null}
+                                {originContext?.text ? (
+                                    <div className="mt-1 line-clamp-4 whitespace-pre-wrap text-[13px] leading-6 text-slate-700">
+                                        {originContext.text}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-y-auto bg-white px-4 py-4 custom-scrollbar">
+                    <div className="min-h-0 flex-1 overflow-y-auto bg-white px-4 py-3 custom-scrollbar">
                         {orderedChunks.length === 0 ? (
-                            <div className="border border-dashed border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+                            <div className="px-1 py-6 text-sm text-slate-500">
                                 No saved echoes in this branch yet.
                             </div>
                         ) : (
@@ -158,6 +177,35 @@ const SavedClusterColumn = React.memo(
                                                     cluster.title,
                                                 libraryId:
                                                     cluster.library_id || "",
+                                                originContext: {
+                                                    title:
+                                                        chunk.title ||
+                                                        cluster.title ||
+                                                        "Source Echo",
+                                                    text,
+                                                    chapter:
+                                                        chunk.chapter ||
+                                                        "Unknown Chapter",
+                                                    source_label:
+                                                        chunk.filename ||
+                                                        cluster.title ||
+                                                        "",
+                                                    echo_id: echoId,
+                                                    cluster_id: cluster.id,
+                                                    book_id:
+                                                        cluster.book_id ||
+                                                        cluster.title,
+                                                    library_id:
+                                                        cluster.library_id || "",
+                                                    filename:
+                                                        String(chunk.filename || ""),
+                                                    chunk_id:
+                                                        String(chunk.chunk_id || ""),
+                                                    chunk_ref:
+                                                        String(chunk.chunk_ref || ""),
+                                                    source_lid:
+                                                        String(chunk.source_lid || ""),
+                                                },
                                             })
                                         }
                                         onAskRagFromHighlight={
