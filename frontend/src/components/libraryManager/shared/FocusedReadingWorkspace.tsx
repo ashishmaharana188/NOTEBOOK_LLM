@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import {
+  ArrowUpTrayIcon,
   ArrowUturnLeftIcon,
   BookmarkSquareIcon,
   ChevronDownIcon,
@@ -11,6 +12,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import FocusBlockReader from "../../reader/FocusBlockReader";
+import RichDocumentReader from "../../reader/RichDocumentReader";
 import useIsMobile from "../../../hooks/appTools/useIsMobile";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
 import NotesFormUI from "../noteModule/notesFormUI";
@@ -35,6 +37,7 @@ export interface ReadingWorkspaceItem {
   tags?: string;
   rawContent?: string;
   linkedEchoId?: string;
+  attachedImages?: string[];
 }
 
 export interface ReadingDerivedPanel {
@@ -94,6 +97,19 @@ function trimText(value: any) {
 
 function panelSourceKey(panel: ReadingDerivedPanel) {
   return String(panel.sourceKey || panel.echoId || panel.id || "");
+}
+
+function normalizeAttachedImages(value: any): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object") {
+        return String(item.url || item.src || "").trim();
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 export function buildSavedDerivedPanelsBySourceId(clusters: any[] = []) {
@@ -396,9 +412,11 @@ export default function FocusedReadingWorkspace({
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
+  const [isUploadingEchoImage, setIsUploadingEchoImage] = useState(false);
   const [localPanelsBySourceId, setLocalPanelsBySourceId] = useState<
     Record<string, ReadingDerivedPanel[]>
   >({});
+  const echoImageInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setItemState(items);
@@ -657,6 +675,90 @@ export default function FocusedReadingWorkspace({
 
   const currentText =
     trimText(selectedItem?.fullText) || trimText(selectedItem?.text) || "";
+  const isRichNoteView =
+    String(selectedItem?.kind || "") === "note" &&
+    /<[^>]+>/.test(
+      String(selectedItem?.rawContent || selectedItem?.fullText || selectedItem?.text || ""),
+    );
+  const attachedImages = normalizeAttachedImages(
+    (selectedItem as any)?.attachedImages ||
+      (selectedItem as any)?.analysis_metadata?.attached_images,
+  );
+
+  const handleEchoImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(event.target.files || []);
+    const targetEchoId = String(selectedItem?.echoId || "");
+    if (!files.length || !targetEchoId) {
+      event.target.value = "";
+      return;
+    }
+
+    setIsUploadingEchoImage(true);
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch(
+          buildApiUrl(`/upload/media/echo/${targetEchoId}`),
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+        const data = await response.json();
+        if (!response.ok || !data?.url) {
+          throw new Error(data?.detail || data?.message || "Image upload failed");
+        }
+        uploadedUrls.push(String(data.url));
+      }
+
+      if (uploadedUrls.length > 0) {
+        setItemState((prev) =>
+          prev.map((item) => {
+            if (String(item.id) !== String(selectedItem?.id || "")) return item;
+            const existing = normalizeAttachedImages(item.attachedImages);
+            const next = [...existing];
+            uploadedUrls.forEach((url) => {
+              if (!next.includes(url)) {
+                next.push(url);
+              }
+            });
+            return {
+              ...item,
+              attachedImages: next,
+            };
+          }),
+        );
+        await onRefreshSaved?.();
+      }
+    } catch (error) {
+      console.error("Failed to upload echo image", error);
+    } finally {
+      setIsUploadingEchoImage(false);
+      event.target.value = "";
+    }
+  };
+
+  const attachmentGallery =
+    attachedImages.length > 0 ? (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {attachedImages.map((url, index) => (
+          <div
+            key={`${selectedItem?.id || "attachment"}-${index}`}
+            className="overflow-hidden border border-black/10 bg-slate-100"
+          >
+            <img
+              src={url}
+              alt={`${selectedItem?.title || "Echo"} attachment ${index + 1}`}
+              className="h-auto w-full object-contain"
+            />
+          </div>
+        ))}
+      </div>
+    ) : null;
   const derivedLaneContent = (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-white/10 px-5 py-5">
@@ -829,6 +931,31 @@ export default function FocusedReadingWorkspace({
                     Edit Note
                   </button>
                 ) : null}
+                {selectedItem?.kind !== "note" && selectedItem?.echoId ? (
+                  <>
+                    <input
+                      ref={echoImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleEchoImageUpload}
+                    />
+                    <button
+                      onClick={() => echoImageInputRef.current?.click()}
+                      disabled={isUploadingEchoImage}
+                      className="inline-flex h-11 items-center justify-center gap-2 border border-white/10 bg-white/8 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-white/14 disabled:opacity-45"
+                      title="Upload image to saved echo"
+                    >
+                      {isUploadingEchoImage ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+                      ) : (
+                        <ArrowUpTrayIcon className="h-4 w-4" />
+                      )}
+                      Add Image
+                    </button>
+                  </>
+                ) : null}
                 <button
                   onClick={onClose}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/8 text-white transition-colors hover:bg-white/14"
@@ -840,16 +967,29 @@ export default function FocusedReadingWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_40px_120px_rgba(0,0,0,0.45)]">
-              <FocusBlockReader
-                title={selectedItem?.title || ""}
-                subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
-                text={currentText}
-                onSelection={(text) => setSelectionText(text)}
-                onReachedEnd={handleReachedEnd}
-                containerClassName="bg-white"
-                paperClassName="bg-white"
-                textClassName="tracking-[-0.01em]"
-              />
+              {isRichNoteView ? (
+                <RichDocumentReader
+                  title={selectedItem?.title || ""}
+                  subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
+                  html={String(selectedItem?.rawContent || selectedItem?.text || "")}
+                  onSelection={(text) => setSelectionText(text)}
+                  onReachedEnd={handleReachedEnd}
+                  containerClassName="bg-white"
+                  paperClassName="bg-white"
+                />
+              ) : (
+                <FocusBlockReader
+                  title={selectedItem?.title || ""}
+                  subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
+                  text={currentText}
+                  topMeta={attachmentGallery}
+                  onSelection={(text) => setSelectionText(text)}
+                  onReachedEnd={handleReachedEnd}
+                  containerClassName="bg-white"
+                  paperClassName="bg-white"
+                  textClassName="tracking-[-0.01em]"
+                />
+              )}
             </div>
           </div>
         </main>

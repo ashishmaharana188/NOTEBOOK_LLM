@@ -1667,6 +1667,7 @@ export default function SpatialCanvasUI({
                                                     onSaveWorkspaceNote={
                                                         handleSaveWorkspaceNote
                                                     }
+                                                    fetchClusters={fetchClusters}
                                                     groupsByOwnerId={
                                                         groupsByOwnerId
                                                     }

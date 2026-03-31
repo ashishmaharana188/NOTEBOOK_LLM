@@ -2594,8 +2594,10 @@ async def upload_media_file(
 
         file_extension = os.path.splitext(file.filename)[1].lower()
 
-        # Build strict nested folders: stored_files/notes/<id>/
-        target_dir = os.path.join(UPLOAD_DIR, "notes", item_id)
+        media_bucket = "echoes" if item_type == "echo" else "notes"
+
+        # Build strict nested folders: stored_files/<bucket>/<id>/
+        target_dir = os.path.join(UPLOAD_DIR, media_bucket, item_id)
         os.makedirs(target_dir, exist_ok=True)
 
         # If it's a stack or cluster cover, delete the old one first
@@ -2626,7 +2628,7 @@ async def upload_media_file(
 
         file_url = str(
             request.url_for(
-                "files", path=f"notes/{item_id}/{unique_filename}"
+                "files", path=f"{media_bucket}/{item_id}/{unique_filename}"
             )
         )
 
@@ -2638,6 +2640,20 @@ async def upload_media_file(
             from scripts.db_manager import graph_db
 
             graph_db.update_cluster_cover(item_id, file_url)
+        elif item_type == "echo":
+            from scripts.db_manager import graph_db
+
+            existing_metadata = graph_db.get_echo_analysis_metadata(item_id)
+            attached_images = [
+                str(url).strip()
+                for url in list(existing_metadata.get("attached_images") or [])
+                if str(url).strip()
+            ]
+            if file_url not in attached_images:
+                attached_images.append(file_url)
+            existing_metadata["attached_images"] = attached_images
+            graph_db.update_echo_analysis_metadata(item_id, existing_metadata)
+            return {"url": file_url, "analysis_metadata": existing_metadata}
 
         return {"url": file_url}
 

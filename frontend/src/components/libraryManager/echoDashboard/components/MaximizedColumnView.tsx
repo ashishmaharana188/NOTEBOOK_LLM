@@ -17,6 +17,9 @@ function normalizeChunkToItem(
     title: chunk.title || fallbackTitle || "Untitled Echo",
     text: String(chunk.text || chunk.bridge || ""),
     fullText: String((chunk as any).full_text || ""),
+    attachedImages: Array.isArray((chunk as any).analysis_metadata?.attached_images)
+      ? (chunk as any).analysis_metadata.attached_images
+      : [],
     chapter: chunk.chapter || "",
     sourceLabel: String(
       chunk.filename || cluster?.title || fallbackTitle || "",

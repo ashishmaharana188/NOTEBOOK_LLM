@@ -78,6 +78,7 @@ const SpatialStack = React.memo(
         onOpenMindMap,
         groupsByOwnerId,
         interactionReduced,
+        fetchClusters,
         noteStacks = [],
         noteGroups = [],
         onSaveWorkspaceNote,
@@ -340,6 +341,11 @@ const SpatialStack = React.memo(
                         groupId: String(item.group_id || ""),
                         tags: String(item.tags || ""),
                         linkedEchoId: String(item.linked_echo_id || ""),
+                        attachedImages: Array.isArray(
+                            item.analysis_metadata?.attached_images,
+                        )
+                            ? item.analysis_metadata.attached_images
+                            : [],
                         clusterId: String(
                             cluster?.id || item.cluster_id || item.parent_cluster_id || "",
                         ),
@@ -384,6 +390,22 @@ const SpatialStack = React.memo(
                     filename: String(item?.filename || ""),
                     chunkId: String(item?.chunk_id || ""),
                     echoId: String(item?.echo_id || ""),
+                    noteId: String(item?.note_id || ""),
+                    groupId: String(item?.group_id || ""),
+                    tags: String(item?.tags || ""),
+                    linkedEchoId: String(item?.linked_echo_id || ""),
+                    rawContent: String(
+                        item?.content ||
+                            item?.text ||
+                            item?.ai_insight ||
+                            item?.bridge ||
+                            "",
+                    ),
+                    attachedImages: Array.isArray(
+                        item?.analysis_metadata?.attached_images,
+                    )
+                        ? item.analysis_metadata.attached_images
+                        : [],
                     clusterId: String(
                         cluster?.id || item?.cluster_id || item?.parent_cluster_id || "",
                     ),
@@ -1438,6 +1460,7 @@ const SpatialStack = React.memo(
                     noteStacks={noteStacks}
                     noteGroups={noteGroups}
                     onSaveNote={onSaveWorkspaceNote}
+                    onRefreshSaved={fetchClusters}
                     onClose={() => setMaximizedReaderState(null)}
                 />
             )}
