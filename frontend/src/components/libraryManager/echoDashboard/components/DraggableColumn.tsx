@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import {
+  ArrowsPointingOutIcon,
+  CheckIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
 import { IonIcon } from "@ionic/react";
-import { bookOutline, createOutline, trashOutline } from "ionicons/icons";
+import { createOutline } from "ionicons/icons";
 
 const DEFAULT_COLUMN_WIDTH = 420;
 const DEFAULT_COLUMN_HEIGHT = 750;
@@ -346,7 +351,36 @@ const DraggableColumn = React.memo(
                     </div>
 
                     <div className="flex items-center gap-1">
-                        {/* TOP RIGHT DELETE BUTTON */}
+                        {selectionMode && onToggleSelect && (
+                            <button
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    onToggleSelect();
+                                }}
+                                className={`flex h-7 w-7 items-center justify-center border transition-colors ${
+                                    isSelected
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-300 bg-white text-slate-400 hover:border-slate-500 hover:text-slate-700"
+                                }`}
+                                title={isSelected ? "Unselect column" : "Select column"}
+                            >
+                                {isSelected && <CheckIcon className="h-4 w-4" />}
+                            </button>
+                        )}
+
+                        {onMaximize && (
+                            <button
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    onMaximize();
+                                }}
+                                className="p-1.5 -m-1.5 text-slate-300 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors opacity-0 group-hover/header:opacity-100"
+                                title="Maximize Reading View"
+                            >
+                                <ArrowsPointingOutIcon className="w-4 h-4" />
+                            </button>
+                        )}
+
                         {onDelete && (
                             <button
                                 onPointerDown={(e) => {
@@ -356,10 +390,7 @@ const DraggableColumn = React.memo(
                                 className="p-1.5 -m-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover/header:opacity-100"
                                 title="Delete Column & Branches"
                             >
-                                <IonIcon
-                                    icon={trashOutline}
-                                    className="w-4 h-4"
-                                />
+                                <TrashIcon className="w-4 h-4" />
                             </button>
                         )}
                     </div>

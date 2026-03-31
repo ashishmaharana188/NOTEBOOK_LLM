@@ -44,6 +44,13 @@ type SavedEchoCardProps = {
         sourceKey?: string;
     }) => void;
     onClearHighlightRagComposer?: (sourceKey?: string) => void;
+    onOpenReader?: (payload: {
+        chunk: EchoChunk;
+        clusterId: string;
+        echoId: string;
+        title: string;
+        sourceLabel: string;
+    }) => void;
     selectionMode?: boolean;
     isSelected?: boolean;
     onToggleSelect?: () => void;
@@ -86,6 +93,7 @@ export default function SavedEchoCard({
     onCreateBranchFromHighlight,
     onAskRagFromHighlight,
     onClearHighlightRagComposer,
+    onOpenReader,
     selectionMode = false,
     isSelected = false,
     onToggleSelect,
@@ -182,10 +190,10 @@ export default function SavedEchoCard({
 
         const marker =
             createMarkerFromSelection(
-            contextRef.current,
-            displayText,
-            showFullContext ? "full" : "excerpt",
-        ) ||
+                contextRef.current,
+                displayText,
+                showFullContext ? "full" : "excerpt",
+            ) ||
             createMarkerFromQuote(
                 displayText,
                 text,
@@ -496,26 +504,42 @@ export default function SavedEchoCard({
                     {isExpanded ? (
                         <>
                             <button
-                                onClick={toggleFullContext}
+                                onClick={() => {
+                                    if (onOpenReader) {
+                                        onOpenReader({
+                                            chunk,
+                                            clusterId,
+                                            echoId,
+                                            title: customTitle || sourceLabel || "Focused Echo",
+                                            sourceLabel,
+                                        });
+                                        return;
+                                    }
+                                    void toggleFullContext();
+                                }}
                                 title={
-                                    loadingContext
-                                        ? "Loading Context"
-                                        : showFullContext
-                                          ? "Collapse Context"
-                                          : "Read Full Context"
+                                    onOpenReader
+                                        ? "Read Full Context"
+                                        : loadingContext
+                                          ? "Loading Context"
+                                          : showFullContext
+                                            ? "Collapse Context"
+                                            : "Read Full Context"
                                 }
                                 aria-label={
-                                    loadingContext
-                                        ? "Loading Context"
-                                        : showFullContext
-                                          ? "Collapse Context"
-                                          : "Read Full Context"
+                                    onOpenReader
+                                        ? "Read Full Context"
+                                        : loadingContext
+                                          ? "Loading Context"
+                                          : showFullContext
+                                            ? "Collapse Context"
+                                            : "Read Full Context"
                                 }
                                 className="inline-flex h-8 w-8 items-center justify-center text-slate-600 transition-colors hover:text-slate-900"
                             >
                                 <IonIcon
                                     icon={documentTextOutline}
-                                    className={`h-4 w-4 ${loadingContext ? "animate-pulse" : ""}`}
+                                    className={`h-4 w-4 ${loadingContext && !onOpenReader ? "animate-pulse" : ""}`}
                                 />
                             </button>
                             <div

@@ -93,13 +93,24 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
     .toLowerCase()
     .replace(/^\./, "");
 
+  const centeredShellClass =
+    ext === "pdf"
+      ? "mx-auto h-full w-full max-w-[1560px] overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.45)]"
+      : "mx-auto h-full w-full max-w-[1280px] overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_30px_120px_rgba(0,0,0,0.45)]";
+
+  const renderCenteredSurface = (children: React.ReactNode) => (
+    <div
+      className="h-full w-full bg-[#050505] px-3 py-3 sm:px-5 sm:py-5 md:px-7 md:py-7"
+      onMouseMove={revealChrome}
+      onTouchStart={revealChrome}
+    >
+      <div className={centeredShellClass}>{children}</div>
+    </div>
+  );
+
   if (ext === "epub" && !usesSectionReader) {
-    return (
-      <div
-        className="h-full w-full relative cursor-default"
-        onMouseMove={revealChrome}
-        onTouchStart={revealChrome}
-      >
+    return renderCenteredSurface(
+      <div className="h-full w-full relative cursor-default">
         <EpubReader
           book={book}
           initialLocation={readerLocation}
@@ -113,17 +124,13 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
           onDeleteAnnotation={deleteAnnotation}
           onJumpToAnnotation={jumpToAnnotation}
         />
-      </div>
+      </div>,
     );
   }
 
   if (ext === "pdf") {
-    return (
-      <div
-        className="h-full w-full relative cursor-default"
-        onMouseMove={revealChrome}
-        onTouchStart={revealChrome}
-      >
+    return renderCenteredSurface(
+      <div className="h-full w-full relative cursor-default">
         <PdfReader
           book={book}
           initialLocation={readerLocation}
@@ -137,16 +144,12 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
           onDeleteAnnotation={deleteAnnotation}
           onJumpToAnnotation={jumpToAnnotation}
         />
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <div
-      className="h-full w-full relative cursor-default"
-      onMouseMove={revealChrome}
-      onTouchStart={revealChrome}
-    >
+  return renderCenteredSurface(
+    <div className="h-full w-full relative cursor-default">
       <TextReader
         book={book}
         content={activeTextSection?.content || ""}
@@ -185,6 +188,6 @@ export default function Reader({ book, onSelection }: MainReaderProps) {
         onDeleteAnnotation={deleteAnnotation}
         onJumpToAnnotation={jumpToAnnotation}
       />
-    </div>
+    </div>,
   );
 }

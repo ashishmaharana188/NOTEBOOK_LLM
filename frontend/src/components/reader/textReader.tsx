@@ -21,6 +21,7 @@ import {
 } from "./readerIcons";
 import ReaderAnnotationPanel from "./ReaderAnnotationPanel";
 import ReaderPanelSection from "./ReaderPanelSection";
+import FocusBlockReader from "./FocusBlockReader";
 
 const FONT_OPTIONS = [
   { label: "Georgia", value: "Georgia, serif" },
@@ -147,7 +148,8 @@ function buildSectionOptions(
 
   return sections.map((section, index) => ({
     index,
-    label: labelsBySection.get(index) || normalizeSectionLabel(section.label, index),
+    label:
+      labelsBySection.get(index) || normalizeSectionLabel(section.label, index),
   }));
 }
 
@@ -193,7 +195,10 @@ export default function TextReader({
         ? sections
         : Array.from({ length: Math.max(sectionCount, 0) }, (_, index) => ({
             section_index: index,
-            label: index === currentSectionIndex ? sectionLabel : `Section ${index + 1}`,
+            label:
+              index === currentSectionIndex
+                ? sectionLabel
+                : `Section ${index + 1}`,
           })),
     [currentSectionIndex, sectionCount, sectionLabel, sections],
   );
@@ -203,8 +208,8 @@ export default function TextReader({
   );
   const activeSectionTitle = useMemo(() => {
     return (
-      sectionOptions.find((option) => option.index === currentSectionIndex)?.label ||
-      normalizeSectionLabel(sectionLabel, currentSectionIndex)
+      sectionOptions.find((option) => option.index === currentSectionIndex)
+        ?.label || normalizeSectionLabel(sectionLabel, currentSectionIndex)
     );
   }, [currentSectionIndex, sectionLabel, sectionOptions]);
   const scrollParagraphs = useMemo(
@@ -217,7 +222,10 @@ export default function TextReader({
   const spreadActive = spreadRequested && viewportSize.width >= 960;
   const columnsPerPage = isPaginated ? (spreadActive ? 2 : 1) : 1;
   const fontSizePx = Math.max(16, (settings.fontSize / 100) * 18);
-  const lineHeightPx = Math.max(fontSizePx * settings.lineHeight, fontSizePx + 6);
+  const lineHeightPx = Math.max(
+    fontSizePx * settings.lineHeight,
+    fontSizePx + 6,
+  );
   const fontDeclaration = `${fontSizePx}px ${settings.fontFamily}`;
 
   useEffect(() => {
@@ -259,9 +267,18 @@ export default function TextReader({
       220,
       viewportSize.width - outerPaddingX * 2 - columnGap * (columnsPerPage - 1),
     );
-    const columnWidth = Math.max(180, Math.floor(availableWidth / columnsPerPage));
-    const availableHeight = Math.max(120, viewportSize.height - outerPaddingY * 2);
-    const linesPerColumn = Math.max(1, Math.floor(availableHeight / lineHeightPx));
+    const columnWidth = Math.max(
+      180,
+      Math.floor(availableWidth / columnsPerPage),
+    );
+    const availableHeight = Math.max(
+      120,
+      viewportSize.height - outerPaddingY * 2,
+    );
+    const linesPerColumn = Math.max(
+      1,
+      Math.floor(availableHeight / lineHeightPx),
+    );
 
     const prepared = prepareWithSegments(deferredContent, fontDeclaration, {
       whiteSpace: "pre-wrap",
@@ -273,7 +290,11 @@ export default function TextReader({
     for (let start = 0; start < layout.lines.length; start += pageCapacity) {
       const pageLines = layout.lines.slice(start, start + pageCapacity);
       const columns: string[][] = [];
-      for (let columnIndex = 0; columnIndex < columnsPerPage; columnIndex += 1) {
+      for (
+        let columnIndex = 0;
+        columnIndex < columnsPerPage;
+        columnIndex += 1
+      ) {
         const columnStart = columnIndex * linesPerColumn;
         const columnLines = pageLines
           .slice(columnStart, columnStart + linesPerColumn)
@@ -365,8 +386,9 @@ export default function TextReader({
     settings.flow === "scrolled"
       ? "scroll"
       : settings.spread === "always"
-      ? "spread"
-      : "single";
+        ? "spread"
+        : "single";
+  const focusSelectionProps = onSelection ? { onSelection } : {};
 
   return (
     <div
@@ -395,7 +417,9 @@ export default function TextReader({
               <div className="text-sm font-semibold text-primary">
                 Reader Controls
               </div>
-              <div className="text-xs text-muted">{book?.title || "Untitled"}</div>
+              <div className="text-xs text-muted">
+                {book?.title || "Untitled"}
+              </div>
             </div>
             <button
               onClick={() => setShowPanel(false)}
@@ -421,7 +445,11 @@ export default function TextReader({
               />
             </ReaderPanelSection>
 
-            <ReaderPanelSection title="Contents" icon={<IconList />} defaultOpen>
+            <ReaderPanelSection
+              title="Contents"
+              icon={<IconList />}
+              defaultOpen
+            >
               <label className="block text-xs uppercase tracking-[0.18em] text-muted">
                 Chapter
                 <select
@@ -455,7 +483,10 @@ export default function TextReader({
               <div className="flex items-center gap-5 pt-1 text-xs font-medium uppercase tracking-[0.18em]">
                 <button
                   onClick={handlePrev}
-                  disabled={currentSectionIndex <= 0 && (!isPaginated || activePageIndex <= 0)}
+                  disabled={
+                    currentSectionIndex <= 0 &&
+                    (!isPaginated || activePageIndex <= 0)
+                  }
                   className="text-primary disabled:opacity-40"
                 >
                   Previous
@@ -464,7 +495,8 @@ export default function TextReader({
                   onClick={handleNext}
                   disabled={
                     currentSectionIndex >= sectionCount - 1 &&
-                    (!isPaginated || activePageIndex >= paginatedPages.length - 1)
+                    (!isPaginated ||
+                      activePageIndex >= paginatedPages.length - 1)
                   }
                   className="text-primary disabled:opacity-40"
                 >
@@ -501,7 +533,8 @@ export default function TextReader({
               </label>
               {spreadRequested && !spreadActive ? (
                 <div className="text-xs text-muted">
-                  Split mode collapses to a single page until the reader is wide enough.
+                  Split mode collapses to a single page until the reader is wide
+                  enough.
                 </div>
               ) : null}
 
@@ -607,7 +640,9 @@ export default function TextReader({
         <>
           <button
             onClick={handlePrev}
-            disabled={currentSectionIndex <= 0 && (!isPaginated || activePageIndex <= 0)}
+            disabled={
+              currentSectionIndex <= 0 && (!isPaginated || activePageIndex <= 0)
+            }
             className="absolute left-0 top-0 bottom-0 z-30 w-[10%] cursor-w-resize bg-transparent disabled:pointer-events-none"
             title="Previous page"
           />
@@ -623,10 +658,7 @@ export default function TextReader({
         </>
       )}
 
-      <div
-        ref={paginatedViewportRef}
-        className="h-full w-full overflow-hidden"
-      >
+      <div ref={paginatedViewportRef} className="h-full w-full overflow-hidden">
         {isLoadingSection ? (
           <div className="mx-auto max-w-[1280px] px-4 py-10 sm:px-8 sm:py-16 md:py-20">
             <div className="border border-dashed border-black/10 bg-canvas p-6 text-sm text-muted sm:p-8">
@@ -683,43 +715,19 @@ export default function TextReader({
             </div>
           </div>
         ) : (
-          <div
-            ref={scrollContainerRef}
-            className="h-full overflow-y-auto"
-          >
-            <div
-              className="mx-auto max-w-[1280px] px-4 py-10 sm:px-8 sm:py-16 md:py-20"
-              style={{
-                paddingLeft: `${settings.pageMargin}%`,
-                paddingRight: `${settings.pageMargin}%`,
-              }}
-            >
-              <div
-                className="space-y-5"
-                style={{
-                  color: themeStyles[settings.theme].body.color,
-                  fontFamily: settings.fontFamily,
-                  lineHeight: settings.lineHeight,
-                  fontSize: `${fontSizePx}px`,
-                  maxWidth: "100%",
-                }}
-              >
-                {scrollParagraphs.length ? (
-                  scrollParagraphs.map((paragraph, index) => (
-                    <p
-                      key={`paragraph-${currentSectionIndex}-${index}`}
-                      style={{
-                        textAlign: "justify",
-                      }}
-                    >
-                      {paragraph}
-                    </p>
-                  ))
-                ) : (
-                  "No content available."
-                )}
-              </div>
-            </div>
+          <div ref={scrollContainerRef} className="h-full overflow-y-auto">
+            <FocusBlockReader
+              title={activeSectionTitle}
+              subtitle={book?.title || "Reader"}
+              text={content || "No content available."}
+              containerClassName="bg-transparent"
+              paperClassName="bg-transparent"
+              textClassName="text-justify"
+              fontFamily={settings.fontFamily}
+              fontSizePx={fontSizePx}
+              lineHeight={settings.lineHeight}
+              {...focusSelectionProps}
+            />
           </div>
         )}
       </div>

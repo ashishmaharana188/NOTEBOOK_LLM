@@ -17,6 +17,9 @@ import PrimaryViewerCard from "./PrimaryViewerCard";
 import { getGridAnimationProps } from "../../../../hooks/appTools/useGridLayout";
 import UniversalCoverMedia from "../media/UniversalCoverMedia";
 import SpatialFolderCard from "./SpatialArchiveFolderInner";
+import FocusedReadingWorkspace, {
+    buildSavedDerivedPanelsBySourceId,
+} from "../../shared/FocusedReadingWorkspace";
 
 // --- REFACTORED ISOLATED HOOKS ---
 import useOrbitingItems from "../hooks/useOrbitingItems";
@@ -98,6 +101,9 @@ const SpatialStack = React.memo(
 
         const [activeFolder, setActiveFolder] = useState<any>(null);
         const [activeNode, setActiveNode] = useState<any>(null);
+        const [maximizedReaderItemId, setMaximizedReaderItemId] = useState<
+            string | null
+        >(null);
         const [pageIndex, setPageIndex] = useState(0);
 
         const [primarySizeOffset, setPrimarySizeOffset] = useState({
@@ -283,6 +289,59 @@ const SpatialStack = React.memo(
         const currentActiveNode =
             activeNode || (isNotesMode ? null : orbitingItems[0]) || null;
         const currentDirection = clusterIndex % 2 === 0 ? "LEFT" : "RIGHT";
+        const readingItems = useMemo(
+            () =>
+                orbitingItems
+                    .filter((item: any) => !item.is_folder && !item.is_quick_thought)
+                    .map((item: any) => ({
+                        id: String(
+                            item.echo_id ||
+                                item.note_id ||
+                                item.chunk_id ||
+                                item.id ||
+                                "",
+                        ),
+                        title:
+                            item.title ||
+                            item.bridge ||
+                            activeFolder?.title ||
+                            stackTitle ||
+                            "Focused Item",
+                        text: String(
+                            item.text ||
+                                item.content ||
+                                item.ai_insight ||
+                                item.bridge ||
+                                "",
+                        ),
+                        fullText: String(item.full_text || ""),
+                        chapter: String(item.chapter || item.relation || ""),
+                        sourceLabel: String(
+                            item.filename ||
+                                activeFolder?.title ||
+                                stackTitle ||
+                                "",
+                        ),
+                        filename: String(item.filename || ""),
+                        chunkId: String(item.chunk_id || ""),
+                        echoId: String(item.echo_id || ""),
+                        clusterId: String(
+                            cluster?.id || item.cluster_id || item.parent_cluster_id || "",
+                        ),
+                        sourceAnchorId: String(
+                            cluster?.id || item.cluster_id || item.parent_cluster_id || "",
+                        ),
+                        bookId: String(cluster?.book_id || stackTitle || ""),
+                        libraryId: String(cluster?.library_id || ""),
+                        kind: item.note_id ? "note" : "echo",
+                    }))
+                    .filter((item: any) => item.id && item.text),
+            [activeFolder?.title, cluster?.book_id, cluster?.id, cluster?.library_id, orbitingItems, stackTitle],
+        );
+        const savedPanelsBySourceId = useMemo(
+            () => buildSavedDerivedPanelsBySourceId(allClusters || []),
+            [allClusters],
+        );
 
         const currentWorldX = localPos.x + (gridOffsetX || 0);
         const currentWorldY = localPos.y + (gridOffsetY || 0);
@@ -471,6 +530,7 @@ const SpatialStack = React.memo(
         );
 
         return (
+            <>
             <motion.div
                 drag={!isExpanded}
                 dragElastic={0}
@@ -1232,6 +1292,17 @@ const SpatialStack = React.memo(
                                     handleAddQuickThought(currentActiveNode)
                                 }
                                 onFocusNote={onFocusNote}
+                                onMaximizeReading={() =>
+                                    setMaximizedReaderItemId(
+                                        String(
+                                            currentActiveNode?.echo_id ||
+                                                currentActiveNode?.note_id ||
+                                                currentActiveNode?.chunk_id ||
+                                                readingItems[0]?.id ||
+                                                "",
+                                        ) || null,
+                                    )
+                                }
                                 interactionReduced={reducedVisuals}
                             />
                         </div>
@@ -1275,6 +1346,19 @@ const SpatialStack = React.memo(
                     </>
                 )}
             </motion.div>
+            {maximizedReaderItemId && readingItems.length > 0 && (
+                <FocusedReadingWorkspace
+                    workspaceTitle={stackTitle || "Focused Reading"}
+                    workspaceSubtitle={
+                        isNotesMode ? "Spatial notes focus" : "Spatial echo focus"
+                    }
+                    items={readingItems}
+                    initialItemId={maximizedReaderItemId}
+                    savedPanelsBySourceId={savedPanelsBySourceId}
+                    onClose={() => setMaximizedReaderItemId(null)}
+                />
+            )}
+            </>
         );
     },
 );

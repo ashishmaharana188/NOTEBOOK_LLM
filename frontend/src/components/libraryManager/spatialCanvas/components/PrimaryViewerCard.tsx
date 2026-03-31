@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
+  ArrowsPointingOutIcon,
   DocumentTextIcon,
   PlusIcon,
   LockClosedIcon,
@@ -26,6 +27,7 @@ const PrimaryViewerCard = ({
   onAddQuickThought,
   globalNotes,
   onFocusNote,
+  onMaximizeReading,
   interactionReduced,
 }: any) => {
   const [radiusOffset, setRadiusOffset] = useState(0);
@@ -281,17 +283,30 @@ const PrimaryViewerCard = ({
           <>
             {/* THE FLOATING HEADER */}
             <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-start shrink-0 z-[5000] pointer-events-none">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onFocusNote && activeNode) {
-                    onFocusNote(activeNode);
-                  }
-                }}
-                className="text-xs font-bold text-blue-600 bg-white/90 hover:bg-blue-50 active:scale-95 px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 pointer-events-auto transition-all canvas-heavy-transition"
-              >
-                <DocumentTextIcon className="w-4 h-4" /> {focusLabel}
-              </button>
+              <div className="flex items-center gap-2 pointer-events-auto">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onFocusNote && activeNode) {
+                      onFocusNote(activeNode);
+                    }
+                  }}
+                  className="text-xs font-bold text-blue-600 bg-white/90 hover:bg-blue-50 active:scale-95 px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 transition-all canvas-heavy-transition"
+                >
+                  <DocumentTextIcon className="w-4 h-4" /> {focusLabel}
+                </button>
+                {onMaximizeReading && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMaximizeReading();
+                    }}
+                    className="text-xs font-bold text-slate-700 bg-white/90 hover:bg-slate-100 active:scale-95 px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 transition-all canvas-heavy-transition"
+                  >
+                    <ArrowsPointingOutIcon className="w-4 h-4" /> Maximize
+                  </button>
+                )}
+              </div>
               <div className="flex flex-col items-end gap-2 pointer-events-auto">
                 <button
                   onClick={(e) => {
