@@ -424,13 +424,18 @@ export default function useCanvasData(
   const rawLoopDataset = useMemo(() => {
     if (canvasMode === "ECHO") {
       if (!clusters || clusters.length === 0) return [];
-      const roots = clusters.filter((c) => !c.parent_cluster_id);
-      const branches = clusters.filter((c) => c.parent_cluster_id);
-
-      const mergedRoots = roots.map((root) => ({
-        ...root,
-        chunks: [...(root.chunks || [])],
-      }));
+      const getClusterId = (cluster: any) =>
+        String(cluster?.id || cluster?.cluster_id || "");
+      const getColumnMetadata = (cluster: any) =>
+        cluster?.column_metadata && typeof cluster.column_metadata === "object"
+          ? cluster.column_metadata
+          : {};
+      const getColumnKind = (cluster: any) =>
+        String(getColumnMetadata(cluster).column_kind || "").toLowerCase();
+      const isDerivedCluster = (cluster: any) => {
+        const columnKind = getColumnKind(cluster);
+        return columnKind === "analysis" || columnKind === "rag";
+      };
 
       const getUltimateRootId = (clusterId: string): string => {
         const cluster = indexes.clustersById[clusterId];
@@ -439,16 +444,175 @@ export default function useCanvasData(
         return getUltimateRootId(cluster.parent_cluster_id);
       };
 
-      branches.forEach((branch) => {
-        const rootId = getUltimateRootId(branch.id || branch.cluster_id);
-        const root = mergedRoots.find(
-          (r) => r.id === rootId || r.cluster_id === rootId,
+      const resolveDerivedParentRootId = (cluster: any): string => {
+        const metadata = getColumnMetadata(cluster);
+        const directParentId = String(cluster?.parent_cluster_id || "").trim();
+        if (directParentId) {
+          return getUltimateRootId(directParentId);
+        }
+
+        const anchorCandidates = [
+          ...(metadata?.source_anchor_ids || []),
+          ...(metadata?.source_echo_ids || []),
+          metadata?.origin_context?.cluster_id,
+          metadata?.origin_context?.echo_id,
+          cluster?.source_echo_id,
+        ]
+          .map((value: any) => String(value || "").trim())
+          .filter(Boolean);
+
+        for (const candidate of anchorCandidates) {
+          if (indexes.clustersById[candidate]) {
+            return getUltimateRootId(candidate);
+          }
+          const sourceCluster = indexes.clusterByEchoId[candidate];
+          if (sourceCluster) {
+            return getUltimateRootId(getClusterId(sourceCluster));
+          }
+        }
+
+        return "";
+      };
+
+      const getDisplayRootId = (cluster: any): string => {
+        const clusterId = getClusterId(cluster);
+        if (!clusterId) return "";
+
+        const rootId = getUltimateRootId(clusterId);
+        const rootCluster = indexes.clustersById[rootId];
+        if (rootCluster && isDerivedCluster(rootCluster)) {
+          return resolveDerivedParentRootId(rootCluster) || rootId;
+        }
+        return rootId;
+      };
+
+      const buildDerivedSlotCard = (cluster: any) => {
+        const clusterId = getClusterId(cluster);
+        const metadata = getColumnMetadata(cluster);
+        const mode = String(metadata.mode || "").toLowerCase();
+        const latestSummaryChunk = [...(cluster.chunks || [])]
+          .reverse()
+          .find(
+            (chunk: any) =>
+              String(
+                chunk?.bridge ||
+                  chunk?.ai_insight ||
+                  chunk?.text ||
+                  chunk?.title ||
+                  "",
+              ).trim().length > 0,
+          );
+        const originContext =
+          metadata.origin_context || metadata.source_contexts?.[0] || {};
+        const previewText = String(
+          latestSummaryChunk?.bridge ||
+            latestSummaryChunk?.ai_insight ||
+            latestSummaryChunk?.text ||
+            originContext?.text ||
+            "",
+        ).trim();
+        const title = String(
+          cluster?.title ||
+            latestSummaryChunk?.title ||
+            metadata.mode_label ||
+            (mode === "rag" ? "RAG Result" : "Analysis Result"),
+        ).trim();
+        const sizeTag = mode === "rag" ? "size:A5" : "size:A4";
+        const existingTags = String(latestSummaryChunk?.tags || "").trim();
+
+        return {
+          ...cluster,
+          chunk_id: `derived_${clusterId}`,
+          echo_id: `derived_${clusterId}`,
+          type: "echo",
+          relation: mode === "rag" ? "RAG Result" : "Analysis Result",
+          title,
+          bridge: title,
+          text: previewText || "No summary available yet.",
+          chapter: String(originContext?.chapter || ""),
+          tags: [existingTags, sizeTag, "spatial:derived_card"]
+            .filter(Boolean)
+            .join(" ")
+            .trim(),
+          source_cluster_id: clusterId,
+          analysis_mode: mode,
+          column_metadata: metadata,
+          is_saved_result_card: true,
+        };
+      };
+
+      const mergedRootsById = new Map<string, any>();
+      const ensureMergedRoot = (cluster: any) => {
+        const clusterId = getClusterId(cluster);
+        if (!clusterId) return null;
+        if (!mergedRootsById.has(clusterId)) {
+          mergedRootsById.set(clusterId, {
+            ...cluster,
+            chunks: [...(cluster.chunks || [])],
+          });
+        }
+        return mergedRootsById.get(clusterId);
+      };
+
+      const attachDerivedCardToRoot = (rootId: string, cluster: any) => {
+        if (!rootId) return false;
+        const rootCluster = indexes.clustersById[rootId];
+        if (!rootCluster) return false;
+
+        const root = ensureMergedRoot(rootCluster);
+        if (!root) return false;
+
+        const derivedCard = buildDerivedSlotCard(cluster);
+        const alreadyPresent = (root.chunks || []).some(
+          (item: any) =>
+            String(item?.source_cluster_id || "") ===
+            String(derivedCard.source_cluster_id || ""),
         );
-        if (root) root.chunks.push(...(branch.chunks || []));
-        else
-          mergedRoots.push({ ...branch, chunks: [...(branch.chunks || [])] });
+        if (!alreadyPresent) {
+          root.chunks.push(derivedCard);
+        }
+        return true;
+      };
+
+      const roots = clusters.filter((cluster) => !cluster.parent_cluster_id);
+      roots.forEach((root) => {
+        const rootId = getClusterId(root);
+        const displayRootId = getDisplayRootId(root);
+        if (displayRootId && displayRootId !== rootId && isDerivedCluster(root)) {
+          return;
+        }
+        ensureMergedRoot(root);
       });
 
+      clusters.forEach((cluster) => {
+        const clusterId = getClusterId(cluster);
+        if (!clusterId) return;
+
+        if (isDerivedCluster(cluster)) {
+          const displayRootId = getDisplayRootId(cluster);
+          if (displayRootId && displayRootId !== clusterId) {
+            attachDerivedCardToRoot(displayRootId, cluster);
+            return;
+          }
+          if (!cluster.parent_cluster_id) {
+            ensureMergedRoot(cluster);
+          }
+          return;
+        }
+
+        if (!cluster.parent_cluster_id) return;
+
+        const displayRootId = getDisplayRootId(cluster);
+        const displayRoot = indexes.clustersById[displayRootId];
+        if (displayRoot) {
+          ensureMergedRoot(displayRoot)?.chunks.push(...(cluster.chunks || []));
+          return;
+        }
+
+        ensureMergedRoot(cluster);
+      });
+
+      const mergedRoots = Array.from(mergedRootsById.values());
       mergedRoots.forEach((root) => {
         root.chunks.sort(
           (a: any, b: any) =>
@@ -530,7 +694,7 @@ export default function useCanvasData(
       archiveMap.forEach((archNode) => finalDisplayNodes.push(archNode));
       return finalDisplayNodes;
     }
-  }, [clusters, stacks, canvasMode, indexes.clustersById]);
+  }, [clusters, stacks, canvasMode, indexes.clustersById, indexes.clusterByEchoId]);
 
   // 3. VIRTUAL VAULT INJECTION
   const loopDataset = useMemo(() => {
