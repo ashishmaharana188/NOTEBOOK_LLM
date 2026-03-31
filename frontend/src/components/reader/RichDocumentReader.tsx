@@ -10,6 +10,8 @@ interface RichDocumentReaderProps {
   topMeta?: React.ReactNode;
   onSelection?: (text: string) => void;
   onReachedEnd?: () => void;
+  scrollEnabled?: boolean;
+  onActivate?: () => void;
 }
 
 export default function RichDocumentReader({
@@ -22,6 +24,8 @@ export default function RichDocumentReader({
   topMeta,
   onSelection,
   onReachedEnd,
+  scrollEnabled = true,
+  onActivate,
 }: RichDocumentReaderProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nearEndTriggeredRef = useRef(false);
@@ -50,7 +54,7 @@ export default function RichDocumentReader({
   };
 
   const handleSelectionCapture = () => {
-    if (!onSelection || !scrollRef.current) return;
+    if (!scrollEnabled || !onSelection || !scrollRef.current) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
@@ -74,9 +78,11 @@ export default function RichDocumentReader({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
+        onMouseDown={onActivate}
+        onPointerDown={onActivate}
         onMouseUp={handleSelectionCapture}
         onTouchEnd={handleSelectionCapture}
-        className={`min-h-0 flex-1 overflow-y-auto custom-scrollbar ${containerClassName}`}
+        className={`min-h-0 flex-1 ${scrollEnabled ? "overflow-y-auto custom-scrollbar" : "overflow-hidden"} ${containerClassName}`}
       >
         <div
           className={`mx-auto flex min-h-full w-full max-w-[860px] flex-col px-6 pb-28 pt-12 sm:px-10 md:px-14 ${paperClassName}`}

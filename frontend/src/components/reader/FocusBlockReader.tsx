@@ -13,6 +13,8 @@ interface FocusBlockReaderProps {
   onSelection?: (text: string) => void;
   onReachedEnd?: () => void;
   onActiveBlockChange?: (index: number) => void;
+  scrollEnabled?: boolean;
+  onActivate?: () => void;
   fontFamily?: string;
   fontSizePx?: number;
   lineHeight?: number;
@@ -30,6 +32,8 @@ export default function FocusBlockReader({
   onSelection,
   onReachedEnd,
   onActiveBlockChange,
+  scrollEnabled = true,
+  onActivate,
   fontFamily = "Georgia, serif",
   fontSizePx = 20,
   lineHeight = 1.75,
@@ -91,7 +95,7 @@ export default function FocusBlockReader({
   }, [text]);
 
   const handleSelectionCapture = () => {
-    if (!onSelection || !scrollRef.current) return;
+    if (!scrollEnabled || !onSelection || !scrollRef.current) return;
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
 
@@ -115,9 +119,11 @@ export default function FocusBlockReader({
       <div
         ref={scrollRef}
         onScroll={updateActiveBlock}
+        onMouseDown={onActivate}
+        onPointerDown={onActivate}
         onMouseUp={handleSelectionCapture}
         onTouchEnd={handleSelectionCapture}
-        className={`min-h-0 flex-1 overflow-y-auto custom-scrollbar ${containerClassName}`}
+        className={`min-h-0 flex-1 ${scrollEnabled ? "overflow-y-auto custom-scrollbar" : "overflow-hidden"} ${containerClassName}`}
       >
         <div
           className={`mx-auto flex min-h-full w-full max-w-[860px] flex-col px-6 pb-28 pt-12 sm:px-10 md:px-14 ${paperClassName}`}

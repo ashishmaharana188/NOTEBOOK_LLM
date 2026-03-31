@@ -411,16 +411,31 @@ export default function FocusedReadingWorkspace({
   const [ragPrompt, setRagPrompt] = useState("");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const [isCenterFocused, setIsCenterFocused] = useState(false);
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [isUploadingEchoImage, setIsUploadingEchoImage] = useState(false);
   const [localPanelsBySourceId, setLocalPanelsBySourceId] = useState<
     Record<string, ReadingDerivedPanel[]>
   >({});
   const echoImageInputRef = useRef<HTMLInputElement | null>(null);
+  const centerPanelRef = useRef<HTMLDivElement | null>(null);
+  const wheelNavLockRef = useRef(0);
 
   useEffect(() => {
     setItemState(items);
-    setSelectedItemId(initialItemId || String(items[0]?.id || ""));
+  }, [items]);
+
+  useEffect(() => {
+    const nextInitialId = String(initialItemId || items[0]?.id || "");
+    const itemIds = new Set((items || []).map((item) => String(item.id)));
+
+    setSelectedItemId((previous) => {
+      const previousId = String(previous || "");
+      if (previousId && itemIds.has(previousId)) {
+        return previousId;
+      }
+      return nextInitialId;
+    });
   }, [initialItemId, items]);
 
   useEffect(() => {
@@ -438,7 +453,21 @@ export default function FocusedReadingWorkspace({
   useEffect(() => {
     setIsMobileRailOpen(false);
     setShowPromptInput(false);
+    setIsCenterFocused(false);
   }, [selectedItemId]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!centerPanelRef.current) return;
+      if (centerPanelRef.current.contains(event.target as Node)) return;
+      setIsCenterFocused(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, []);
 
   const itemMap = useMemo(() => {
     const next = new Map<string, ReadingWorkspaceItem>();
@@ -494,6 +523,37 @@ export default function FocusedReadingWorkspace({
     setSelectedItemId(String(itemState[currentIndex + 1]?.id || ""));
     setSelectionText("");
     setShowPromptInput(false);
+  };
+
+  const selectAdjacentItem = (direction: 1 | -1) => {
+    if (!selectedItem) return;
+    const currentIndex = itemState.findIndex(
+      (item) => String(item.id) === String(selectedItem.id),
+    );
+    if (currentIndex < 0) return;
+    const nextIndex = Math.max(
+      0,
+      Math.min(itemState.length - 1, currentIndex + direction),
+    );
+    if (nextIndex === currentIndex) return;
+    setSelectedItemId(String(itemState[nextIndex]?.id || ""));
+    setSelectionText("");
+    setShowPromptInput(false);
+  };
+
+  const handleCenterBrowseWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (isCenterFocused) return;
+    if (Math.abs(event.deltaY) < 6) return;
+
+    const now = Date.now();
+    if (now - wheelNavLockRef.current < 180) {
+      event.preventDefault();
+      return;
+    }
+
+    wheelNavLockRef.current = now;
+    event.preventDefault();
+    selectAdjacentItem(event.deltaY > 0 ? 1 : -1);
   };
 
   const runDerivedMode = async (mode: string, prompt = "") => {
@@ -885,6 +945,7 @@ export default function FocusedReadingWorkspace({
                       setSelectedItemId(String(item.id));
                       setSelectionText("");
                       setShowPromptInput(false);
+                      setIsCenterFocused(false);
                     }}
                     className={`w-full border-b border-white/10 px-1 py-4 text-left transition-colors md:px-2 ${
                       isSelected
@@ -966,12 +1027,22 @@ export default function FocusedReadingWorkspace({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_40px_120px_rgba(0,0,0,0.45)]">
+            <div
+              ref={centerPanelRef}
+              onWheelCapture={handleCenterBrowseWheel}
+              onMouseDown={() => setIsCenterFocused(true)}
+              onPointerDown={() => setIsCenterFocused(true)}
+              className={`min-h-0 flex-1 overflow-hidden rounded-[28px] border bg-white shadow-[0_40px_120px_rgba(0,0,0,0.45)] transition-colors ${
+                isCenterFocused ? "border-black/20" : "border-white/10"
+              }`}
+            >
               {isRichNoteView ? (
                 <RichDocumentReader
                   title={selectedItem?.title || ""}
                   subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
                   html={String(selectedItem?.rawContent || selectedItem?.text || "")}
+                  scrollEnabled={isCenterFocused}
+                  onActivate={() => setIsCenterFocused(true)}
                   onSelection={(text) => setSelectionText(text)}
                   onReachedEnd={handleReachedEnd}
                   containerClassName="bg-white"
@@ -983,6 +1054,8 @@ export default function FocusedReadingWorkspace({
                   subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
                   text={currentText}
                   topMeta={attachmentGallery}
+                  scrollEnabled={isCenterFocused}
+                  onActivate={() => setIsCenterFocused(true)}
                   onSelection={(text) => setSelectionText(text)}
                   onReachedEnd={handleReachedEnd}
                   containerClassName="bg-white"

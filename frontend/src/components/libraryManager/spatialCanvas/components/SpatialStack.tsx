@@ -291,8 +291,64 @@ const SpatialStack = React.memo(
             [selectedItemIds],
         );
 
-        const currentActiveNode =
-            activeNode || (isNotesMode ? null : orbitingItems[0]) || null;
+        const defaultPrimaryNode = useMemo(() => {
+            if (!Array.isArray(orbitingItems) || orbitingItems.length === 0) {
+                return null;
+            }
+
+            if (isNotesMode) {
+                return (
+                    orbitingItems.find(
+                        (item: any) =>
+                            Boolean(item?.note_id || item?.type === "note") &&
+                            !item?.is_folder &&
+                            !item?.is_quick_thought,
+                    ) || null
+                );
+            }
+
+            return (
+                orbitingItems.find(
+                    (item: any) =>
+                        !item?.note_id &&
+                        !item?.is_folder &&
+                        !item?.is_quick_thought,
+                ) ||
+                orbitingItems.find(
+                    (item: any) => !item?.is_folder && !item?.is_quick_thought,
+                ) ||
+                null
+            );
+        }, [isNotesMode, orbitingItems]);
+
+        const currentActiveNode = useMemo(() => {
+            const activeNodeId = String(
+                activeNode?.echo_id ||
+                    activeNode?.note_id ||
+                    activeNode?.chunk_id ||
+                    activeNode?.id ||
+                    "",
+            );
+            const resolvedActiveNode =
+                activeNodeId && Array.isArray(orbitingItems)
+                    ? orbitingItems.find((item: any) => {
+                          const itemId = String(
+                              item?.echo_id ||
+                                  item?.note_id ||
+                                  item?.chunk_id ||
+                                  item?.id ||
+                                  "",
+                          );
+                          return itemId === activeNodeId;
+                      }) || null
+                    : null;
+
+            if (resolvedActiveNode) {
+                return resolvedActiveNode;
+            }
+
+            return defaultPrimaryNode || null;
+        }, [activeNode, defaultPrimaryNode, orbitingItems]);
         const currentDirection = clusterIndex % 2 === 0 ? "LEFT" : "RIGHT";
         const readingItems = useMemo(
             () =>
