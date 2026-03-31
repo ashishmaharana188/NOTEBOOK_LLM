@@ -285,12 +285,17 @@ const PrimaryViewerCard = ({
               <div className="flex items-center gap-2 pointer-events-auto">
                 <button
                   onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
                     if (onMaximizeReading) {
                       onMaximizeReading();
                     } else if (onFocusNote && activeNode) {
                       onFocusNote(activeNode);
                     }
+                  }}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                   }}
                   className="text-xs font-bold text-blue-600 bg-white/90 hover:bg-blue-50 active:scale-95 px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 transition-all canvas-heavy-transition"
                 >

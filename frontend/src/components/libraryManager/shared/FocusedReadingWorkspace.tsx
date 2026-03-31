@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import {
   ArrowUturnLeftIcon,
@@ -365,6 +366,7 @@ export default function FocusedReadingWorkspace({
   onRefreshSaved,
 }: FocusedReadingWorkspaceProps) {
   const isMobile = useIsMobile();
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [itemState, setItemState] = useState<ReadingWorkspaceItem[]>(items);
   const [selectedItemId, setSelectedItemId] = useState<string>(
     initialItemId || String(items[0]?.id || ""),
@@ -381,6 +383,18 @@ export default function FocusedReadingWorkspace({
     setItemState(items);
     setSelectedItemId(initialItemId || String(items[0]?.id || ""));
   }, [initialItemId, items]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    setPortalTarget(document.body);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     setIsMobileRailOpen(false);
@@ -719,7 +733,7 @@ export default function FocusedReadingWorkspace({
     </div>
   );
 
-  return (
+  const workspaceShell = (
     <div className="fixed inset-0 z-[7000] bg-[#050505] text-white">
       <div className="flex h-full min-h-0 w-full">
         <aside className="flex w-[112px] shrink-0 flex-col border-r border-white/8 bg-black/70 px-3 py-8 md:w-[260px] md:px-6">
@@ -843,4 +857,10 @@ export default function FocusedReadingWorkspace({
       ) : null}
     </div>
   );
+
+  if (!portalTarget) {
+    return null;
+  }
+
+  return createPortal(workspaceShell, portalTarget);
 }

@@ -101,9 +101,10 @@ const SpatialStack = React.memo(
 
         const [activeFolder, setActiveFolder] = useState<any>(null);
         const [activeNode, setActiveNode] = useState<any>(null);
-        const [maximizedReaderItemId, setMaximizedReaderItemId] = useState<
-            string | null
-        >(null);
+        const [maximizedReaderState, setMaximizedReaderState] = useState<{
+            itemId: string;
+            items: any[];
+        } | null>(null);
         const [pageIndex, setPageIndex] = useState(0);
 
         const [primarySizeOffset, setPrimarySizeOffset] = useState({
@@ -338,6 +339,81 @@ const SpatialStack = React.memo(
                     .filter((item: any) => item.id && item.text),
             [activeFolder?.title, cluster?.book_id, cluster?.id, cluster?.library_id, orbitingItems, stackTitle],
         );
+        const buildWorkspaceItemFromNode = useCallback(
+            (item: any) => {
+                const itemId = String(
+                    item?.echo_id || item?.note_id || item?.chunk_id || item?.id || "",
+                );
+                const itemText = String(
+                    item?.text ||
+                        item?.content ||
+                        item?.ai_insight ||
+                        item?.bridge ||
+                        "",
+                );
+                if (!itemId || !itemText) return null;
+
+                return {
+                    id: itemId,
+                    title:
+                        item?.title ||
+                        item?.bridge ||
+                        activeFolder?.title ||
+                        stackTitle ||
+                        "Focused Item",
+                    text: itemText,
+                    fullText: String(item?.full_text || ""),
+                    chapter: String(item?.chapter || item?.relation || ""),
+                    sourceLabel: String(
+                        item?.filename || activeFolder?.title || stackTitle || "",
+                    ),
+                    filename: String(item?.filename || ""),
+                    chunkId: String(item?.chunk_id || ""),
+                    echoId: String(item?.echo_id || ""),
+                    clusterId: String(
+                        cluster?.id || item?.cluster_id || item?.parent_cluster_id || "",
+                    ),
+                    sourceAnchorId: String(
+                        cluster?.id || item?.cluster_id || item?.parent_cluster_id || "",
+                    ),
+                    bookId: String(cluster?.book_id || stackTitle || ""),
+                    libraryId: String(cluster?.library_id || ""),
+                    kind: item?.note_id ? "note" : "echo",
+                };
+            },
+            [activeFolder?.title, cluster?.book_id, cluster?.id, cluster?.library_id, stackTitle],
+        );
+        const openMaximizedReader = useCallback(() => {
+            const fallbackItem = buildWorkspaceItemFromNode(currentActiveNode);
+            const workspaceItems =
+                readingItems.length > 0
+                    ? readingItems
+                    : fallbackItem
+                      ? [fallbackItem]
+                      : [];
+
+            if (!workspaceItems.length) return;
+
+            const preferredId = String(
+                currentActiveNode?.echo_id ||
+                    currentActiveNode?.note_id ||
+                    currentActiveNode?.chunk_id ||
+                    currentActiveNode?.id ||
+                    workspaceItems[0]?.id ||
+                    "",
+            );
+            const resolvedItemId =
+                workspaceItems.find(
+                    (item: any) => String(item.id) === String(preferredId),
+                )?.id || workspaceItems[0]?.id;
+
+            if (!resolvedItemId) return;
+
+            setMaximizedReaderState({
+                itemId: String(resolvedItemId),
+                items: workspaceItems,
+            });
+        }, [buildWorkspaceItemFromNode, currentActiveNode, readingItems]);
         const savedPanelsBySourceId = useMemo(
             () => buildSavedDerivedPanelsBySourceId(allClusters || []),
             [allClusters],
@@ -1292,17 +1368,7 @@ const SpatialStack = React.memo(
                                     handleAddQuickThought(currentActiveNode)
                                 }
                                 onFocusNote={onFocusNote}
-                                onMaximizeReading={() =>
-                                    setMaximizedReaderItemId(
-                                        String(
-                                            currentActiveNode?.echo_id ||
-                                                currentActiveNode?.note_id ||
-                                                currentActiveNode?.chunk_id ||
-                                                readingItems[0]?.id ||
-                                                "",
-                                        ) || null,
-                                    )
-                                }
+                                onMaximizeReading={openMaximizedReader}
                                 interactionReduced={reducedVisuals}
                             />
                         </div>
@@ -1346,16 +1412,16 @@ const SpatialStack = React.memo(
                     </>
                 )}
             </motion.div>
-            {maximizedReaderItemId && readingItems.length > 0 && (
+            {maximizedReaderState && maximizedReaderState.items.length > 0 && (
                 <FocusedReadingWorkspace
                     workspaceTitle={stackTitle || "Focused Reading"}
                     workspaceSubtitle={
                         isNotesMode ? "Spatial notes focus" : "Spatial echo focus"
                     }
-                    items={readingItems}
-                    initialItemId={maximizedReaderItemId}
+                    items={maximizedReaderState.items}
+                    initialItemId={maximizedReaderState.itemId}
                     savedPanelsBySourceId={savedPanelsBySourceId}
-                    onClose={() => setMaximizedReaderItemId(null)}
+                    onClose={() => setMaximizedReaderState(null)}
                 />
             )}
             </>
