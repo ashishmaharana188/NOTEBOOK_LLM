@@ -78,6 +78,9 @@ const SpatialStack = React.memo(
         onOpenMindMap,
         groupsByOwnerId,
         interactionReduced,
+        noteStacks = [],
+        noteGroups = [],
+        onSaveWorkspaceNote,
     }: any) => {
         const isNotesMode = canvasMode === "NOTES";
         const isTouchDevice = useIsTouchDevice();
@@ -323,9 +326,20 @@ const SpatialStack = React.memo(
                                 stackTitle ||
                                 "",
                         ),
+                        rawContent: String(
+                            item.content ||
+                                item.text ||
+                                item.ai_insight ||
+                                item.bridge ||
+                                "",
+                        ),
                         filename: String(item.filename || ""),
                         chunkId: String(item.chunk_id || ""),
                         echoId: String(item.echo_id || ""),
+                        noteId: String(item.note_id || ""),
+                        groupId: String(item.group_id || ""),
+                        tags: String(item.tags || ""),
+                        linkedEchoId: String(item.linked_echo_id || ""),
                         clusterId: String(
                             cluster?.id || item.cluster_id || item.parent_cluster_id || "",
                         ),
@@ -1421,6 +1435,9 @@ const SpatialStack = React.memo(
                     items={maximizedReaderState.items}
                     initialItemId={maximizedReaderState.itemId}
                     savedPanelsBySourceId={savedPanelsBySourceId}
+                    noteStacks={noteStacks}
+                    noteGroups={noteGroups}
+                    onSaveNote={onSaveWorkspaceNote}
                     onClose={() => setMaximizedReaderState(null)}
                 />
             )}

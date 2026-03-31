@@ -6,12 +6,14 @@ import {
   BookmarkSquareIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  PencilSquareIcon,
   SparklesIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import FocusBlockReader from "../../reader/FocusBlockReader";
 import useIsMobile from "../../../hooks/appTools/useIsMobile";
 import { buildApiUrl } from "../../../lib/runtimeConfig";
+import NotesFormUI from "../noteModule/notesFormUI";
 
 export interface ReadingWorkspaceItem {
   id: string;
@@ -28,6 +30,11 @@ export interface ReadingWorkspaceItem {
   bookId?: string;
   libraryId?: string;
   kind?: string;
+  noteId?: string;
+  groupId?: string;
+  tags?: string;
+  rawContent?: string;
+  linkedEchoId?: string;
 }
 
 export interface ReadingDerivedPanel {
@@ -62,6 +69,16 @@ interface FocusedReadingWorkspaceProps {
   onClose: () => void;
   savedPanelsBySourceId?: Record<string, ReadingDerivedPanel[]>;
   onRefreshSaved?: () => Promise<void> | void;
+  noteStacks?: any[];
+  noteGroups?: any[];
+  onSaveNote?: (payload: {
+    noteId: string;
+    previousGroupId: string;
+    groupId: string;
+    title: string;
+    content: string;
+    tags: string;
+  }) => Promise<void> | void;
 }
 
 const RUN_MODE_LABELS: Record<string, string> = {
@@ -364,6 +381,9 @@ export default function FocusedReadingWorkspace({
   onClose,
   savedPanelsBySourceId = {},
   onRefreshSaved,
+  noteStacks = [],
+  noteGroups = [],
+  onSaveNote,
 }: FocusedReadingWorkspaceProps) {
   const isMobile = useIsMobile();
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
@@ -375,6 +395,7 @@ export default function FocusedReadingWorkspace({
   const [ragPrompt, setRagPrompt] = useState("");
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
+  const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [localPanelsBySourceId, setLocalPanelsBySourceId] = useState<
     Record<string, ReadingDerivedPanel[]>
   >({});
@@ -408,6 +429,8 @@ export default function FocusedReadingWorkspace({
   }, [itemState]);
 
   const selectedItem = itemMap.get(String(selectedItemId)) || itemState[0] || null;
+  const editingNoteItem =
+    editingNoteItemId ? itemMap.get(String(editingNoteItemId)) || null : null;
   const sourceKey = String(selectedItem?.echoId || selectedItem?.id || "");
   const visibleSavedPanels = savedPanelsBySourceId[sourceKey] || [];
   const visibleLocalPanels = localPanelsBySourceId[sourceKey] || [];
@@ -795,13 +818,25 @@ export default function FocusedReadingWorkspace({
                   {selectedItem?.title || workspaceTitle}
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/8 text-white transition-colors hover:bg-white/14"
-                title="Close reading workspace"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedItem?.kind === "note" && selectedItem?.noteId && onSaveNote ? (
+                  <button
+                    onClick={() => setEditingNoteItemId(String(selectedItem.id))}
+                    className="inline-flex h-11 items-center justify-center gap-2 border border-white/10 bg-white/8 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-white/14"
+                    title="Edit note"
+                  >
+                    <PencilSquareIcon className="h-4 w-4" />
+                    Edit Note
+                  </button>
+                ) : null}
+                <button
+                  onClick={onClose}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/8 text-white transition-colors hover:bg-white/14"
+                  title="Close reading workspace"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_40px_120px_rgba(0,0,0,0.45)]">
@@ -854,6 +889,59 @@ export default function FocusedReadingWorkspace({
             </button>
           </div>
         </>
+      ) : null}
+
+      {editingNoteItem && editingNoteItem.noteId && onSaveNote ? (
+        <NotesFormUI
+          groupId={editingNoteItem.groupId || ""}
+          initialNote={{
+            note_id: editingNoteItem.noteId,
+            group_id: editingNoteItem.groupId || "",
+            title: editingNoteItem.title || "",
+            content:
+              editingNoteItem.rawContent ||
+              editingNoteItem.fullText ||
+              editingNoteItem.text ||
+              "",
+            tags: editingNoteItem.tags || "",
+            linked_echo_id: editingNoteItem.linkedEchoId || "",
+          }}
+          stacks={noteStacks}
+          groups={noteGroups}
+          onClose={() => setEditingNoteItemId(null)}
+          onSave={async (
+            title: string,
+            content: string,
+            tags: string,
+            noteId: string,
+            groupId: string,
+          ) => {
+            await onSaveNote({
+              noteId: noteId || editingNoteItem.noteId || "",
+              previousGroupId: editingNoteItem.groupId || "",
+              groupId: groupId || "",
+              title,
+              content,
+              tags,
+            });
+
+            setItemState((prev) =>
+              prev.map((item) =>
+                String(item.id) === String(editingNoteItem.id)
+                  ? {
+                      ...item,
+                      title,
+                      text: content,
+                      rawContent: content,
+                      groupId: groupId || "",
+                      tags,
+                    }
+                  : item,
+              ),
+            );
+            setEditingNoteItemId(null);
+          }}
+        />
       ) : null}
     </div>
   );

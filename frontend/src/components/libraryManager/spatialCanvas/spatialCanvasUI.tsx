@@ -346,6 +346,72 @@ export default function SpatialCanvasUI({
         ],
     );
 
+    const handleSaveWorkspaceNote = useCallback(
+        async ({
+            noteId,
+            previousGroupId,
+            groupId,
+            title,
+            content,
+            tags,
+        }: {
+            noteId: string;
+            previousGroupId: string;
+            groupId: string;
+            title: string;
+            content: string;
+            tags: string;
+        }) => {
+            if (!noteId) return;
+
+            await axios.put(buildApiUrl("/notes/item/update"), {
+                note_id: noteId,
+                title,
+                content,
+                tags,
+                group_id: groupId || "",
+            });
+
+            const refreshTasks: Promise<any>[] = [
+                fetchStacks(),
+                fetchGroups(),
+            ];
+
+            if (typeof fetchClusters === "function") {
+                refreshTasks.push(Promise.resolve(fetchClusters()));
+            }
+            if (groupId) {
+                refreshTasks.push(fetchNotesForGroup(groupId));
+            }
+            if (
+                previousGroupId &&
+                previousGroupId !== groupId
+            ) {
+                refreshTasks.push(fetchNotesForGroup(previousGroupId));
+            }
+
+            await Promise.allSettled(refreshTasks);
+
+            publish(
+                [
+                    "canvas.snapshot",
+                    "mindmap.graph",
+                    groupId ? `notes.group:${groupId}` : "",
+                    previousGroupId && previousGroupId !== groupId
+                        ? `notes.group:${previousGroupId}`
+                        : "",
+                ].filter(Boolean) as string[],
+            );
+        },
+        [
+            fetchClusters,
+            fetchGroups,
+            fetchNotesForGroup,
+            fetchStacks,
+            publish,
+        ],
+    );
+
     useEffect(() => {
         setDrillDownPath((prev) => {
             if (!prev.length) return prev;
@@ -1595,6 +1661,11 @@ export default function SpatialCanvasUI({
                                                     }
                                                     onOpenMindMap={
                                                         onOpenMindMap
+                                                    }
+                                                    noteStacks={stacks}
+                                                    noteGroups={groups}
+                                                    onSaveWorkspaceNote={
+                                                        handleSaveWorkspaceNote
                                                     }
                                                     groupsByOwnerId={
                                                         groupsByOwnerId

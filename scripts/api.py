@@ -2579,7 +2579,12 @@ print(">>> NEW MEDIA ENDPOINT SUCCESSFULLY REGISTERED <<<")
 
 
 @app.post("/upload/media/{item_type}/{item_id}")
-async def upload_media_file(item_type: str, item_id: str, file: UploadFile = File(...)):
+async def upload_media_file(
+    request: Request,
+    item_type: str,
+    item_id: str,
+    file: UploadFile = File(...),
+):
     try:
         import os
         import shutil
@@ -2619,7 +2624,11 @@ async def upload_media_file(item_type: str, item_id: str, file: UploadFile = Fil
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        file_url = f"https://doomprompting123-space.hf.space/stored_files/notes/{item_id}/{unique_filename}"
+        file_url = str(
+            request.url_for(
+                "files", path=f"notes/{item_id}/{unique_filename}"
+            )
+        )
 
         if item_type == "stack":
             from scripts.db_manager import graph_db
