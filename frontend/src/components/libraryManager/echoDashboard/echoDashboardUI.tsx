@@ -1557,7 +1557,6 @@ export default function EchoDashboardUI(props: any) {
           libraryId={libraryId}
           activeBookTitle={activeBookTitle}
           onRefreshSaved={state.refreshGlobalCanvas}
-          onMobileRagFallback={state.openHighlightRagComposer}
         />
       )}
     </>

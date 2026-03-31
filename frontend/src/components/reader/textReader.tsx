@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -21,7 +22,6 @@ import {
 } from "./readerIcons";
 import ReaderAnnotationPanel from "./ReaderAnnotationPanel";
 import ReaderPanelSection from "./ReaderPanelSection";
-import FocusBlockReader from "./FocusBlockReader";
 
 const FONT_OPTIONS = [
   { label: "Georgia", value: "Georgia, serif" },
@@ -153,13 +153,6 @@ function buildSectionOptions(
   }));
 }
 
-function buildScrollParagraphs(content: string) {
-  return String(content || "")
-    .split(/\n\s*\n+/)
-    .map((paragraph) => paragraph.replace(/\s*\n+\s*/g, " ").trim())
-    .filter(Boolean);
-}
-
 export default function TextReader({
   book,
   content,
@@ -186,6 +179,7 @@ export default function TextReader({
   const { settings, updateSetting, themeStyles } = useReaderSetting();
   const [showPanel, setShowPanel] = useState(false);
   const [activePageIndex, setActivePageIndex] = useState(0);
+  const [visibleScrollPageCount, setVisibleScrollPageCount] = useState(4);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const deferredContent = useDeferredValue(content);
 
@@ -212,10 +206,6 @@ export default function TextReader({
         ?.label || normalizeSectionLabel(sectionLabel, currentSectionIndex)
     );
   }, [currentSectionIndex, sectionLabel, sectionOptions]);
-  const scrollParagraphs = useMemo(
-    () => buildScrollParagraphs(deferredContent),
-    [deferredContent],
-  );
 
   const isPaginated = settings.flow === "paginated";
   const spreadRequested = settings.spread === "always";
@@ -227,6 +217,21 @@ export default function TextReader({
     fontSizePx + 6,
   );
   const fontDeclaration = `${fontSizePx}px ${settings.fontFamily}`;
+  const viewportInset = Math.max(
+    viewportSize.width < 768 ? 20 : 36,
+    Math.round(((viewportSize.width || 960) * settings.pageMargin) / 100),
+  );
+  const pageShellWidth = useMemo(() => {
+    const desiredWidth = isPaginated && spreadActive ? 1180 : 760;
+    if (!viewportSize.width) return desiredWidth;
+    return Math.max(
+      320,
+      Math.min(desiredWidth, viewportSize.width - viewportInset * 2),
+    );
+  }, [isPaginated, spreadActive, viewportInset, viewportSize.width]);
+  const pagePaddingX = viewportSize.width < 768 ? 20 : 42;
+  const pagePaddingY = viewportSize.height < 720 ? 28 : 40;
+  const pageColumnGap = columnsPerPage === 2 ? 40 : 0;
 
   useEffect(() => {
     const node = paginatedViewportRef.current;
@@ -247,34 +252,18 @@ export default function TextReader({
   }, []);
 
   useEffect(() => {
-    if (!isPaginated && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-    }
-  }, [currentSectionIndex, initialLocation, isPaginated]);
-
-  useEffect(() => {
     setActivePageIndex(Math.max(0, Number(initialPageIndex || 0)));
   }, [currentSectionIndex, deferredContent, initialPageIndex]);
 
   const paginatedPages = useMemo(() => {
-    if (!isPaginated || !deferredContent?.trim()) return [] as string[][][];
+    if (!deferredContent?.trim()) return [] as string[][][];
     if (!viewportSize.width || !viewportSize.height) return [] as string[][][];
-
-    const outerPaddingX = viewportSize.width < 768 ? 24 : 48;
-    const outerPaddingY = viewportSize.height < 700 ? 28 : 42;
-    const columnGap = columnsPerPage === 2 ? 40 : 0;
     const availableWidth = Math.max(
       220,
-      viewportSize.width - outerPaddingX * 2 - columnGap * (columnsPerPage - 1),
+      pageShellWidth - pagePaddingX * 2 - pageColumnGap * (columnsPerPage - 1),
     );
-    const columnWidth = Math.max(
-      180,
-      Math.floor(availableWidth / columnsPerPage),
-    );
-    const availableHeight = Math.max(
-      120,
-      viewportSize.height - outerPaddingY * 2,
-    );
+    const columnWidth = Math.max(180, Math.floor(availableWidth / columnsPerPage));
+    const availableHeight = Math.max(240, viewportSize.height - pagePaddingY * 2);
     const linesPerColumn = Math.max(
       1,
       Math.floor(availableHeight / lineHeightPx),
@@ -313,11 +302,32 @@ export default function TextReader({
     columnsPerPage,
     deferredContent,
     fontDeclaration,
-    isPaginated,
     lineHeightPx,
+    pageColumnGap,
+    pagePaddingX,
+    pagePaddingY,
+    pageShellWidth,
     viewportSize.height,
     viewportSize.width,
   ]);
+
+  useEffect(() => {
+    setVisibleScrollPageCount(4);
+    if (!isPaginated && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [currentSectionIndex, deferredContent, initialLocation, isPaginated]);
+
+  const handleScrollModeScroll = useCallback(() => {
+    const node = scrollContainerRef.current;
+    if (!node) return;
+    const remaining = node.scrollHeight - node.scrollTop - node.clientHeight;
+    if (remaining < 900) {
+      setVisibleScrollPageCount((prev) =>
+        Math.min(paginatedPages.length, prev + 3),
+      );
+    }
+  }, [paginatedPages.length]);
 
   useEffect(() => {
     if (!paginatedPages.length) {
@@ -388,7 +398,16 @@ export default function TextReader({
       : settings.spread === "always"
         ? "spread"
         : "single";
-  const focusSelectionProps = onSelection ? { onSelection } : {};
+  const visibleScrollPages = paginatedPages.slice(
+    0,
+    Math.max(1, visibleScrollPageCount),
+  );
+  const pageSurfaceStyles = {
+    backgroundColor: themeStyles[settings.theme].body.background,
+    color: themeStyles[settings.theme].body.color,
+    width: `${pageShellWidth}px`,
+    padding: `${pagePaddingY}px ${pagePaddingX}px`,
+  };
 
   return (
     <div
@@ -668,18 +687,19 @@ export default function TextReader({
         ) : isPaginated ? (
           <div className="flex h-full w-full items-center justify-center px-4 py-6 sm:px-8 sm:py-10">
             <div
-              className="flex h-full w-full max-w-[1400px] gap-10 overflow-hidden border border-black/10 shadow-sm"
+              className="relative flex h-full max-h-full overflow-hidden border border-black/10 shadow-[0_24px_60px_rgba(0,0,0,0.16)]"
               style={{
-                backgroundColor: themeStyles[settings.theme].body.background,
-                color: themeStyles[settings.theme].body.color,
-                padding: viewportSize.width < 768 ? "28px 24px" : "42px 48px",
+                ...pageSurfaceStyles,
+                gap: `${pageColumnGap}px`,
               }}
             >
               {(currentPageColumns.length ? currentPageColumns : [[]]).map(
                 (column, columnIndex) => (
                   <div
                     key={`page-column-${columnIndex}`}
-                    className="min-w-0 flex-1 overflow-hidden"
+                    className={`min-w-0 flex-1 overflow-hidden ${
+                      columnIndex > 0 ? "border-l border-black/10 pl-8" : ""
+                    }`}
                   >
                     {column.length ? (
                       column.map((line, lineIndex) => (
@@ -712,22 +732,85 @@ export default function TextReader({
                   </div>
                 ),
               )}
+              <div className="pointer-events-none absolute bottom-4 right-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Page {activePageIndex + 1}
+              </div>
             </div>
           </div>
         ) : (
-          <div ref={scrollContainerRef} className="h-full overflow-y-auto">
-            <FocusBlockReader
-              title={activeSectionTitle}
-              subtitle={book?.title || "Reader"}
-              text={content || "No content available."}
-              containerClassName="bg-transparent"
-              paperClassName="bg-transparent"
-              textClassName="text-justify"
-              fontFamily={settings.fontFamily}
-              fontSizePx={fontSizePx}
-              lineHeight={settings.lineHeight}
-              {...focusSelectionProps}
-            />
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScrollModeScroll}
+            className="h-full overflow-y-auto"
+          >
+            <div className="mx-auto flex w-full max-w-[980px] flex-col items-center gap-6 px-4 py-6 sm:px-8 sm:py-10">
+              {visibleScrollPages.map((pageColumns, pageIndex) => (
+                <div
+                  key={`scroll-page-${pageIndex}`}
+                  className="relative border border-black/10 shadow-[0_18px_42px_rgba(0,0,0,0.12)]"
+                  style={{
+                    ...pageSurfaceStyles,
+                    minHeight: `${Math.max(520, viewportSize.height - 80)}px`,
+                  }}
+                >
+                  <div
+                    className="grid gap-0"
+                    style={{
+                      gridTemplateColumns: `repeat(${pageColumns.length || 1}, minmax(0, 1fr))`,
+                      columnGap: `${pageColumnGap}px`,
+                    }}
+                  >
+                    {(pageColumns.length ? pageColumns : [[]]).map(
+                      (column, columnIndex) => (
+                        <div
+                          key={`scroll-column-${pageIndex}-${columnIndex}`}
+                          className={`min-w-0 ${
+                            columnIndex > 0 ? "border-l border-black/10 pl-8" : ""
+                          }`}
+                        >
+                          {column.length ? (
+                            column.map((line, lineIndex) => (
+                              <div
+                                key={`scroll-line-${pageIndex}-${columnIndex}-${lineIndex}`}
+                                style={{
+                                  minHeight: `${lineHeightPx}px`,
+                                  lineHeight: `${lineHeightPx}px`,
+                                  fontFamily: settings.fontFamily,
+                                  fontSize: `${fontSizePx}px`,
+                                  whiteSpace: "pre-wrap",
+                                  textAlign: "justify",
+                                }}
+                              >
+                                {line || "\u00A0"}
+                              </div>
+                            ))
+                          ) : (
+                            <div
+                              style={{
+                                minHeight: `${lineHeightPx}px`,
+                                lineHeight: `${lineHeightPx}px`,
+                                fontFamily: settings.fontFamily,
+                                fontSize: `${fontSizePx}px`,
+                              }}
+                            >
+                              No content available.
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  <div className="pointer-events-none absolute bottom-4 right-6 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Page {pageIndex + 1}
+                  </div>
+                </div>
+              ))}
+              {visibleScrollPageCount < paginatedPages.length ? (
+                <div className="pb-10 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Loading more pages as you scroll…
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>

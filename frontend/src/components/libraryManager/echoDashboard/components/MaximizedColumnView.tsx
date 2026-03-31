@@ -40,7 +40,6 @@ export default function MaximizedColumnView({
   activeBookTitle,
   libraryId,
   onRefreshSaved,
-  onMobileRagFallback,
   adHocItems = [],
   adHocTitle = "",
   adHocSubtitle = "",
@@ -78,7 +77,6 @@ export default function MaximizedColumnView({
       savedPanelsBySourceId={savedPanelsBySourceId}
       onClose={onClose}
       onRefreshSaved={onRefreshSaved}
-      onMobileRagFallback={onMobileRagFallback}
     />
   );
 }

@@ -61,15 +61,6 @@ interface FocusedReadingWorkspaceProps {
   onClose: () => void;
   savedPanelsBySourceId?: Record<string, ReadingDerivedPanel[]>;
   onRefreshSaved?: () => Promise<void> | void;
-  onMobileRagFallback?: (payload: {
-    text: string;
-    title: string;
-    chapter: string;
-    sourceLabel: string;
-    sourceAnchorId: string;
-    selectionRefs: any[];
-    contextExtras: Record<string, any>;
-  }) => void;
 }
 
 const RUN_MODE_LABELS: Record<string, string> = {
@@ -213,9 +204,8 @@ function ReadingWorkspacePanel({
       : panel.summary;
 
   return (
-    <article className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-white shadow-[0_12px_32px_rgba(0,0,0,0.2)]">
-      <div className="absolute bottom-0 left-5 top-0 w-px bg-white/10" />
-      <div className="relative pl-4">
+    <article className="border-t border-white/10 py-4 text-white first:border-t-0">
+      <div>
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/55">
@@ -228,7 +218,7 @@ function ReadingWorkspacePanel({
           <button
             onClick={() => onSave(panel.id)}
             disabled={panel.isSaved || panel.isSaving || !panel.summary}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-40"
+            className="inline-flex h-8 w-8 items-center justify-center text-white/72 transition-colors hover:text-white disabled:opacity-40"
             title={panel.isSaved ? "Saved" : "Save derived result"}
           >
             {panel.isSaving ? (
@@ -299,7 +289,7 @@ function ReadingWorkspacePanel({
                   {panel.localEvidence.map((item: any, index: number) => (
                     <div
                       key={`${panel.id}-local-${index}`}
-                      className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3"
+                      className="border-t border-white/10 py-3 first:border-t-0"
                     >
                       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/42">
                         {item.title || item.source_label || item.filename || `Context ${index + 1}`}
@@ -322,7 +312,7 @@ function ReadingWorkspacePanel({
                   {panel.webEvidence.map((item: any, index: number) => (
                     <div
                       key={`${panel.id}-web-${index}`}
-                      className="rounded-2xl border border-white/8 bg-black/20 px-3 py-3"
+                      className="border-t border-white/10 py-3 first:border-t-0"
                     >
                       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/42">
                         {item.title || item.source || `Source ${index + 1}`}
@@ -373,7 +363,6 @@ export default function FocusedReadingWorkspace({
   onClose,
   savedPanelsBySourceId = {},
   onRefreshSaved,
-  onMobileRagFallback,
 }: FocusedReadingWorkspaceProps) {
   const isMobile = useIsMobile();
   const [itemState, setItemState] = useState<ReadingWorkspaceItem[]>(items);
@@ -383,6 +372,7 @@ export default function FocusedReadingWorkspace({
   const [selectionText, setSelectionText] = useState("");
   const [ragPrompt, setRagPrompt] = useState("");
   const [showPromptInput, setShowPromptInput] = useState(false);
+  const [isMobileRailOpen, setIsMobileRailOpen] = useState(false);
   const [localPanelsBySourceId, setLocalPanelsBySourceId] = useState<
     Record<string, ReadingDerivedPanel[]>
   >({});
@@ -391,6 +381,11 @@ export default function FocusedReadingWorkspace({
     setItemState(items);
     setSelectedItemId(initialItemId || String(items[0]?.id || ""));
   }, [initialItemId, items]);
+
+  useEffect(() => {
+    setIsMobileRailOpen(false);
+    setShowPromptInput(false);
+  }, [selectedItemId]);
 
   const itemMap = useMemo(() => {
     const next = new Map<string, ReadingWorkspaceItem>();
@@ -453,26 +448,6 @@ export default function FocusedReadingWorkspace({
     const currentText =
       selectedText || trimText(selectedItem.fullText) || trimText(selectedItem.text);
     if (!currentText) return;
-
-    if (isMobile && mode === "rag" && onMobileRagFallback) {
-      onMobileRagFallback({
-        text: selectedText || currentText,
-        title: selectedItem.title || workspaceTitle,
-        chapter: selectedItem.chapter || "",
-        sourceLabel: selectedItem.sourceLabel || workspaceTitle,
-        sourceAnchorId:
-          selectedItem.sourceAnchorId || selectedItem.clusterId || "",
-        selectionRefs: saveSelectionRefsForItem(selectedItem),
-        contextExtras: {
-          echo_id: selectedItem.echoId || "",
-          cluster_id: selectedItem.clusterId || "",
-          book_id: selectedItem.bookId || "",
-          library_id: selectedItem.libraryId || "",
-        },
-      });
-      onClose();
-      return;
-    }
 
     const panelId = `workspace-derived-${Date.now()}-${Math.random()
       .toString(36)
@@ -645,6 +620,104 @@ export default function FocusedReadingWorkspace({
 
   const currentText =
     trimText(selectedItem?.fullText) || trimText(selectedItem?.text) || "";
+  const derivedLaneContent = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-white/10 px-5 py-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/45">
+              RAG Lane
+            </div>
+            <div className="mt-2 text-lg font-semibold tracking-[-0.04em] text-white">
+              {selectedItem?.title || "No selection"}
+            </div>
+          </div>
+          {selectionText ? (
+            <button
+              onClick={() => setSelectionText("")}
+              className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45 transition-colors hover:text-white"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="border-b border-white/10 px-5 py-5">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/42">
+          Active Highlight
+        </div>
+        <p className="mt-3 text-sm leading-6 text-white/78">
+          {selectionText ||
+            "Highlight a passage in the center pane to ask a grounded question."}
+        </p>
+
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={() => setShowPromptInput(true)}
+            disabled={!selectionText}
+            className="inline-flex items-center gap-2 px-0 py-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:text-white/80 disabled:opacity-35"
+          >
+            <SparklesIcon className="h-4 w-4" />
+            Ask RAG
+          </button>
+        </div>
+
+        {showPromptInput ? (
+          <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+            <textarea
+              value={ragPrompt}
+              onChange={(event) => setRagPrompt(event.target.value)}
+              placeholder="Ask what you want this highlight to answer..."
+              className="h-24 w-full resize-none bg-transparent px-0 py-0 text-sm text-white outline-none placeholder:text-white/28"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  setShowPromptInput(false);
+                  setRagPrompt("");
+                }}
+                className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45 transition-colors hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const prompt = trimText(ragPrompt);
+                  if (!prompt) return;
+                  void runDerivedMode("rag", prompt);
+                  setRagPrompt("");
+                  setShowPromptInput(false);
+                }}
+                disabled={!trimText(ragPrompt)}
+                className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:text-white/80 disabled:opacity-35"
+              >
+                Run RAG
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar px-5 py-5">
+        <div className="space-y-0">
+          {visiblePanels.length === 0 ? (
+            <div className="text-sm text-white/45">
+              Derived results for this title will appear here once you run RAG.
+            </div>
+          ) : (
+            visiblePanels.map((panel) => (
+              <ReadingWorkspacePanel
+                key={panel.id}
+                panel={panel}
+                onSave={(panelId) => void handleSavePanel(panelId)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-[7000] bg-[#050505] text-white">
@@ -663,7 +736,7 @@ export default function FocusedReadingWorkspace({
           </div>
 
           <div className="mt-8 min-h-0 flex-1 overflow-y-auto custom-scrollbar pr-1">
-            <div className="space-y-3">
+            <div className="space-y-0">
               {itemState.map((item) => {
                 const isSelected = String(item.id) === String(selectedItemId);
                 return (
@@ -674,16 +747,20 @@ export default function FocusedReadingWorkspace({
                       setSelectionText("");
                       setShowPromptInput(false);
                     }}
-                    className={`w-full rounded-2xl border px-3 py-3 text-left transition-colors md:px-4 ${
+                    className={`w-full border-b border-white/10 px-1 py-4 text-left transition-colors md:px-2 ${
                       isSelected
-                        ? "border-white/28 bg-white/14 text-white"
-                        : "border-transparent bg-white/[0.03] text-white/55 hover:border-white/10 hover:bg-white/[0.07]"
+                        ? "text-white"
+                        : "text-white/55 hover:text-white/82"
                     }`}
                   >
                     <div className="truncate text-xs uppercase tracking-[0.2em] text-white/35">
                       {item.chapter || item.sourceLabel || "Saved Echo"}
                     </div>
-                    <div className="mt-2 text-sm font-medium leading-5 md:text-[15px]">
+                    <div
+                      className={`mt-2 text-sm leading-5 md:text-[15px] ${
+                        isSelected ? "font-semibold" : "font-medium"
+                      }`}
+                    >
                       {item.title || "Untitled"}
                     </div>
                   </button>
@@ -729,133 +806,40 @@ export default function FocusedReadingWorkspace({
         </main>
 
         {!isMobile ? (
-          <aside className="hidden w-[360px] shrink-0 border-l border-white/8 bg-black/70 px-6 py-6 xl:flex xl:flex-col">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/45">
-                  Derived Lane
-                </div>
-                <div className="mt-2 text-lg font-semibold tracking-[-0.04em] text-white">
-                  {selectedItem?.title || "No selection"}
-                </div>
-              </div>
-              {selectionText ? (
-                <button
-                  onClick={() => setSelectionText("")}
-                  className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45 transition-colors hover:text-white"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/42">
-                Active Highlight
-              </div>
-              <p className="mt-3 text-sm leading-6 text-white/78">
-                {selectionText || "Highlight a passage in the center pane to start RAG or analysis."}
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  onClick={() => {
-                    setShowPromptInput(true);
-                  }}
-                  disabled={!selectionText}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-white/18 disabled:opacity-35"
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  Ask RAG
-                </button>
-                <button
-                  onClick={() => void runDerivedMode("cross_pollination")}
-                  disabled={!selectionText}
-                  className="rounded-full border border-white/10 bg-transparent px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/82 transition-colors hover:bg-white/8 disabled:opacity-35"
-                >
-                  Cross
-                </button>
-                <button
-                  onClick={() => void runDerivedMode("friction")}
-                  disabled={!selectionText}
-                  className="rounded-full border border-white/10 bg-transparent px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/82 transition-colors hover:bg-white/8 disabled:opacity-35"
-                >
-                  Friction
-                </button>
-                <button
-                  onClick={() => void runDerivedMode("gap")}
-                  disabled={!selectionText}
-                  className="rounded-full border border-white/10 bg-transparent px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/82 transition-colors hover:bg-white/8 disabled:opacity-35"
-                >
-                  Gap
-                </button>
-              </div>
-
-              {showPromptInput ? (
-                <div className="mt-4 space-y-3">
-                  <textarea
-                    value={ragPrompt}
-                    onChange={(event) => setRagPrompt(event.target.value)}
-                    placeholder="Ask what you want this highlight to answer..."
-                    className="h-24 w-full resize-none rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
-                  />
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      onClick={() => {
-                        setShowPromptInput(false);
-                        setRagPrompt("");
-                      }}
-                      className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/45 transition-colors hover:text-white"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => {
-                        const prompt = trimText(ragPrompt);
-                        if (!prompt) return;
-                        void runDerivedMode("rag", prompt);
-                        setRagPrompt("");
-                        setShowPromptInput(false);
-                      }}
-                      disabled={!trimText(ragPrompt)}
-                      className="rounded-full border border-white/10 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-black transition-colors hover:bg-white/90 disabled:opacity-35"
-                    >
-                      Run RAG
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-6 min-h-0 flex-1 overflow-y-auto custom-scrollbar">
-              <div className="relative space-y-4 pr-1">
-                {visiblePanels.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/12 bg-white/[0.03] px-4 py-5 text-sm text-white/45">
-                    Derived results for this title will stack here once you analyze a highlight.
-                  </div>
-                ) : (
-                  visiblePanels.map((panel) => (
-                    <ReadingWorkspacePanel
-                      key={panel.id}
-                      panel={panel}
-                      onSave={(panelId) => void handleSavePanel(panelId)}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
+          <aside className="hidden w-[360px] shrink-0 border-l border-white/8 bg-black/70 xl:flex xl:flex-col">
+            {derivedLaneContent}
           </aside>
         ) : null}
       </div>
 
       {isMobile ? (
-        <button
-          onClick={onClose}
-          className="absolute bottom-5 right-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/8 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
-        >
-          <ArrowUturnLeftIcon className="h-4 w-4" />
-          Back
-        </button>
+        <>
+          <div
+            className={`absolute inset-y-0 right-0 z-[7100] w-[min(88vw,360px)] border-l border-white/8 bg-black/90 transition-transform duration-200 ${
+              isMobileRailOpen ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            {derivedLaneContent}
+          </div>
+
+          <div className="absolute bottom-5 left-5 right-5 z-[7200] flex items-center justify-between gap-3">
+            <button
+              onClick={onClose}
+              className="inline-flex items-center gap-2 border border-white/10 bg-white/8 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
+            >
+              <ArrowUturnLeftIcon className="h-4 w-4" />
+              Back
+            </button>
+
+            <button
+              onClick={() => setIsMobileRailOpen((prev) => !prev)}
+              className="inline-flex items-center gap-2 border border-white/10 bg-white/8 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white"
+            >
+              <SparklesIcon className="h-4 w-4" />
+              {isMobileRailOpen ? "Hide RAG" : "Show RAG"}
+            </button>
+          </div>
+        </>
       ) : null}
     </div>
   );

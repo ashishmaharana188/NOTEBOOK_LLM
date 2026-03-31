@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  ArrowsPointingOutIcon,
   DocumentTextIcon,
   PlusIcon,
   LockClosedIcon,
@@ -54,7 +53,7 @@ const PrimaryViewerCard = ({
   const [slideIndex, setSlideIndex] = useState(0);
   const [isReadLocked, setIsReadLocked] = useState(false);
   const isNoteNode = Boolean(activeNode?.note_id || activeNode?.type === "note");
-  const focusLabel = isNoteNode ? "Focus Note" : "Full Context";
+  const focusLabel = isNoteNode ? "Open Focus" : "Read Focus";
 
   // --- DRAG TO SCROLL ENGINE ---
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -287,7 +286,9 @@ const PrimaryViewerCard = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onFocusNote && activeNode) {
+                    if (onMaximizeReading) {
+                      onMaximizeReading();
+                    } else if (onFocusNote && activeNode) {
                       onFocusNote(activeNode);
                     }
                   }}
@@ -295,17 +296,6 @@ const PrimaryViewerCard = ({
                 >
                   <DocumentTextIcon className="w-4 h-4" /> {focusLabel}
                 </button>
-                {onMaximizeReading && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMaximizeReading();
-                    }}
-                    className="text-xs font-bold text-slate-700 bg-white/90 hover:bg-slate-100 active:scale-95 px-3 py-1.5 rounded-lg shadow-sm uppercase tracking-widest flex items-center gap-2 transition-all canvas-heavy-transition"
-                  >
-                    <ArrowsPointingOutIcon className="w-4 h-4" /> Maximize
-                  </button>
-                )}
               </div>
               <div className="flex flex-col items-end gap-2 pointer-events-auto">
                 <button

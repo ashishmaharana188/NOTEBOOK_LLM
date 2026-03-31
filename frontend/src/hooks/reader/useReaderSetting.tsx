@@ -45,8 +45,8 @@ export function useReaderSetting() {
       "::selection": { background: "#e6d0b3" },
     },
     dark: {
-      body: { color: "#d1d5db", background: "#111827" },
-      "::selection": { background: "#374151" },
+      body: { color: "#e5e7eb", background: "#050505" },
+      "::selection": { background: "#2f2f2f" },
     },
   };
 

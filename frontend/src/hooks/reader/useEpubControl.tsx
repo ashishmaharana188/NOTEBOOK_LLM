@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import { useReaderSetting } from "./useReaderSetting";
 import type { ReaderLocationPayload } from "../../types/readerBackendTypes";
 
@@ -6,16 +6,14 @@ export function useEpubControl(
   initialLocation: string | number | null,
   onSaveLocation: (payload: ReaderLocationPayload) => void,
   onSelection?: (text: string) => void,
-  onActivity?: () => void
+  onActivity?: () => void,
 ) {
-  // 1. Get Clean Settings
   const { settings, updateSetting, themeStyles } = useReaderSetting();
 
   const renditionRef = useRef<any>(null);
   const currentLocation = useRef(initialLocation);
   const [toc, setToc] = useState<any[]>([]);
 
-  // --- NAVIGATION ---
   const navigateTo = (href: string) => {
     renditionRef.current?.display(href);
   };
@@ -34,11 +32,11 @@ export function useEpubControl(
       },
     });
   };
+
   const handleTocChange = (tocData: any) => {
     setToc(tocData);
   };
 
-  // Save location on unmount
   useEffect(() => {
     return () => {
       if (currentLocation.current) {
@@ -54,9 +52,7 @@ export function useEpubControl(
     };
   }, [onSaveLocation, settings.flow, settings.spread]);
 
-  // --- THEME INJECTION ---
   const getThemeCss = () => {
-    // Safety check
     if (
       !themeStyles ||
       !settings.theme ||
@@ -64,56 +60,58 @@ export function useEpubControl(
     ) {
       return "";
     }
+
     const style = themeStyles[settings.theme as keyof typeof themeStyles];
     const horizontalInset = Math.max(4, Math.min(settings.pageMargin, 18));
     const isPaginated = settings.flow === "paginated";
     const pageGap = isPaginated ? "28px" : "0px";
     const scrolledInset = `${horizontalInset}%`;
+
     return `
-            html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                width: 100% !important;
-                height: 100% !important;
-                background-color: ${style.body.background} !important;
-                overflow: ${isPaginated ? "hidden" : "visible"} !important;
-            }
-            body, p, span, div, h1, h2, h3, h4, h5, h6, a, li, blockquote {
-                color: ${style.body.color} !important;
-                background-color: transparent !important;
-                line-height: ${settings.lineHeight} !important;
-                font-family: ${settings.fontFamily} !important;
-                text-align: justify !important;
-            }
-            body {
-                line-height: ${settings.lineHeight} !important;
-                font-family: ${settings.fontFamily} !important;
-                box-sizing: border-box !important;
-                text-align: justify !important;
-                column-gap: ${pageGap} !important;
-                padding: ${isPaginated ? "0" : `32px ${scrolledInset} 12vh ${scrolledInset}`} !important;
-                column-fill: auto !important;
-                -webkit-hyphens: auto !important;
-                hyphens: auto !important;
-            }
-            body > * {
-                box-sizing: border-box !important;
-                width: auto !important;
-                max-width: ${
-                  isPaginated
-                    ? "none"
-                    : `min(72ch, calc(100% - ${horizontalInset * 2}%))`
-                } !important;
-                margin-left: ${isPaginated ? "0" : "auto"} !important;
-                margin-right: ${isPaginated ? "0" : "auto"} !important;
-            }
-            img, svg, video, canvas, table, pre, code {
-                max-width: 100% !important;
-            }
-            ::selection {
-                background: ${style["::selection"].background} !important;
-            }
-        `;
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background-color: ${style.body.background} !important;
+        overflow: ${isPaginated ? "hidden" : "visible"} !important;
+      }
+      body, p, span, div, h1, h2, h3, h4, h5, h6, a, li, blockquote {
+        color: ${style.body.color} !important;
+        background-color: transparent !important;
+        line-height: ${settings.lineHeight} !important;
+        font-family: ${settings.fontFamily} !important;
+        text-align: justify !important;
+      }
+      body {
+        line-height: ${settings.lineHeight} !important;
+        font-family: ${settings.fontFamily} !important;
+        box-sizing: border-box !important;
+        text-align: justify !important;
+        column-gap: ${pageGap} !important;
+        padding: ${isPaginated ? "0" : `32px ${scrolledInset} 12vh ${scrolledInset}`} !important;
+        column-fill: auto !important;
+        -webkit-hyphens: auto !important;
+        hyphens: auto !important;
+      }
+      body > * {
+        box-sizing: border-box !important;
+        width: auto !important;
+        max-width: ${
+          isPaginated
+            ? "none"
+            : `min(72ch, calc(100% - ${horizontalInset * 2}%))`
+        } !important;
+        margin-left: ${isPaginated ? "0" : "auto"} !important;
+        margin-right: ${isPaginated ? "0" : "auto"} !important;
+      }
+      img, svg, video, canvas, table, pre, code {
+        max-width: 100% !important;
+      }
+      ::selection {
+        background: ${style["::selection"].background} !important;
+      }
+    `;
   };
 
   const injectStyle = (contents: any) => {
@@ -140,18 +138,14 @@ export function useEpubControl(
     doc.addEventListener("keydown", activityHandler);
   };
 
-  // --- ENGINE SETUP ---
-  // --- RENDITION HANDLER (The Fix) ---
   const getRendition = (rendition: any) => {
     renditionRef.current = rendition;
 
-    // 1. Theme Injection
     rendition.themes.fontSize(`${settings.fontSize}%`);
     if (settings.fontFamily) {
       rendition.themes.font(settings.fontFamily);
     }
 
-    // 2. Inject styles into any contents already loaded
     if (rendition.getContents) {
       rendition.getContents().forEach((content: any) => {
         injectStyle(content);
@@ -159,44 +153,36 @@ export function useEpubControl(
       });
     }
 
-    // 3. Listen for Hooks (New content loading)
     rendition.hooks.content.register((content: any) => {
       injectStyle(content);
       attachActivityListeners(content);
     });
 
-    // 4. SELECTION LISTENER (Restored & Fixed)
-    // We filter by length to avoid the "instant partial selection" bug.
-    rendition.on("selected", (cfiRange: string, contents: any) => {
+    rendition.on("selected", (cfiRange: string) => {
       const range = rendition.getRange(cfiRange);
       const text = range ? range.toString() : "";
 
-      // Only trigger if the selection is meaningful (> 2 words)
-      // This prevents single-click jitters from firing a search.
       if (text && text.trim().split(/\s+/).length > 2) {
-        console.log("📖 EPUB Selection:", text);
         if (onSelection) onSelection(text);
       }
     });
   };
 
-  // --- REACT TO SETTINGS CHANGES ---
   useEffect(() => {
-    if (renditionRef.current) {
-      renditionRef.current.themes.fontSize(`${settings.fontSize}%`);
-      if (settings.fontFamily) {
-        renditionRef.current.themes.font(settings.fontFamily);
-      }
+    if (!renditionRef.current) return;
 
-      if (renditionRef.current.getContents) {
-        renditionRef.current.getContents().forEach((content: any) => {
-          injectStyle(content);
-        });
-      }
+    renditionRef.current.themes.fontSize(`${settings.fontSize}%`);
+    if (settings.fontFamily) {
+      renditionRef.current.themes.font(settings.fontFamily);
+    }
+
+    if (renditionRef.current.getContents) {
+      renditionRef.current.getContents().forEach((content: any) => {
+        injectStyle(content);
+      });
     }
   }, [settings]);
 
-  // --- MEMOIZED OPTIONS ---
   const epubOptions = useMemo(
     () =>
       ({
@@ -208,12 +194,11 @@ export function useEpubControl(
         spread: settings.spread === "always" ? "always" : settings.spread,
         minSpreadWidth: settings.spread === "always" ? 0 : 800,
       } as any),
-    [settings.flow, settings.spread]
+    [settings.flow, settings.spread],
   );
 
-  // --- HELPER: Container Background Sync ---
   const getContainerBg = () => {
-    if (settings.theme === "dark") return "#111827";
+    if (settings.theme === "dark") return "#050505";
     if (settings.theme === "sepia") return "#f9f6ef";
     return "#ffffff";
   };
