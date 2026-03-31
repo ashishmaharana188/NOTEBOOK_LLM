@@ -193,6 +193,127 @@ def _extract_keywords(text: str, limit: int = 6) -> List[str]:
     return [word for word, _ in ranked.most_common(limit)]
 
 
+def _split_sentences(text: str, limit: int = 6) -> List[str]:
+    normalized = re.sub(r"\s+", " ", str(text or "").strip())
+    if not normalized:
+        return []
+    raw_sentences = re.split(r"(?<=[.!?])\s+|(?<=;)\s+", normalized)
+    sentences = [
+        sentence.strip(" \"'")
+        for sentence in raw_sentences
+        if len(sentence.strip(" \"'")) >= 40
+    ]
+    return sentences[:limit]
+
+
+def _score_sentence(sentence: str, keywords: List[str], prompt_keywords: List[str]) -> int:
+    lowered = sentence.lower()
+    score = 0
+    for keyword in keywords:
+        if keyword in lowered:
+            score += 3
+    for keyword in prompt_keywords:
+        if keyword in lowered:
+            score += 2
+    if any(
+        cue in lowered
+        for cue in (
+            "because",
+            "therefore",
+            "however",
+            "although",
+            "whereas",
+            "suggests",
+            "reveals",
+            "indicates",
+            "contrasts",
+            "instead",
+        )
+    ):
+        score += 2
+    if any(char.isdigit() for char in sentence):
+        score += 1
+    if len(sentence) > 260:
+        score -= 1
+    return score
+
+
+def _source_label(item: Dict[str, Any], fallback: str) -> str:
+    return (
+        str(item.get("title") or "").strip()
+        or str(item.get("source_label") or "").strip()
+        or str(item.get("chapter") or "").strip()
+        or fallback
+    )
+
+
+def _collect_salient_sentences(
+    items: List[Dict[str, Any]],
+    keywords: List[str],
+    prompt_keywords: List[str],
+    *,
+    prefer_full_text: bool = False,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    ranked: List[Dict[str, Any]] = []
+    seen = set()
+    for index, item in enumerate(items or []):
+        source = _source_label(item, f"Source {index + 1}")
+        text = (
+            str(item.get("full_text") or "").strip()
+            if prefer_full_text
+            else ""
+        ) or str(item.get("text") or "").strip()
+        for sentence in _split_sentences(text, limit=6):
+            normalized = sentence.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            ranked.append(
+                {
+                    "source": source,
+                    "text": sentence,
+                    "score": _score_sentence(sentence, keywords, prompt_keywords),
+                }
+            )
+
+    ranked.sort(key=lambda item: item["score"], reverse=True)
+    return ranked[:limit]
+
+
+def _shared_terms(
+    keywords: List[str], source_texts: List[str], minimum_sources: int = 2
+) -> List[str]:
+    counts = Counter()
+    for text in source_texts:
+        lowered = text.lower()
+        for keyword in keywords:
+            if keyword in lowered:
+                counts[keyword] += 1
+    return [
+        keyword
+        for keyword, count in counts.most_common()
+        if count >= minimum_sources
+    ]
+
+
+def _combine_summary_sentences(parts: List[str], limit: int = 5) -> str:
+    cleaned = []
+    seen = set()
+    for part in parts:
+        normalized = re.sub(r"\s+", " ", str(part or "").strip())
+        if not normalized:
+            continue
+        dedupe_key = normalized.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        cleaned.append(normalized)
+        if len(cleaned) >= limit:
+            break
+    return " ".join(cleaned)
+
+
 def _build_query_text(mode: str, prompt: str, contexts: List[Dict[str, Any]]) -> str:
     context_titles = [ctx["title"] for ctx in contexts[:4] if ctx.get("title")]
     text_samples = [_trim(ctx["text"], 180) for ctx in contexts[:4]]
@@ -577,67 +698,170 @@ def _heuristic_payload(
     web_evidence: List[Dict[str, Any]],
     grounded_web_answer: str = "",
 ) -> Dict[str, Any]:
-    context_blob = " ".join(ctx["text"] for ctx in contexts[:4])
-    evidence_blob = " ".join(item["text"] for item in local_evidence[:4])
-    top_terms = _extract_keywords(f"{context_blob} {evidence_blob}", limit=5)
-    context_titles = ", ".join(ctx["title"] for ctx in contexts[:3] if ctx.get("title"))
+    context_blob = " ".join(
+        str(ctx.get("full_text") or ctx.get("text") or "")
+        for ctx in contexts[:4]
+    )
+    evidence_blob = " ".join(item["text"] for item in local_evidence[:5])
+    prompt_keywords = _extract_keywords(prompt, limit=4)
+    top_terms = _extract_keywords(f"{prompt} {context_blob} {evidence_blob}", limit=7)
+    shared_terms = _shared_terms(
+        top_terms,
+        [
+            *[
+                str(ctx.get("full_text") or ctx.get("text") or "")
+                for ctx in contexts[:4]
+            ],
+            *[str(item.get("text") or "") for item in local_evidence[:4]],
+            *[str(item.get("text") or "") for item in web_evidence[:3]],
+        ],
+        minimum_sources=2,
+    )
+    context_titles = [
+        str(ctx.get("title") or "").strip()
+        for ctx in contexts[:3]
+        if str(ctx.get("title") or "").strip()
+    ]
     answer_seed = prompt.strip() or SUPPORTED_ANALYSIS_MODES.get(mode, "Analysis")
+    context_sentences = _collect_salient_sentences(
+        contexts,
+        top_terms,
+        prompt_keywords,
+        prefer_full_text=True,
+        limit=4,
+    )
+    local_sentences = _collect_salient_sentences(
+        local_evidence,
+        top_terms,
+        prompt_keywords,
+        limit=4,
+    )
+    web_sentences = _collect_salient_sentences(
+        web_evidence,
+        top_terms,
+        prompt_keywords,
+        limit=3,
+    )
+    strongest_context = context_sentences[0] if context_sentences else {}
+    strongest_local = local_sentences[0] if local_sentences else {}
+    strongest_web = web_sentences[0] if web_sentences else {}
+    bridge_terms = shared_terms[:3] or top_terms[:3]
+    missing_terms = [
+        term
+        for term in [*prompt_keywords, *top_terms]
+        if term
+        and term not in {
+            candidate
+            for candidate in _extract_keywords(
+                " ".join(item["text"] for item in local_evidence[:6]), limit=12
+            )
+        }
+    ][:3]
 
     if mode == "cross_pollination":
-        summary = (
-            f"{answer_seed} surfaces shared territory around {', '.join(top_terms[:3]) or 'the selected ideas'}. "
-            f"The strongest bridges appear between {context_titles or 'the selected contexts'} and the retrieved evidence."
+        summary = _combine_summary_sentences(
+            [
+                (
+                    f"The most productive bridge across {', '.join(context_titles[:2]) or 'the selected contexts'} "
+                    f"is {bridge_terms[0] if bridge_terms else 'the shared conceptual frame'}, "
+                    f"not simply because the same vocabulary appears, but because {strongest_context.get('source', 'the source context')} "
+                    f"pushes it toward {strongest_context.get('text', 'a more specific implication')}."
+                ),
+                (
+                    f"{strongest_local.get('source', 'Retrieved local evidence')} extends that bridge by adding "
+                    f"{strongest_local.get('text', 'a concrete supporting thread')}."
+                ),
+                (
+                    f"The synthesis is that these materials connect most strongly around "
+                    f"{', '.join(bridge_terms[:2]) or 'their shared assumptions'}, which creates a usable route for a deeper branch rather than a loose thematic similarity."
+                ),
+            ]
         )
         bullets = [
-            f"Bridge concepts: {', '.join(top_terms[:4]) or 'No stable bridge terms detected'}",
-            f"Primary evidence count: {len(local_evidence)} local source(s)",
-            "Use this column to continue branching from the most productive bridge.",
+            f"Primary bridge: {bridge_terms[0] if bridge_terms else 'Shared frame not yet stabilized'}",
+            f"Anchor context: {strongest_context.get('source', context_titles[0] if context_titles else 'Selected context')}",
+            f"Best supporting evidence: {strongest_local.get('source', 'Local retrieval pending deeper evidence')}",
         ]
     elif mode == "friction":
-        summary = (
-            f"{answer_seed} highlights the strongest tension lines around {', '.join(top_terms[:3]) or 'the selected contexts'}. "
-            "The retrieved evidence suggests where assumptions diverge or conflict."
+        summary = _combine_summary_sentences(
+            [
+                (
+                    f"The central friction sits around {bridge_terms[0] if bridge_terms else 'the dominant claim'}, "
+                    f"where {strongest_context.get('source', 'one source')} argues that {strongest_context.get('text', 'the issue should be read one way')}."
+                ),
+                (
+                    f"That clashes with {strongest_local.get('source', 'the strongest counter-evidence')}, "
+                    f"which instead emphasizes {strongest_local.get('text', 'a materially different conclusion')}."
+                ),
+                (
+                    f"The dispute is substantive rather than rhetorical: the sources are not merely phrasing the same idea differently, "
+                    f"they are assigning different weight to {', '.join(bridge_terms[:2]) or 'the core terms'}."
+                ),
+            ]
         )
         bullets = [
-            f"Friction themes: {', '.join(top_terms[:4]) or 'No obvious friction cues detected'}",
-            "Look for claims that use the same terms but push different conclusions.",
-            "Follow up by expanding the evidence around the most oppositional pair.",
+            f"Main fault line: {bridge_terms[0] if bridge_terms else 'Competing interpretations'}",
+            f"Position A: {strongest_context.get('source', context_titles[0] if context_titles else 'Selected context')}",
+            f"Position B: {strongest_local.get('source', 'Retrieved evidence')}",
         ]
     elif mode == "gap":
-        summary = (
-            f"{answer_seed} points to missing or weakly supported areas around {', '.join(top_terms[:3]) or 'the current selection'}. "
-            "The current context is stronger on what is present than on what is absent."
+        summary = _combine_summary_sentences(
+            [
+                (
+                    f"The current material is strongest on {', '.join(shared_terms[:2]) or ', '.join(top_terms[:2]) or 'the recurring themes'}, "
+                    f"but it stays thin on {', '.join(missing_terms[:2]) or 'the unresolved parts of the question'}."
+                ),
+                (
+                    f"{strongest_context.get('source', 'The selected context')} raises the issue through "
+                    f"{strongest_context.get('text', 'its strongest claim')}, yet the retrieved evidence does not develop that thread with the same depth."
+                ),
+                (
+                    f"The main absence is not more examples of what is already present; it is evidence that clarifies "
+                    f"{', '.join(missing_terms[:2]) or 'what would change the conclusion'}, which is why the current answer remains structurally incomplete."
+                ),
+            ]
         )
         bullets = [
-            f"Blindspot cues: {', '.join(top_terms[:4]) or 'No stable blindspot cues detected'}",
-            "Search for external frames, counterexamples, or periods not represented here.",
-            "Use the suggested follow-ups to branch into the weakest part of the evidence base.",
+            f"Best-covered theme: {shared_terms[0] if shared_terms else (top_terms[0] if top_terms else 'Current emphasis unclear')}",
+            f"Weakest-covered theme: {missing_terms[0] if missing_terms else 'Missing frame needs manual follow-up'}",
+            f"Most relevant existing source: {strongest_context.get('source', context_titles[0] if context_titles else 'Selected context')}",
         ]
     else:
-        summary = (
-            grounded_web_answer
-            if grounded_web_answer
-            else (
-                f"{answer_seed} was answered using {len(contexts)} selected context item(s), "
-                f"{len(local_evidence)} local evidence item(s), and {len(web_evidence)} web evidence item(s). "
-                f"The most recurrent terms were {', '.join(top_terms[:3]) or 'not strongly clustered'}."
-            )
-        )
-        bullets = (
+        summary = _combine_summary_sentences(
             [
-                "Grounded with Google Search via Gemini.",
-                "Inspect the evidence sections below before saving the result into the echo tree.",
-                "Refine the question if you want a narrower answer or different evidence balance.",
-            ]
-            if grounded_web_answer
-            else [
-                "This answer is grounded first in the selected context and then expanded through retrieval.",
-                "Inspect the evidence sections below before saving the result into the echo tree.",
-                "Refine the question if you want a narrower answer or different evidence balance.",
+                grounded_web_answer,
+                (
+                    f"In the selected material, {strongest_context.get('source', context_titles[0] if context_titles else 'the main context')} "
+                    f"most clearly supports the answer through {strongest_context.get('text', 'its strongest statement')}."
+                ),
+                (
+                    f"{strongest_local.get('source', 'The strongest retrieved evidence')} adds supporting detail by showing "
+                    f"{strongest_local.get('text', 'how the answer holds once the wider corpus is consulted')}."
+                ),
+                (
+                    f"The result is that {answer_seed} should be read primarily through "
+                    f"{', '.join(bridge_terms[:2]) or 'the highest-signal concepts'}, "
+                    f"while remaining cautious about any parts not directly evidenced here."
+                ),
             ]
         )
+        bullets = [
+            f"Direct answer focus: {bridge_terms[0] if bridge_terms else (top_terms[0] if top_terms else 'Primary answer theme')}",
+            f"Context anchor: {strongest_context.get('source', context_titles[0] if context_titles else 'Selected context')}",
+            (
+                f"Web grounding: {strongest_web.get('source', 'Included')}"
+                if grounded_web_answer or web_evidence
+                else "Web grounding: not used"
+            ),
+        ]
 
-    follow_ups = [f"Expand on {term}" for term in top_terms[:3]]
+    follow_ups = [
+        f"Trace {term} through a deeper branch"
+        for term in (missing_terms[:2] + bridge_terms[:3])[:4]
+    ] or [
+        "Pull more evidence around the strongest source pair",
+        "Test the conclusion against a counterexample",
+    ]
 
     return {
         "title": f"{SUPPORTED_ANALYSIS_MODES.get(mode, 'Analysis')} Result",
@@ -657,13 +881,13 @@ def _build_llm_prompt(
 ) -> str:
     contexts_text = "\n".join(
         [
-            f"[Context {index + 1}] {ctx['title']} | {ctx.get('chapter') or ctx.get('source_label')}\n{_trim(ctx['text'], 500)}"
+            f"[Context {index + 1}] {ctx['title']} | {ctx.get('chapter') or ctx.get('source_label')}\n{_trim(str(ctx.get('full_text') or ctx.get('text') or ''), 620)}"
             for index, ctx in enumerate(contexts[:6])
         ]
     )
     local_text = "\n".join(
         [
-            f"[Local {index + 1}] {item['title']} | {item.get('chapter')}\n{_trim(item['text'], 320)}"
+            f"[Local {index + 1}] {item['title']} | {item.get('chapter')}\n{_trim(item['text'], 420)}"
             for index, item in enumerate(local_evidence[:6])
         ]
     )
@@ -696,10 +920,20 @@ Web evidence:
 Respond only as valid JSON with this shape:
 {{
   "title": "short column title",
-  "summary": "2-4 sentence synthesis grounded in the evidence",
-  "bullets": ["short point", "short point"],
-  "follow_ups": ["short follow-up", "short follow-up"]
+  "summary": "4-7 sentence reasoning-rich synthesis grounded in the evidence",
+  "bullets": ["concrete finding or evidence anchor", "concrete finding or evidence anchor"],
+  "follow_ups": ["specific next branch or question", "specific next branch or question"]
 }}
+
+Rules:
+- Do not explain the analysis mode in abstract terms.
+- Start with the actual conclusion, answer, or tension.
+- Name specific contexts/evidence sources when making a claim.
+- For cross_pollination: identify at least two bridges and why they matter.
+- For friction: state the conflict, the two positions, and what is actually disputed.
+- For gap: state what is missing, why it matters, and what evidence would close the gap.
+- For rag: answer the user's question directly before justification.
+- Avoid vague lines like "the analysis suggests" unless followed immediately by a concrete claim.
 """
 
 
@@ -811,8 +1045,8 @@ def run_analysis(
             ),
             fallback=fallback_payload,
             timeout=90,
-            temperature=0.2,
-            num_predict=700,
+            temperature=0.15,
+            num_predict=1100,
         )
     except (RuntimeNotReadyError, RuntimeLoadError):
         logger.warning(
