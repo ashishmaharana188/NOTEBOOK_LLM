@@ -9,6 +9,9 @@ const DEFAULT_SETTINGS: ReaderSettings = {
   pageMargin: 9,
   flow: "paginated",
   spread: "auto",
+  alignment: "default",
+  brightness: 100,
+  nightLight: false,
 };
 
 export function useReaderSetting() {
@@ -46,7 +49,7 @@ export function useReaderSetting() {
     },
     dark: {
       body: { color: "#e5e7eb", background: "#050505" },
-      "::selection": { background: "#2f2f2f" },
+      "::selection": { background: "#3e4f87" },
     },
   };
 

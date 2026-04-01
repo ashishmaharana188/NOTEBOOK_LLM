@@ -5,6 +5,7 @@ import logging
 import mimetypes
 import os
 import uuid
+import re
 
 import numpy as np
 
@@ -98,6 +99,109 @@ def clean_title_for_search(title: str) -> str:
     if not title:
         return ""
     return title.lower().replace(",", "").replace(".", "").replace(":", "").strip()
+
+
+def _reader_reasoning_json_fallback(prompt: str, fallback: dict[str, Any]) -> dict[str, Any]:
+    try:
+        runtime_manager.require_roles_ready(["reasoning"])
+        return runtime_manager.generate_structured_json(prompt, fallback=fallback)
+    except (RuntimeNotReadyError, RuntimeLoadError):
+        return fallback
+    except Exception as error:
+        logger.warning("Reader reasoning fallback failed: %s", error)
+        return fallback
+
+
+def _lookup_dictionary_entry(term: str, language: str = "en") -> dict[str, Any] | None:
+    safe_term = re.sub(r"\s+", " ", str(term or "").strip())
+    if not safe_term:
+        return None
+
+    try:
+        response = requests.get(
+            f"https://api.dictionaryapi.dev/api/v2/entries/{language}/{safe_term}",
+            timeout=8,
+        )
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+        if not isinstance(payload, list) or not payload:
+            return None
+        entry = payload[0] or {}
+        phonetic = str(entry.get("phonetic") or "").strip()
+        meanings = entry.get("meanings") or []
+        definitions: list[dict[str, Any]] = []
+        for meaning in meanings:
+            part_of_speech = str(meaning.get("partOfSpeech") or "").strip()
+            for definition in meaning.get("definitions") or []:
+                text = str(definition.get("definition") or "").strip()
+                if not text:
+                    continue
+                definitions.append(
+                    {
+                        "part_of_speech": part_of_speech,
+                        "definition": text,
+                        "example": str(definition.get("example") or "").strip(),
+                    }
+                )
+                if len(definitions) >= 8:
+                    break
+            if len(definitions) >= 8:
+                break
+        if not definitions:
+            return None
+        return {
+            "term": str(entry.get("word") or safe_term),
+            "phonetic": phonetic,
+            "definitions": definitions,
+            "source": "dictionaryapi.dev",
+        }
+    except Exception as error:
+        logger.warning("Dictionary lookup failed: %s", error)
+        return None
+
+
+def _translate_with_public_google(
+    text: str,
+    source_language: str = "auto",
+    target_language: str = "en",
+) -> dict[str, Any] | None:
+    normalized_text = str(text or "").strip()
+    if not normalized_text:
+        return None
+    try:
+        response = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={
+                "client": "gtx",
+                "sl": source_language or "auto",
+                "tl": target_language or "en",
+                "dt": "t",
+                "q": normalized_text,
+            },
+            timeout=10,
+        )
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+        translated_chunks = payload[0] if isinstance(payload, list) and payload else []
+        translated_text = "".join(
+            str(chunk[0] or "") for chunk in translated_chunks if isinstance(chunk, list)
+        ).strip()
+        detected_source = ""
+        if isinstance(payload, list) and len(payload) > 2:
+            detected_source = str(payload[2] or "").strip()
+        if not translated_text:
+            return None
+        return {
+            "translated_text": translated_text,
+            "source_language": detected_source or source_language or "auto",
+            "target_language": target_language or "en",
+            "provider": "google_public",
+        }
+    except Exception as error:
+        logger.warning("Public translation failed: %s", error)
+        return None
 
 
 def start_ollama_service():
@@ -291,6 +395,26 @@ class ReaderAnnotationUpdateRequest(BaseModel):
     kind: str = "bookmark"
     page_label: str = ""
     chapter_label: str = ""
+
+
+class ReaderSearchRequest(BaseModel):
+    lid: Optional[str] = None
+    query: str
+    limit: int = 25
+
+
+class ReaderDefineRequest(BaseModel):
+    term: str
+    context: str = ""
+    language: str = "en"
+
+
+class ReaderTranslateRequest(BaseModel):
+    text: str
+    source_language: str = "auto"
+    target_language: str = "en"
+    mode: str = "selection"
+    context: str = ""
 
 
 class RecommenderSearchRequest(BaseModel):
@@ -1309,6 +1433,104 @@ def get_reader_content_endpoint(
             "sections": sections,
         },
     }
+
+
+@app.post("/reader/books/{filename}/search")
+def reader_search_endpoint(filename: str, request: ReaderSearchRequest):
+    identity, manifest, results, status = reader_manifest_service.search_book(
+        filename,
+        request.query,
+        lid=request.lid,
+        limit=request.limit,
+    )
+    return {
+        "status": "success",
+        "data": {
+            "book": {
+                "filename": identity["filename"],
+                "lid": identity["lid"] or "",
+                "extension": identity["format"],
+            },
+            "manifest_status": status,
+            "manifest": {
+                "page_count": int((manifest or {}).get("page_count") or 0),
+                "section_index": (manifest or {}).get("section_index") or [],
+                "toc": (manifest or {}).get("toc") or [],
+            },
+            "results": results,
+        },
+    }
+
+
+@app.post("/reader/define")
+def reader_define_endpoint(request: ReaderDefineRequest):
+    normalized_term = str(request.term or "").strip()
+    if not normalized_term:
+        raise HTTPException(status_code=400, detail="Term is required")
+
+    dictionary_entry = _lookup_dictionary_entry(normalized_term, request.language)
+    fallback = {
+        "term": normalized_term,
+        "phonetic": "",
+        "definitions": [],
+        "summary": "",
+    }
+    if dictionary_entry:
+        fallback.update(dictionary_entry)
+        fallback["summary"] = dictionary_entry["definitions"][0]["definition"]
+    prompt = f"""
+You are defining a word for a reader inside a book app.
+Return valid JSON with keys: term, phonetic, definitions, summary.
+- term: normalized word
+- phonetic: short pronunciation string if known
+- definitions: array of up to 5 objects with part_of_speech, definition, example
+- summary: one short plain-language meaning
+
+Word: {normalized_term}
+Context: {request.context or ""}
+"""
+    enriched = _reader_reasoning_json_fallback(prompt, fallback)
+    if not enriched.get("definitions") and dictionary_entry:
+        enriched["definitions"] = dictionary_entry["definitions"]
+    if not enriched.get("term"):
+        enriched["term"] = normalized_term
+    return {"status": "success", "data": enriched}
+
+
+@app.post("/reader/translate")
+def reader_translate_endpoint(request: ReaderTranslateRequest):
+    normalized_text = str(request.text or "").strip()
+    if not normalized_text:
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    public_translation = _translate_with_public_google(
+        normalized_text,
+        source_language=request.source_language,
+        target_language=request.target_language,
+    )
+    fallback = {
+        "translated_text": normalized_text,
+        "source_language": request.source_language or "auto",
+        "target_language": request.target_language or "en",
+        "provider": "fallback",
+    }
+    if public_translation:
+        return {"status": "success", "data": public_translation}
+
+    prompt = f"""
+Translate the following text.
+Return valid JSON with keys: translated_text, source_language, target_language.
+
+Source language: {request.source_language or "auto"}
+Target language: {request.target_language or "en"}
+Mode: {request.mode or "selection"}
+Context: {request.context or ""}
+
+Text:
+{normalized_text}
+"""
+    translated = _reader_reasoning_json_fallback(prompt, fallback)
+    return {"status": "success", "data": translated}
 
 
 @app.get("/library/{filename}")

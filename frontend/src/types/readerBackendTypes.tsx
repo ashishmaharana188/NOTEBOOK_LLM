@@ -89,6 +89,9 @@ export interface ReaderSettings {
   pageMargin: number;
   flow: "paginated" | "scrolled";
   spread: "auto" | "none" | "always";
+  alignment?: "default" | "left" | "justify";
+  brightness?: number;
+  nightLight?: boolean;
 }
 
 // Flexible Theme Interface
@@ -122,7 +125,23 @@ export interface ReaderProps {
 export interface MainReaderProps {
   book: ReaderBook | null;
   bookContent?: string;
-  onSelection?: (text: string) => void;
+  onFindEchoes?: (text: string) => void;
+  onAskRag?: (text: string, prompt: string) => void;
+  onBack?: () => void;
+}
+
+export interface ReaderSearchResult {
+  result_id: string;
+  query: string;
+  snippet: string;
+  match_start: number;
+  match_end: number;
+  char_index: number;
+  section_index?: number;
+  page?: number;
+  label?: string;
+  href?: string;
+  page_label?: string;
 }
 
 export interface DownloadingBook {

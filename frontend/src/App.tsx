@@ -170,7 +170,24 @@ function App() {
             <MainReader
               book={currentBook}
               bookContent={bookContent}
-              onSelection={handleSelection}
+              onBack={() => setView("LIBRARY")}
+              onFindEchoes={(text) => {
+                searchEchoes(text);
+                setWorkspaceView("ECHOES");
+                setEchoOpen(true);
+              }}
+              onAskRag={(text, prompt) => {
+                sessionStorage.setItem(
+                  "pendingDerivedAction",
+                  JSON.stringify({
+                    type: "rag",
+                    highlight: text,
+                    prompt,
+                  }),
+                );
+                setWorkspaceView("ECHOES");
+                setEchoOpen(true);
+              }}
             />
           ) : (
             <LibraryManager
@@ -196,30 +213,32 @@ function App() {
         </div>
       </div>
 
-      <EchoTrigger
-        visible={triggerVisible}
-        text={selectedText}
-        onSearch={() => {
-          searchEchoes(selectedText);
-          setWorkspaceView("ECHOES");
-          setEchoOpen(true);
-          dismissTrigger();
-        }}
-        onAskRag={(prompt: string) => {
-          sessionStorage.setItem(
-            "pendingDerivedAction",
-            JSON.stringify({
-              type: "rag",
-              highlight: selectedText,
-              prompt,
-            }),
-          );
-          setWorkspaceView("ECHOES");
-          setEchoOpen(true);
-          dismissTrigger();
-        }}
-        onDismiss={dismissTrigger}
-      />
+      {!isReaderActive ? (
+        <EchoTrigger
+          visible={triggerVisible}
+          text={selectedText}
+          onSearch={() => {
+            searchEchoes(selectedText);
+            setWorkspaceView("ECHOES");
+            setEchoOpen(true);
+            dismissTrigger();
+          }}
+          onAskRag={(prompt: string) => {
+            sessionStorage.setItem(
+              "pendingDerivedAction",
+              JSON.stringify({
+                type: "rag",
+                highlight: selectedText,
+                prompt,
+              }),
+            );
+            setWorkspaceView("ECHOES");
+            setEchoOpen(true);
+            dismissTrigger();
+          }}
+          onDismiss={dismissTrigger}
+        />
+      ) : null}
 
       {shouldRenderWorkspaceShell ? (
         <Suspense fallback={null}>

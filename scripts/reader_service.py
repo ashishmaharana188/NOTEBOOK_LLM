@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import threading
+from bisect import bisect_right
 from typing import Any, Callable
 
 import ebooklib
@@ -320,6 +321,137 @@ class ReaderManifestService:
                 }
             )
         return identity, manifest, payload_sections, "ready"
+
+    def get_cached_full_text(
+        self, filename: str, lid: str | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any] | None, str]:
+        identity, manifest, status = self.ensure_manifest(filename, lid)
+        if status != "ready" or not manifest:
+            return identity, manifest, ""
+
+        content_meta = manifest.get("content_meta") or {}
+        cache_path = str(content_meta.get("cache_path") or "").strip()
+        if not cache_path or not os.path.exists(cache_path):
+            return identity, manifest, ""
+
+        with open(cache_path, "r", encoding="utf-8", errors="ignore") as handle:
+            return identity, manifest, handle.read()
+
+    def search_book(
+        self,
+        filename: str,
+        query: str,
+        lid: str | None = None,
+        limit: int = 25,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None, list[dict[str, Any]], str]:
+        normalized_query = str(query or "").strip()
+        if not normalized_query:
+            identity, manifest, status = self.ensure_manifest(filename, lid)
+            return identity, manifest, [], status
+
+        identity, manifest, status = self.ensure_manifest(filename, lid)
+        if status != "ready" or not manifest:
+            return identity, manifest, [], "building"
+
+        fmt = str(identity.get("format") or "").lower()
+        safe_limit = max(1, min(int(limit or 25), 100))
+        if fmt == "pdf":
+            results = self._search_pdf(identity, normalized_query, safe_limit)
+            return identity, manifest, results, "ready"
+
+        _, _, full_text = self.get_cached_full_text(filename, identity.get("lid"))
+        if not full_text.strip():
+            return identity, manifest, [], "ready"
+
+        section_index = list(manifest.get("section_index") or [])
+        results = self._search_cached_text(
+            full_text=full_text,
+            query=normalized_query,
+            section_index=section_index,
+            limit=safe_limit,
+        )
+        return identity, manifest, results, "ready"
+
+    def _search_cached_text(
+        self,
+        full_text: str,
+        query: str,
+        section_index: list[dict[str, Any]],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        normalized_full_text = str(full_text or "")
+        if not normalized_full_text:
+            return []
+
+        pattern = re.compile(re.escape(query), re.IGNORECASE)
+        sections = section_index or _split_text_sections(normalized_full_text)
+        section_starts = [int(row.get("start_offset") or 0) for row in sections]
+        results: list[dict[str, Any]] = []
+
+        for match_index, match in enumerate(pattern.finditer(normalized_full_text)):
+            if len(results) >= limit:
+                break
+            start = match.start()
+            end = match.end()
+            section_pos = max(0, bisect_right(section_starts, start) - 1)
+            section = sections[min(section_pos, len(sections) - 1)] if sections else {}
+            snippet_start = max(0, start - 110)
+            snippet_end = min(len(normalized_full_text), end + 150)
+            snippet = normalized_full_text[snippet_start:snippet_end].strip()
+            results.append(
+                {
+                    "result_id": f"match_{match_index}",
+                    "query": query,
+                    "snippet": snippet,
+                    "match_start": start - snippet_start,
+                    "match_end": end - snippet_start,
+                    "char_index": start,
+                    "section_index": int(section.get("section_index") or 0),
+                    "page": int(section.get("section_index") or 0) + 1,
+                    "label": str(section.get("label") or ""),
+                    "href": str(section.get("href") or ""),
+                    "page_label": str(section.get("label") or ""),
+                }
+            )
+        return results
+
+    def _search_pdf(
+        self, identity: dict[str, Any], query: str, limit: int
+    ) -> list[dict[str, Any]]:
+        doc = fitz.open(identity["file_path"])
+        try:
+            pattern = re.compile(re.escape(query), re.IGNORECASE)
+            results: list[dict[str, Any]] = []
+            for page_index, page in enumerate(doc):
+                text = clean_text(page.get_text())
+                if not text:
+                    continue
+                for match_index, match in enumerate(pattern.finditer(text)):
+                    if len(results) >= limit:
+                        return results
+                    start = match.start()
+                    end = match.end()
+                    snippet_start = max(0, start - 110)
+                    snippet_end = min(len(text), end + 150)
+                    snippet = text[snippet_start:snippet_end].strip()
+                    results.append(
+                        {
+                            "result_id": f"page_{page_index + 1}_{match_index}",
+                            "query": query,
+                            "snippet": snippet,
+                            "match_start": start - snippet_start,
+                            "match_end": end - snippet_start,
+                            "char_index": start,
+                            "section_index": page_index,
+                            "page": page_index + 1,
+                            "label": f"Page {page_index + 1}",
+                            "href": "",
+                            "page_label": str(page_index + 1),
+                        }
+                    )
+            return results
+        finally:
+            doc.close()
 
     def _schedule_build(self, identity: dict[str, Any], fingerprint: str):
         book_key = identity["book_key"]
