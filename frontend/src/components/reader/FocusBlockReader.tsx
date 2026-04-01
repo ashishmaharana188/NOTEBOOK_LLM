@@ -43,10 +43,12 @@ export default function FocusBlockReader({
   const blockRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [activeBlockIndex, setActiveBlockIndex] = useState(0);
   const nearEndTriggeredRef = useRef(false);
+  const allowReachedEndRef = useRef(false);
 
   useEffect(() => {
     setActiveBlockIndex(0);
     nearEndTriggeredRef.current = false;
+    allowReachedEndRef.current = false;
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
@@ -56,7 +58,7 @@ export default function FocusBlockReader({
     onActiveBlockChange?.(activeBlockIndex);
   }, [activeBlockIndex, onActiveBlockChange]);
 
-  const updateActiveBlock = () => {
+  const updateActiveBlock = (triggeredByScroll = false) => {
     const container = scrollRef.current;
     if (!container || !blocks.length) return;
 
@@ -78,21 +80,27 @@ export default function FocusBlockReader({
 
     setActiveBlockIndex(nextIndex);
 
-    const remaining =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
-    if (remaining < 180) {
-      if (!nearEndTriggeredRef.current) {
-        nearEndTriggeredRef.current = true;
-        onReachedEnd?.();
+    if (triggeredByScroll && scrollEnabled) {
+      allowReachedEndRef.current = true;
+    }
+
+    if (allowReachedEndRef.current) {
+      const remaining =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (remaining < 180) {
+        if (!nearEndTriggeredRef.current) {
+          nearEndTriggeredRef.current = true;
+          onReachedEnd?.();
+        }
+      } else {
+        nearEndTriggeredRef.current = false;
       }
-    } else {
-      nearEndTriggeredRef.current = false;
     }
   };
 
   useEffect(() => {
-    updateActiveBlock();
-  }, [text]);
+    updateActiveBlock(false);
+  }, [text, scrollEnabled]);
 
   const handleSelectionCapture = () => {
     if (!scrollEnabled || !onSelection || !scrollRef.current) return;
@@ -118,7 +126,7 @@ export default function FocusBlockReader({
     <div className={`flex h-full min-h-0 flex-col ${className}`}>
       <div
         ref={scrollRef}
-        onScroll={updateActiveBlock}
+        onScroll={() => updateActiveBlock(true)}
         onMouseDown={onActivate}
         onPointerDown={onActivate}
         onMouseUp={handleSelectionCapture}

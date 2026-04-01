@@ -13,7 +13,11 @@ function normalizeChunkToItem(
   if (!itemId) return null;
 
   return {
-    id: itemId,
+    id: chunk.note_id
+      ? `note:${itemId}`
+      : chunk.echo_id
+        ? `echo:${itemId}`
+        : itemId,
     title: chunk.title || fallbackTitle || "Untitled Echo",
     text: String(chunk.text || chunk.bridge || ""),
     fullText: String((chunk as any).full_text || ""),

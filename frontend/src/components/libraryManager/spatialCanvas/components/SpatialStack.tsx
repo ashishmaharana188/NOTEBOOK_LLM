@@ -355,13 +355,15 @@ const SpatialStack = React.memo(
                 orbitingItems
                     .filter((item: any) => !item.is_folder && !item.is_quick_thought)
                     .map((item: any) => ({
-                        id: String(
-                            item.echo_id ||
-                                item.note_id ||
-                                item.chunk_id ||
-                                item.id ||
-                                "",
-                        ),
+                        id: item.note_id
+                            ? `note:${String(item.note_id)}`
+                            : item.echo_id
+                              ? `echo:${String(item.echo_id)}`
+                              : String(
+                                    item.chunk_id ||
+                                        item.id ||
+                                        "",
+                                ),
                         title:
                             item.title ||
                             item.bridge ||
@@ -430,7 +432,11 @@ const SpatialStack = React.memo(
                 if (!itemId || !itemText) return null;
 
                 return {
-                    id: itemId,
+                    id: item?.note_id
+                        ? `note:${itemId}`
+                        : item?.echo_id
+                          ? `echo:${itemId}`
+                          : itemId,
                     title:
                         item?.title ||
                         item?.bridge ||
@@ -497,6 +503,12 @@ const SpatialStack = React.memo(
             const resolvedItemId =
                 workspaceItems.find(
                     (item: any) => String(item.id) === String(preferredId),
+                )?.id ||
+                workspaceItems.find(
+                    (item: any) =>
+                        String(item.echoId || "") === String(preferredId) ||
+                        String(item.noteId || "") === String(preferredId) ||
+                        String(item.chunkId || "") === String(preferredId),
                 )?.id || workspaceItems[0]?.id;
 
             if (!resolvedItemId) return;

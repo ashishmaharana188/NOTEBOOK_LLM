@@ -112,6 +112,35 @@ function normalizeAttachedImages(value: any): string[] {
     .filter(Boolean);
 }
 
+function resolveWorkspaceItemIndex(
+  items: ReadingWorkspaceItem[],
+  requestedId?: string,
+) {
+  const normalizedRequested = String(requestedId || "").trim();
+  if (!normalizedRequested) {
+    return 0;
+  }
+
+  const exactMatchIndex = items.findIndex(
+    (item) => String(item.id) === normalizedRequested,
+  );
+  if (exactMatchIndex >= 0) {
+    return exactMatchIndex;
+  }
+
+  const rawMatchIndex = items.findIndex(
+    (item) =>
+      String(item.echoId || "") === normalizedRequested ||
+      String(item.noteId || "") === normalizedRequested ||
+      String(item.chunkId || "") === normalizedRequested,
+  );
+  if (rawMatchIndex >= 0) {
+    return rawMatchIndex;
+  }
+
+  return 0;
+}
+
 export function buildSavedDerivedPanelsBySourceId(clusters: any[] = []) {
   const map: Record<string, ReadingDerivedPanel[]> = {};
 
@@ -404,9 +433,7 @@ export default function FocusedReadingWorkspace({
   const isMobile = useIsMobile();
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [itemState, setItemState] = useState<ReadingWorkspaceItem[]>(items);
-  const [selectedItemId, setSelectedItemId] = useState<string>(
-    initialItemId || String(items[0]?.id || ""),
-  );
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number>(0);
   const [selectionText, setSelectionText] = useState("");
   const [ragPrompt, setRagPrompt] = useState("");
   const [showPromptInput, setShowPromptInput] = useState(false);
@@ -426,17 +453,21 @@ export default function FocusedReadingWorkspace({
   }, [items]);
 
   useEffect(() => {
-    const nextInitialId = String(initialItemId || items[0]?.id || "");
-    const itemIds = new Set((items || []).map((item) => String(item.id)));
+    const nextInitialIndex = resolveWorkspaceItemIndex(items, initialItemId);
 
-    setSelectedItemId((previous) => {
-      const previousId = String(previous || "");
-      if (previousId && itemIds.has(previousId)) {
-        return previousId;
+    setSelectedItemIndex((previousIndex) => {
+      const previousItem = itemState[previousIndex];
+      if (previousItem) {
+        const preservedIndex = items.findIndex(
+          (item) => String(item.id) === String(previousItem.id),
+        );
+        if (preservedIndex >= 0) {
+          return preservedIndex;
+        }
       }
-      return nextInitialId;
+      return nextInitialIndex;
     });
-  }, [initialItemId, items]);
+  }, [initialItemId, itemState, items]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -454,7 +485,7 @@ export default function FocusedReadingWorkspace({
     setIsMobileRailOpen(false);
     setShowPromptInput(false);
     setIsCenterFocused(false);
-  }, [selectedItemId]);
+  }, [selectedItemIndex]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -469,15 +500,10 @@ export default function FocusedReadingWorkspace({
     };
   }, []);
 
-  const itemMap = useMemo(() => {
-    const next = new Map<string, ReadingWorkspaceItem>();
-    itemState.forEach((item) => next.set(String(item.id), item));
-    return next;
-  }, [itemState]);
-
-  const selectedItem = itemMap.get(String(selectedItemId)) || itemState[0] || null;
-  const editingNoteItem =
-    editingNoteItemId ? itemMap.get(String(editingNoteItemId)) || null : null;
+  const selectedItem = itemState[selectedItemIndex] || itemState[0] || null;
+  const editingNoteItem = editingNoteItemId
+    ? itemState.find((item) => String(item.id) === String(editingNoteItemId)) || null
+    : null;
   const sourceKey = String(selectedItem?.echoId || selectedItem?.id || "");
   const visibleSavedPanels = savedPanelsBySourceId[sourceKey] || [];
   const visibleLocalPanels = localPanelsBySourceId[sourceKey] || [];
@@ -514,32 +540,24 @@ export default function FocusedReadingWorkspace({
     };
   }, [selectedItem]);
 
-  const handleReachedEnd = () => {
+  const handleReachedEnd = React.useCallback(() => {
     if (!selectedItem) return;
-    const currentIndex = itemState.findIndex(
-      (item) => String(item.id) === String(selectedItem.id),
-    );
-    if (currentIndex < 0 || currentIndex >= itemState.length - 1) return;
-    setSelectedItemId(String(itemState[currentIndex + 1]?.id || ""));
+    if (selectedItemIndex < 0 || selectedItemIndex >= itemState.length - 1) return;
+    setSelectedItemIndex(selectedItemIndex + 1);
     setSelectionText("");
     setShowPromptInput(false);
-  };
+  }, [itemState.length, selectedItem, selectedItemIndex]);
 
-  const selectAdjacentItem = (direction: 1 | -1) => {
-    if (!selectedItem) return;
-    const currentIndex = itemState.findIndex(
-      (item) => String(item.id) === String(selectedItem.id),
-    );
-    if (currentIndex < 0) return;
+  const selectAdjacentItem = React.useCallback((direction: 1 | -1) => {
     const nextIndex = Math.max(
       0,
-      Math.min(itemState.length - 1, currentIndex + direction),
+      Math.min(itemState.length - 1, selectedItemIndex + direction),
     );
-    if (nextIndex === currentIndex) return;
-    setSelectedItemId(String(itemState[nextIndex]?.id || ""));
+    if (nextIndex === selectedItemIndex) return;
+    setSelectedItemIndex(nextIndex);
     setSelectionText("");
     setShowPromptInput(false);
-  };
+  }, [itemState.length, selectedItemIndex]);
 
   const handleCenterBrowseWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     if (isCenterFocused) return;
@@ -556,12 +574,16 @@ export default function FocusedReadingWorkspace({
     selectAdjacentItem(event.deltaY > 0 ? 1 : -1);
   };
 
-  const activateWorkspaceItem = (itemId: string) => {
-    setSelectedItemId(String(itemId || ""));
+  const activateWorkspaceItem = React.useCallback((itemId: string) => {
+    const targetIndex = itemState.findIndex(
+      (item) => String(item.id) === String(itemId || ""),
+    );
+    if (targetIndex < 0) return;
+    setSelectedItemIndex(targetIndex);
     setSelectionText("");
     setShowPromptInput(false);
     setIsCenterFocused(false);
-  };
+  }, [itemState]);
 
   const runDerivedMode = async (mode: string, prompt = "") => {
     if (!selectedItem) return;
@@ -944,7 +966,9 @@ export default function FocusedReadingWorkspace({
           <div className="mt-8 min-h-0 flex-1 overflow-y-auto custom-scrollbar pr-1">
             <div className="space-y-0">
               {itemState.map((item) => {
-                const isSelected = String(item.id) === String(selectedItemId);
+                const isSelected =
+                  itemState[selectedItemIndex] &&
+                  String(item.id) === String(itemState[selectedItemIndex]?.id);
                 return (
                   <button
                     key={item.id}
@@ -1047,7 +1071,7 @@ export default function FocusedReadingWorkspace({
             >
               {isRichNoteView ? (
                 <RichDocumentReader
-                  key={String(selectedItem?.id || "rich-reader")}
+                  key={`${String(selectedItem?.id || "rich-reader")}:${selectedItemIndex}`}
                   title={selectedItem?.title || ""}
                   subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
                   html={String(selectedItem?.rawContent || selectedItem?.text || "")}
@@ -1060,7 +1084,7 @@ export default function FocusedReadingWorkspace({
                 />
               ) : (
                 <FocusBlockReader
-                  key={String(selectedItem?.id || "focus-reader")}
+                  key={`${String(selectedItem?.id || "focus-reader")}:${selectedItemIndex}`}
                   title={selectedItem?.title || ""}
                   subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
                   text={currentText}
