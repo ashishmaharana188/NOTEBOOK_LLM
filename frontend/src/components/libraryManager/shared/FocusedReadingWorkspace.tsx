@@ -556,6 +556,13 @@ export default function FocusedReadingWorkspace({
     selectAdjacentItem(event.deltaY > 0 ? 1 : -1);
   };
 
+  const activateWorkspaceItem = (itemId: string) => {
+    setSelectedItemId(String(itemId || ""));
+    setSelectionText("");
+    setShowPromptInput(false);
+    setIsCenterFocused(false);
+  };
+
   const runDerivedMode = async (mode: string, prompt = "") => {
     if (!selectedItem) return;
 
@@ -941,11 +948,13 @@ export default function FocusedReadingWorkspace({
                 return (
                   <button
                     key={item.id}
-                    onClick={() => {
-                      setSelectedItemId(String(item.id));
-                      setSelectionText("");
-                      setShowPromptInput(false);
-                      setIsCenterFocused(false);
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      activateWorkspaceItem(String(item.id));
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      activateWorkspaceItem(String(item.id));
                     }}
                     className={`w-full border-b border-white/10 px-1 py-4 text-left transition-colors md:px-2 ${
                       isSelected
@@ -1038,6 +1047,7 @@ export default function FocusedReadingWorkspace({
             >
               {isRichNoteView ? (
                 <RichDocumentReader
+                  key={String(selectedItem?.id || "rich-reader")}
                   title={selectedItem?.title || ""}
                   subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
                   html={String(selectedItem?.rawContent || selectedItem?.text || "")}
@@ -1050,6 +1060,7 @@ export default function FocusedReadingWorkspace({
                 />
               ) : (
                 <FocusBlockReader
+                  key={String(selectedItem?.id || "focus-reader")}
                   title={selectedItem?.title || ""}
                   subtitle={selectedItem?.chapter || selectedItem?.sourceLabel || ""}
                   text={currentText}
