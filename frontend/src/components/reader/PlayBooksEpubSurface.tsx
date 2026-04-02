@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,6 +45,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
     const readerRef = useRef<any>(null);
     const renditionRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
     const [location, setLocation] = useState<string | number | null>(initialLocation);
     const [toc, setToc] = useState<TocItem[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
@@ -51,6 +53,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
     const [chapterLabel, setChapterLabel] = useState(book.title);
     const [currentHref, setCurrentHref] = useState("");
     const [, setVisibleText] = useState("");
+    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
     const pagedMode = presentationMode === "paged";
     const desktopLayout = platformLayout === "desktop";
 
@@ -72,17 +75,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
               ? "#3a2f20"
               : "#171717";
         const alignment = settings.alignment === "left" ? "left" : "justify";
-        const bodyWidth = pagedMode
-          ? desktopLayout
-            ? "860px"
-            : "100%"
-          : "760px";
-        const bodyPadding = pagedMode
-          ? desktopLayout
-            ? "56px 48px 92px"
-            : "42px 40px 82px"
-          : "56px 0 100px";
-        const overflowMode = pagedMode ? "hidden" : "visible";
+        const overflowMode = pagedMode ? "auto" : "visible";
+        const pagedInlineInset =
+          desktopLayout
+            ? Math.max(6, Math.min(10, Math.round(viewportSize.width * 0.0065)))
+            : 8;
+        const pagedTopInset = desktopLayout ? 8 : 10;
+        const pagedBottomInset = desktopLayout ? 18 : 20;
+        const pagedContentMaxWidth = desktopLayout
+          ? `${Math.max(960, Math.min(1240, viewportSize.width - 40))}px`
+          : "100%";
+        const scrollBodyMaxWidth = desktopLayout ? "760px" : "100%";
+        const scrollBodyPadding = desktopLayout ? "28px 0 112px" : "24px 0 96px";
 
         let styleTag = doc.getElementById("reader-play-books-style");
         if (!styleTag) {
@@ -95,24 +99,50 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
           html, body {
             margin: 0 !important;
             width: 100% !important;
+            max-width: none !important;
             min-height: 100% !important;
             background: ${background} !important;
             color: ${color} !important;
-            overflow: ${overflowMode} !important;
+            overflow-y: ${overflowMode} !important;
+            overflow-x: hidden !important;
           }
           * {
             box-sizing: border-box !important;
           }
           body {
-            max-width: ${bodyWidth} !important;
-            margin: 0 auto !important;
-            padding: ${bodyPadding} !important;
+            margin: 0 !important;
+            padding: ${
+              pagedMode
+                ? `${pagedTopInset}px ${pagedInlineInset}px ${pagedBottomInset}px`
+                : scrollBodyPadding
+            } !important;
+            max-width: ${pagedMode ? "none" : scrollBodyMaxWidth} !important;
+            margin-left: ${pagedMode ? "0" : "auto"} !important;
+            margin-right: ${pagedMode ? "0" : "auto"} !important;
             font-size: ${Math.max(105, settings.fontSize)}% !important;
             line-height: ${settings.lineHeight} !important;
             text-align: ${alignment} !important;
-            overflow-wrap: anywhere !important;
-            word-break: break-word !important;
-            column-gap: 0 !important;
+            overflow-wrap: break-word !important;
+            word-break: normal !important;
+            hyphens: auto !important;
+            writing-mode: horizontal-tb !important;
+            white-space: normal !important;
+          }
+          section, article, main, div, p, blockquote, li, h1, h2, h3, h4, h5, h6 {
+            max-width: 100% !important;
+          }
+          body > * {
+            max-width: ${
+              pagedMode
+                ? `min(100%, ${pagedContentMaxWidth})`
+                : "100%"
+            } !important;
+            margin-left: ${pagedMode ? "auto" : "inherit"} !important;
+            margin-right: ${pagedMode ? "auto" : "inherit"} !important;
+          }
+          p, blockquote, li {
+            widows: 2 !important;
+            orphans: 2 !important;
           }
           body, p, div, span, li, blockquote, h1, h2, h3, h4, h5, h6, td, th {
             color: ${color} !important;
@@ -120,16 +150,31 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             line-height: ${settings.lineHeight} !important;
             text-align: ${alignment} !important;
           }
-          img, svg, video, canvas, table, object, embed, iframe {
+          img, svg, video, canvas, table, object, embed, iframe, figure, pre, code {
             max-width: 100% !important;
             height: auto !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
           }
-          pre, code {
+          figure, img, table, pre {
+            clear: both !important;
+          }
+          figure, table, pre {
+            break-inside: avoid-column !important;
+            page-break-inside: avoid !important;
+          }
+          table {
+            display: block !important;
+            width: auto !important;
+            overflow-x: auto !important;
+          }
+          pre, code, a {
             white-space: pre-wrap !important;
             word-break: break-word !important;
           }
-          a {
-            word-break: break-word !important;
+          [style*="float:"], [align="left"], [align="right"] {
+            float: none !important;
+            clear: both !important;
           }
           ::selection {
             background: #f3dd73 !important;
@@ -144,6 +189,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         settings.fontSize,
         settings.lineHeight,
         settings.theme,
+        viewportSize.width,
       ],
     );
 
@@ -197,7 +243,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             total: derivedTotal,
             displayedPage: displayedPage || 1,
             displayedTotal: displayedTotal || 1,
-            flow: pagedMode ? "paginated" : "scrolled-doc",
+            flow: pagedMode ? "paginated" : "scrolled",
           },
         };
         setCurrentPage(derivedPage);
@@ -255,6 +301,31 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
       [applyThemeToContents, onSelection, syncRelocation],
     );
 
+    useLayoutEffect(() => {
+      const viewport = viewportRef.current;
+      const rendition = renditionRef.current;
+      if (!viewport || !rendition?.resize) return;
+
+      const resize = () => {
+        const rect = viewport.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          setViewportSize({
+            width: Math.floor(rect.width),
+            height: Math.floor(rect.height),
+          });
+          rendition.resize(rect.width, rect.height);
+        }
+      };
+
+      resize();
+      if (typeof ResizeObserver === "undefined") {
+        return;
+      }
+      const observer = new ResizeObserver(() => resize());
+      observer.observe(viewport);
+      return () => observer.disconnect();
+    }, [pagedMode, presentationMode, settings.fontSize, settings.lineHeight]);
+
     useEffect(() => {
       const rendition = renditionRef.current;
       if (!rendition?.getContents) return;
@@ -300,7 +371,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
     const epubOptions = useMemo(
       () =>
         ({
-          flow: pagedMode ? "paginated" : "scrolled-doc",
+          flow: pagedMode ? "paginated" : "scrolled",
           manager: pagedMode ? "default" : "continuous",
           spread: "none",
           width: "100%",
@@ -321,6 +392,20 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         ? toc[currentTocIndex + 1]
         : null;
     const showMobilePagedShell = pagedMode && !desktopLayout;
+    const viewportPadding = pagedMode
+      ? desktopLayout
+        ? "2px 2px 10px"
+        : "20px 20px 34px"
+      : desktopLayout
+        ? "24px 0 96px"
+        : "20px 0 84px";
+    const viewportMaxWidth = pagedMode
+      ? showMobilePagedShell
+        ? undefined
+        : "min(100%, 1240px)"
+      : desktopLayout
+        ? "840px"
+        : "100%";
 
     return (
       <div
@@ -328,7 +413,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
           pagedMode
             ? "items-center overflow-hidden"
-            : "items-start overflow-y-auto pb-16 pt-12 sm:pb-24 sm:pt-16"
+            : "items-start overflow-x-hidden overflow-y-auto pb-16 pt-12 sm:pb-24 sm:pt-16"
         }`}
       >
         <div
@@ -358,41 +443,57 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                   ? "h-full"
                   : "min-h-[calc(100vh-180px)]"
             }`}
+            style={{
+              maxWidth: viewportMaxWidth,
+            }}
           >
-            <EpubView
-              ref={readerRef}
-              url={book.url}
-              location={location}
-              tocChanged={(value) => setToc(normalizeToc(value))}
-              locationChanged={(value) => {
-                setLocation(value);
+            <div
+              ref={viewportRef}
+              className={`h-full min-h-0 w-full ${pagedMode ? "" : "mx-auto"}`}
+              style={{
+                padding: viewportPadding,
+                maxWidth: viewportMaxWidth,
+                boxSizing: "border-box",
               }}
-              getRendition={configureRendition}
-              epubOptions={epubOptions}
-              epubViewStyles={{
-                viewHolder: {
-                  position: "relative",
-                  height: "100%",
-                  width: "100%",
-                  overflow: "hidden",
-                },
-                view: {
-                  height: "100%",
-                  width: "100%",
-                  overflow: "hidden",
-                },
-              }}
-              loadingView={
-                <div className="flex h-full items-center justify-center text-base text-slate-500">
-                  Loading EPUB...
-                </div>
-              }
-              errorView={
-                <div className="flex h-full items-center justify-center text-base text-rose-600">
-                  Could not render EPUB.
-                </div>
-              }
-            />
+            >
+              <EpubView
+                key={`${book.filename}:${presentationMode}:${platformLayout}:${settings.fontFamily}:${settings.fontSize}:${settings.lineHeight}:${settings.alignment}:${settings.theme}`}
+                ref={readerRef}
+                url={book.url}
+                location={location}
+                tocChanged={(value) => setToc(normalizeToc(value))}
+                locationChanged={(value) => {
+                  setLocation(value);
+                }}
+                getRendition={configureRendition}
+                epubOptions={epubOptions}
+                epubViewStyles={{
+                  viewHolder: {
+                    position: "relative",
+                    height: "100%",
+                    width: "100%",
+                    overflowX: "hidden",
+                    overflowY: "hidden",
+                  },
+                  view: {
+                    height: "100%",
+                    width: "100%",
+                    overflowX: "hidden",
+                    overflowY: pagedMode ? "hidden" : "visible",
+                  },
+                }}
+                loadingView={
+                  <div className="flex h-full items-center justify-center text-base text-slate-500">
+                    Loading EPUB...
+                  </div>
+                }
+                errorView={
+                  <div className="flex h-full items-center justify-center text-base text-rose-600">
+                    Could not render EPUB.
+                  </div>
+                }
+              />
+            </div>
           </div>
           {!pagedMode ? (
             <div className="mx-auto mt-12 max-w-[760px] px-2 text-[#202124]">

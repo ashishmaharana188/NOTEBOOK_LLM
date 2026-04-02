@@ -15,7 +15,7 @@ import { API_BASE_URL, BACKEND_WS_URL } from "../../lib/runtimeConfig";
 const API = axios.create({
     baseURL: API_BASE_URL,
 });
-const LOCAL_CACHE_PREFIX = "reader_bootstrap_v2:";
+const LOCAL_CACHE_PREFIX = "reader_bootstrap_v4:";
 
 function toLocationValue(raw: unknown): string | number | null {
     if (raw === undefined || raw === null || raw === "") return null;
@@ -42,6 +42,35 @@ function stableStringify(value: unknown) {
     } catch {
         return "{}";
     }
+}
+
+function resolveInitialSectionIndex(sessionLike: {
+    last_location?: unknown;
+    last_location_type?: unknown;
+    view_state?: Record<string, any> | null;
+} | null | undefined) {
+    const explicitSection = Number(sessionLike?.view_state?.sectionIndex);
+    if (Number.isFinite(explicitSection) && explicitSection >= 0) {
+        return explicitSection;
+    }
+
+    const legacySection = Number(sessionLike?.view_state?.section_index);
+    if (Number.isFinite(legacySection) && legacySection >= 0) {
+        return legacySection;
+    }
+
+    const rawLocation = toLocationValue(sessionLike?.last_location);
+    const locationType = String(sessionLike?.last_location_type || "").trim().toLowerCase();
+    if (
+        typeof rawLocation === "number" &&
+        Number.isFinite(rawLocation) &&
+        rawLocation >= 0 &&
+        locationType === "text_section"
+    ) {
+        return rawLocation;
+    }
+
+    return 0;
 }
 
 function isSameLocationPayload(
@@ -77,8 +106,10 @@ export function useReaderSession(book: ReaderBook | null) {
     const wsRef = useRef<WebSocket | null>(null);
     const bootstrapPollRef = useRef<number | null>(null);
     const flushTimeoutRef = useRef<number | null>(null);
+    const lastLoadedSectionRef = useRef<number | null>(null);
     const currentLocationRef = useRef<ReaderLocationPayload | null>(null);
     const hasHydratedLocationRef = useRef(false);
+    const hasHydratedSectionRef = useRef(false);
     const sessionDirtyRef = useRef(false);
     const sessionRef = useRef<ReaderSession | null>(null);
 
@@ -163,14 +194,9 @@ export function useReaderSession(book: ReaderBook | null) {
                         : null;
             }
 
-            if (usesSectionReader) {
-                const initialSection = Math.max(
-                    0,
-                    Number(
-                        toLocationValue(payload.session?.last_location) || 0,
-                    ),
-                );
-                setCurrentTextSection(initialSection);
+            if (usesSectionReader && !hasHydratedSectionRef.current) {
+                setCurrentTextSection(resolveInitialSectionIndex(payload.session));
+                hasHydratedSectionRef.current = true;
             }
 
             persistLocalCache(payload);
@@ -296,8 +322,8 @@ export function useReaderSession(book: ReaderBook | null) {
                     }));
                 }
                 if (Array.isArray(payload?.sections)) {
-                    setLoadedTextSections((prev) => {
-                        const next = { ...prev };
+                    setLoadedTextSections(() => {
+                        const next: Record<number, ReaderManifestSection> = {};
                         for (const row of payload.sections) {
                             next[row.section_index] = row;
                         }
@@ -451,7 +477,9 @@ export function useReaderSession(book: ReaderBook | null) {
         clearPendingFlush();
         sessionDirtyRef.current = false;
         currentLocationRef.current = null;
+        lastLoadedSectionRef.current = null;
         hasHydratedLocationRef.current = false;
+        hasHydratedSectionRef.current = false;
         setManifest(null);
         setSession(null);
         setAnnotations([]);
@@ -484,6 +512,9 @@ export function useReaderSession(book: ReaderBook | null) {
                         viewState: cached.session?.view_state || {},
                     };
                 }
+                if (usesSectionReader) {
+                    setCurrentTextSection(resolveInitialSectionIndex(cached.session));
+                }
             }
         } catch {
             // Ignore corrupted cache.
@@ -512,15 +543,8 @@ export function useReaderSession(book: ReaderBook | null) {
                 };
             }
             if (usesSectionReader) {
-                setCurrentTextSection(
-                    Math.max(
-                        0,
-                        Number(
-                            toLocationValue(bootstrap.session?.last_location) ||
-                                0,
-                        ),
-                    ),
-                );
+                setCurrentTextSection(resolveInitialSectionIndex(bootstrap.session));
+                hasHydratedSectionRef.current = true;
             }
             persistLocalCache(bootstrap);
         }
@@ -605,12 +629,21 @@ export function useReaderSession(book: ReaderBook | null) {
     }, [book?.filename, refreshBootstrap]);
 
     useEffect(() => {
-        if (!usesSectionReader || !manifest) return;
-        void loadTextSections(Math.max(0, currentTextSection - 1), 3);
+        if (!usesSectionReader || !book?.filename) return;
+        if (lastLoadedSectionRef.current !== currentTextSection) {
+            lastLoadedSectionRef.current = currentTextSection;
+            setLoadedTextSections((prev) =>
+                prev[currentTextSection]
+                    ? { [currentTextSection]: prev[currentTextSection] }
+                    : {},
+            );
+        }
+        void loadTextSections(currentTextSection, 1);
     }, [
+        book?.filename,
         currentTextSection,
         loadTextSections,
-        manifest?.section_index?.length,
+        manifest?.status,
         usesSectionReader,
     ]);
 

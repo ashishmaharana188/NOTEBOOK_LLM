@@ -44,6 +44,11 @@ interface ParagraphMeta {
   charEnd: number;
 }
 
+const SEGMENTATION_FONT_FAMILY =
+  "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
+const SEGMENTATION_FONT_SIZE_PX = 30;
+const SEGMENTATION_LINE_HEIGHT_PX = 48;
+
 function renderHighlightedLine(line: string, query: string) {
   if (!query) return line;
   const matcher = new RegExp(
@@ -179,16 +184,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       420,
       Math.min(980, Math.round(viewport.width * (usePeekLayout ? 0.68 : 0.86))),
     );
-    const contentColumnWidth = Math.max(
-      desktopLayout ? 560 : 460,
-      Math.min(
-        scrollMode ? 760 : desktopLayout ? 860 : 900,
-        viewport.width - (desktopLayout ? 180 : 88),
-      ),
-    );
+    const contentColumnWidth = desktopLayout
+      ? Math.max(
+          620,
+          Math.min(
+            scrollMode ? 760 : 780,
+            viewport.width - (scrollMode ? 420 : 360),
+          ),
+        )
+      : Math.max(460, Math.min(900, viewport.width - 88));
     const planeWidth = desktopLayout ? viewport.width : mobilePagedWidth;
     const innerWidth = Math.max(320, desktopLayout ? contentColumnWidth : planeWidth - 88);
-    const innerHeight = Math.max(420, viewport.height - (scrollMode ? 120 : desktopLayout ? 140 : 170));
+    const innerHeight = Math.max(420, viewport.height - (scrollMode ? 84 : desktopLayout ? 96 : 160));
 
     useEffect(() => {
       const node = containerRef.current;
@@ -218,13 +225,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       () =>
         buildPages(
           content,
-          settings.fontFamily,
-          fontSizePx,
-          lineHeightPx,
+          SEGMENTATION_FONT_FAMILY,
+          SEGMENTATION_FONT_SIZE_PX,
+          SEGMENTATION_LINE_HEIGHT_PX,
           innerWidth,
           innerHeight,
         ),
-      [content, fontSizePx, innerHeight, innerWidth, lineHeightPx, settings.fontFamily],
+      [content, innerHeight, innerWidth],
     );
     const paragraphs = useMemo(() => buildParagraphs(content), [content]);
 
@@ -240,6 +247,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
         pageRefs.current = Array.from({ length }, (_, index) => pageRefs.current[index] || null);
       }
     }, []);
+
+    const getPageText = useCallback(
+      (page: PageMeta | null) => {
+        if (!page) return "";
+        return content.slice(page.charStart, page.charEnd).trimEnd();
+      },
+      [content],
+    );
 
     useEffect(() => {
       setPageRefsLength(pages.length);
@@ -344,7 +359,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
     useEffect(() => {
       const visibleText = scrollMode
         ? paragraphs[Math.min(activePageIndex, Math.max(paragraphs.length - 1, 0))]?.text || content
-        : currentPage?.lines.join("\n") || "";
+        : getPageText(currentPage);
       const state = {
         currentPage: safePageIndex + 1,
         totalPages: Math.max(pages.length, 1),
@@ -368,6 +383,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
               : 0,
           pageLabel: sectionLabel || `Section ${currentSectionIndex + 1}`,
           viewState: {
+            sectionIndex: currentSectionIndex,
             pageIndex: safePageIndex,
             paragraphIndex: scrollMode ? activePageIndex : undefined,
             flow: scrollMode ? "scrolled" : "paginated",
@@ -391,6 +407,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       paragraphs,
       activePageIndex,
       content,
+      getPageText,
     ]);
 
     const selectText = () => {
@@ -573,6 +590,29 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       </p>
     );
 
+    const renderPageText = (page: PageMeta | null) => {
+      const pageText = getPageText(page);
+      if (!pageText) {
+        return <div className="text-lg text-slate-400">No content available.</div>;
+      }
+      return (
+        <div
+          className="select-text whitespace-pre-wrap"
+          style={{
+            fontFamily: settings.fontFamily,
+            fontSize: `${fontSizePx}px`,
+            lineHeight: `${lineHeightPx}px`,
+            textAlign: align,
+            color: inkColor,
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          }}
+        >
+          {renderHighlightedLine(pageText, searchQuery)}
+        </div>
+      );
+    };
+
     const renderPagedShell = (page: PageMeta | null, mode: "peek" | "active", pageIndex: number) => {
       const isActive = mode === "active";
       return (
@@ -608,11 +648,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
               background: paperColor,
             }}
           >
-            {page ? (
-              renderTextLines(page, pageIndex)
-            ) : (
-              <div className="text-lg text-slate-400">No content available.</div>
-            )}
+            <div className="h-full overflow-y-auto pr-2">{renderPageText(page)}</div>
           </div>
         </div>
       );
@@ -650,21 +686,22 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       return (
         <div
           ref={containerRef}
-          className="relative h-full min-h-0 overflow-y-auto px-0 pb-20 pt-0"
+          className="relative h-full min-h-0 overflow-x-hidden overflow-y-auto px-0 pb-20 pt-0"
           onMouseUp={selectText}
           onTouchEnd={selectText}
           onScroll={syncScrollPageIndex}
+          style={{ background: paperColor }}
         >
           {isLoading ? (
             <div className="flex h-full items-center justify-center text-base text-slate-500">
               Loading section...
             </div>
           ) : (
-            <div className="min-h-full w-full" style={{ background: paperColor }}>
+            <div className="min-h-full w-full">
               <div
-                className="mx-auto w-full px-10 pb-20 pt-10 sm:px-14 sm:pb-28 sm:pt-14"
+                className="mx-auto w-full px-6 pb-20 pt-8 sm:px-10 sm:pb-28 sm:pt-10"
                 style={{
-                  maxWidth: `${contentColumnWidth + 120}px`,
+                  maxWidth: `${contentColumnWidth + 80}px`,
                   color: inkColor,
                 }}
               >
@@ -689,27 +726,28 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       return (
         <div
           ref={containerRef}
-          className="relative flex h-full min-h-0 items-stretch justify-center overflow-hidden px-0 py-0"
+          className="relative flex h-full min-h-0 items-stretch justify-center overflow-hidden px-0 py-3"
           onMouseUp={selectText}
           onTouchEnd={selectText}
+          style={{ background: paperColor }}
         >
           {isLoading ? (
             <div className="text-base text-slate-500">Loading section...</div>
           ) : (
-            <div className="mx-auto flex h-full w-full items-stretch justify-center" style={{ background: paperColor }}>
+            <div className="mx-auto flex h-full w-full items-stretch justify-center">
               <div
-                className="mx-auto h-full w-full overflow-hidden px-12 pb-16 pt-12 sm:px-16"
+                className="mx-auto h-full w-full overflow-hidden px-6 pb-14 pt-8 sm:px-10 sm:pb-16 sm:pt-10"
                 style={{
                   color: inkColor,
                 }}
               >
                 <div
-                  className="mx-auto h-full w-full"
+                  className="mx-auto h-full w-full overflow-y-auto pr-2"
                   style={{
                     maxWidth: `${contentColumnWidth}px`,
                   }}
                 >
-                  {currentPage ? renderTextLines(currentPage, safePageIndex) : null}
+                  {renderPageText(currentPage)}
                 </div>
               </div>
             </div>

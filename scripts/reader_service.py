@@ -3,6 +3,8 @@ import logging
 import os
 import re
 import threading
+import zipfile
+import xml.etree.ElementTree as ET
 from bisect import bisect_right
 from typing import Any, Callable
 
@@ -15,7 +17,7 @@ from scripts.parsers import clean_text
 
 
 logger = logging.getLogger(__name__)
-READER_MANIFEST_VERSION = 2
+READER_MANIFEST_VERSION = 4
 
 
 def compute_file_fingerprint(file_path: str) -> str:
@@ -117,6 +119,13 @@ def _normalize_epub_href(href: str) -> str:
     return normalized
 
 
+def _sanitize_cache_text(text: str) -> str:
+    raw = str(text or "").replace("\x00", "")
+    if not raw:
+        return ""
+    return "".join(ch for ch in raw if not 0xD800 <= ord(ch) <= 0xDFFF)
+
+
 def _extract_epub_block_text(soup: BeautifulSoup) -> str:
     for tag_name in ("script", "style", "noscript"):
         for tag in soup.find_all(tag_name):
@@ -141,9 +150,104 @@ def _extract_epub_block_text(soup: BeautifulSoup) -> str:
             blocks.append(text)
 
     if blocks:
-        return "\n\n".join(blocks)
+        return _sanitize_cache_text("\n\n".join(blocks))
 
-    return clean_text(soup.get_text(separator="\n\n"))
+    return _sanitize_cache_text(clean_text(soup.get_text(separator="\n\n")))
+
+
+def _resolve_epub_archive_path(opf_path: str, href: str) -> str:
+    normalized_href = _normalize_epub_href(href)
+    if not normalized_href:
+        return ""
+    opf_dir = os.path.dirname(opf_path).replace("\\", "/").strip("/")
+    if not opf_dir:
+        return normalized_href
+    return f"{opf_dir}/{normalized_href}".replace("//", "/")
+
+
+def _extract_epub_archive_order(
+    archive: zipfile.ZipFile,
+) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+    manifest_items: dict[str, dict[str, str]] = {}
+    toc_rows: list[dict[str, Any]] = []
+    opf_path = "OEBPS/content.opf"
+
+    try:
+        container_root = ET.fromstring(archive.read("META-INF/container.xml"))
+        rootfile = container_root.find(".//{*}rootfile")
+        if rootfile is not None and rootfile.attrib.get("full-path"):
+            opf_path = rootfile.attrib["full-path"]
+    except Exception:
+        pass
+
+    opf_root = ET.fromstring(archive.read(opf_path))
+    manifest_node = opf_root.find(".//{*}manifest")
+    if manifest_node is not None:
+        for item in manifest_node.findall("{*}item"):
+            item_id = str(item.attrib.get("id") or "").strip()
+            href = str(item.attrib.get("href") or "").strip()
+            if not item_id or not href:
+                continue
+            manifest_items[item_id] = {
+                "href": _normalize_epub_href(href),
+                "archive_path": _resolve_epub_archive_path(opf_path, href),
+                "media_type": str(item.attrib.get("media-type") or "").strip().lower(),
+            }
+
+    spine_node = opf_root.find(".//{*}spine")
+    spine_entries: list[dict[str, str]] = []
+    toc_id = str(spine_node.attrib.get("toc") or "").strip() if spine_node is not None else ""
+
+    if toc_id:
+        ncx_item = manifest_items.get(toc_id)
+        if ncx_item and ncx_item.get("archive_path"):
+            try:
+                ncx_root = ET.fromstring(archive.read(ncx_item["archive_path"]))
+
+                def walk_navpoints(node: ET.Element, level: int = 1):
+                    for navpoint in node.findall("{*}navPoint"):
+                        label = "".join(
+                            text.strip()
+                            for text in navpoint.findall(".//{*}text")
+                            if str(text.text or "").strip()
+                        ).strip()
+                        content = navpoint.find("{*}content")
+                        href = _normalize_epub_href(content.attrib.get("src") or "") if content is not None else ""
+                        if href or label:
+                            toc_rows.append(
+                                {
+                                    "label": label or href or f"Section {len(toc_rows) + 1}",
+                                    "level": level,
+                                    "href": href,
+                                }
+                            )
+                        walk_navpoints(navpoint, level + 1)
+
+                walk_navpoints(ncx_root)
+            except Exception:
+                logger.warning("Skipping EPUB NCX parse for archive order extraction")
+
+    archive_names = set(archive.namelist())
+    if spine_node is not None:
+        for itemref in spine_node.findall("{*}itemref"):
+            item_id = str(itemref.attrib.get("idref") or "").strip()
+            meta = manifest_items.get(item_id)
+            if not meta:
+                continue
+            media_type = meta.get("media_type", "")
+            archive_path = meta.get("archive_path", "")
+            if media_type not in {"application/xhtml+xml", "text/html"}:
+                continue
+            if archive_path not in archive_names:
+                continue
+            spine_entries.append(
+                {
+                    "item_name": meta.get("href", "") or archive_path,
+                    "archive_path": archive_path,
+                }
+            )
+
+    return spine_entries, toc_rows
 
 
 def _extract_epub_toc_rows(items: Any, level: int = 1) -> list[dict[str, Any]]:
@@ -220,16 +324,27 @@ class ReaderManifestService:
         elif manifest:
             content_meta = manifest.get("content_meta") or {}
             cache_path = str(content_meta.get("cache_path") or "").strip()
-            missing_cache = bool(cache_path) and not os.path.exists(cache_path)
+            missing_cache = bool(cache_path) and (
+                not os.path.exists(cache_path) or os.path.getsize(cache_path) <= 0
+            )
             missing_section_support = (
                 identity["format"] in {"epub", "txt", "md"}
                 and not content_meta.get("supports_section_content")
+            )
+            missing_char_count = (
+                identity["format"] in {"epub", "txt", "md"}
+                and int(content_meta.get("char_count") or 0) <= 0
             )
             missing_epub_section_index = (
                 identity["format"] == "epub"
                 and not (manifest.get("section_index") or [])
             )
-            if missing_cache or missing_section_support or missing_epub_section_index:
+            if (
+                missing_cache
+                or missing_section_support
+                or missing_char_count
+                or missing_epub_section_index
+            ):
                 should_build = True
 
         if should_build:
@@ -238,27 +353,70 @@ class ReaderManifestService:
             return identity, manifest, "building"
 
         status = manifest.get("status") if manifest else "pending"
+        if status == "error":
+            return identity, manifest, "error"
         if status != "ready":
             self._schedule_build(identity, fingerprint)
             return identity, manifest, "building"
 
         return identity, manifest, "ready"
 
+    def _rebuild_manifest_inline(
+        self, identity: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, str]:
+        fingerprint = compute_file_fingerprint(identity["file_path"])
+        try:
+            manifest = self._build_manifest(identity, fingerprint)
+            stored_manifest = self.graph_db.upsert_reader_manifest(
+                identity["filename"], manifest, identity["lid"]
+            )
+            return stored_manifest, "ready"
+        except Exception as error:
+            logger.exception(
+                "Reader manifest inline rebuild failed for %s", identity["filename"]
+            )
+            error_manifest = self.graph_db.upsert_reader_manifest(
+                identity["filename"],
+                {
+                    "manifest_version": READER_MANIFEST_VERSION,
+                    "format": identity["format"],
+                    "file_fingerprint": fingerprint,
+                    "status": "error",
+                    "content_meta": {"error": str(error)},
+                },
+                identity["lid"],
+            )
+            return error_manifest, "error"
+
     def get_text_sections(
         self, filename: str, section: int = 0, limit: int = 1, lid: str | None = None
     ) -> tuple[dict[str, Any], dict[str, Any] | None, list[dict[str, Any]], str]:
         identity, manifest, status = self.ensure_manifest(filename, lid)
         if status != "ready" or not manifest:
-            return identity, manifest, [], "building"
+            return identity, manifest, [], status
 
         content_meta = manifest.get("content_meta") or {}
         if not content_meta.get("supports_section_content"):
             return identity, manifest, [], "unsupported"
 
         cache_path = content_meta.get("cache_path")
+        if (
+            not cache_path
+            or not os.path.exists(cache_path)
+            or os.path.getsize(cache_path) <= 0
+        ):
+            if identity["format"] == "epub":
+                manifest, rebuild_status = self._rebuild_manifest_inline(identity)
+                if rebuild_status != "ready" or not manifest:
+                    return identity, manifest, [], rebuild_status
+                content_meta = manifest.get("content_meta") or {}
+                cache_path = content_meta.get("cache_path")
+            else:
+                self._schedule_build(identity, manifest.get("file_fingerprint", ""))
+                return identity, manifest, [], "building"
+
         if not cache_path or not os.path.exists(cache_path):
-            self._schedule_build(identity, manifest.get("file_fingerprint", ""))
-            return identity, manifest, [], "building"
+            return identity, manifest, [], "error"
 
         with open(cache_path, "r", encoding="utf-8", errors="ignore") as handle:
             full_text = handle.read()
@@ -303,8 +461,18 @@ class ReaderManifestService:
             section_index = rebuilt_sections
 
         if identity["format"] == "epub" and not full_text.strip():
-            self._schedule_build(identity, manifest.get("file_fingerprint", ""))
-            return identity, manifest, [], "building"
+            manifest, rebuild_status = self._rebuild_manifest_inline(identity)
+            if rebuild_status != "ready" or not manifest:
+                return identity, manifest, [], rebuild_status
+            content_meta = manifest.get("content_meta") or {}
+            cache_path = content_meta.get("cache_path")
+            if not cache_path or not os.path.exists(cache_path):
+                return identity, manifest, [], "error"
+            with open(cache_path, "r", encoding="utf-8", errors="ignore") as handle:
+                full_text = handle.read()
+            if not full_text.strip():
+                return identity, manifest, [], "error"
+            section_index = manifest.get("section_index") or section_index
 
         safe_limit = max(1, min(int(limit or 1), 5))
         max_section_index = max(len(section_index) - 1, 0)
@@ -351,7 +519,7 @@ class ReaderManifestService:
 
         identity, manifest, status = self.ensure_manifest(filename, lid)
         if status != "ready" or not manifest:
-            return identity, manifest, [], "building"
+            return identity, manifest, [], status
 
         fmt = str(identity.get("format") or "").lower()
         safe_limit = max(1, min(int(limit or 25), 100))
@@ -579,37 +747,39 @@ class ReaderManifestService:
     def _build_epub_manifest(
         self, identity: dict[str, Any], fingerprint: str, file_path: str
     ) -> dict[str, Any]:
-        book = epub.read_epub(file_path)
         section_index: list[dict[str, Any]] = []
-        item_offsets: dict[str, int] = {}
         section_texts: list[str] = []
         running_offset = 0
-        toc_rows = _extract_epub_toc_rows(book.toc)
-        toc_label_by_href = {
-            _normalize_epub_href(row.get("href")): row.get("label")
-            for row in toc_rows
-            if row.get("href") and row.get("label")
-        }
+        item_offsets: dict[str, int] = {}
+        toc_rows: list[dict[str, Any]] = []
+        toc_label_by_href: dict[str, str] = {}
 
-        for idx, item in enumerate(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)):
-            soup = BeautifulSoup(item.get_content(), "html.parser")
+        def append_section(
+            item_name: str,
+            html_bytes: bytes | str,
+            preferred_label: str = "",
+        ):
+            nonlocal running_offset
+            try:
+                soup = BeautifulSoup(html_bytes, "html.parser")
+            except Exception:
+                return
             text = _extract_epub_block_text(soup)
-            item_name = item.get_name()
             normalized_item_name = _normalize_epub_href(item_name)
             item_label = (
-                clean_text(str(toc_label_by_href.get(normalized_item_name) or ""))
+                clean_text(str(preferred_label or toc_label_by_href.get(normalized_item_name) or ""))
                 or _resolve_epub_section_label(item_name, soup)
             )
             item_offsets[normalized_item_name] = running_offset
             if not text:
-                continue
+                return
             start_offset = running_offset
             end_offset = start_offset + len(text)
             section_index.append(
                 {
                     "section_index": len(section_index),
                     "label": item_label,
-                    "href": item_name,
+                    "href": normalized_item_name or item_name,
                     "char_index": running_offset,
                     "start_offset": start_offset,
                     "end_offset": end_offset,
@@ -619,6 +789,76 @@ class ReaderManifestService:
             )
             section_texts.append(text)
             running_offset = end_offset + 2
+
+        try:
+            with zipfile.ZipFile(file_path, "r") as archive:
+                spine_entries, archive_toc_rows = _extract_epub_archive_order(archive)
+                if archive_toc_rows:
+                    toc_rows = archive_toc_rows
+                    toc_label_by_href = {
+                        _normalize_epub_href(row.get("href")): row.get("label")
+                        for row in toc_rows
+                        if row.get("href") and row.get("label")
+                    }
+                for entry in spine_entries:
+                    try:
+                        append_section(
+                            entry.get("item_name", ""),
+                            archive.read(entry.get("archive_path", "")),
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Skipping EPUB spine entry %s", entry.get("archive_path", "")
+                        )
+        except Exception as error:
+            logger.warning("EPUB archive spine parse failed for %s: %s", identity["filename"], error)
+
+        try:
+            if not section_index or not toc_rows:
+                book = epub.read_epub(file_path)
+                if not toc_rows:
+                    toc_rows = _extract_epub_toc_rows(book.toc)
+                    toc_label_by_href = {
+                        _normalize_epub_href(row.get("href")): row.get("label")
+                        for row in toc_rows
+                        if row.get("href") and row.get("label")
+                    }
+                if not section_index:
+                    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                        try:
+                            append_section(item.get_name(), item.get_content())
+                        except Exception:
+                            logger.warning("Skipping broken EPUB document item %s", item.get_name())
+        except Exception as error:
+            logger.warning("EPUB primary parse failed for %s: %s", identity["filename"], error)
+
+        if not section_index:
+            try:
+                with zipfile.ZipFile(file_path, "r") as archive:
+                    html_names = [
+                        name
+                        for name in archive.namelist()
+                        if str(name).lower().endswith((".xhtml", ".html", ".htm"))
+                    ]
+                    for name in html_names:
+                        try:
+                            append_section(name, archive.read(name))
+                        except Exception:
+                            logger.warning("Skipping fallback EPUB archive entry %s", name)
+            except Exception as error:
+                logger.warning("EPUB archive fallback failed for %s: %s", identity["filename"], error)
+
+        if not section_index:
+            combined_text = "\n\n".join(part for part in section_texts if part).strip()
+            if combined_text:
+                rebuilt_sections = _split_text_sections(combined_text)
+                section_index = rebuilt_sections
+                section_texts = [
+                    combined_text[
+                        int(row.get("start_offset") or 0): int(row.get("end_offset") or 0)
+                    ]
+                    for row in rebuilt_sections
+                ]
 
         toc = [
             {
@@ -630,26 +870,33 @@ class ReaderManifestService:
             }
             for row in toc_rows
         ]
+
+        if not section_index:
+            raise ValueError("EPUB text extraction produced no readable sections")
+
         cache_path = os.path.join(
             self.cache_dir, f"{identity['book_key'].replace(':', '_')}_{fingerprint}.txt"
         )
-        with open(cache_path, "w", encoding="utf-8") as handle:
-            handle.write("\n\n".join(section_texts))
+        cache_text = _sanitize_cache_text("\n\n".join(section_texts))
+        if not cache_text.strip():
+            raise ValueError("EPUB cache text was empty after extraction")
+        with open(cache_path, "w", encoding="utf-8", errors="ignore") as handle:
+            handle.write(cache_text)
         return {
             "manifest_version": READER_MANIFEST_VERSION,
             "format": identity["format"],
             "file_fingerprint": fingerprint,
             "status": "ready",
             "toc": toc,
-            "page_count": 0,
+            "page_count": len(section_index),
             "section_index": section_index,
             "location_map": section_index,
             "content_meta": {
                 "supports_section_content": True,
                 "cache_path": cache_path,
                 "section_count": len(section_index),
-                "char_count": sum(len(part) for part in section_texts),
-                "word_count": sum(len(part.split()) for part in section_texts),
+                "char_count": len(cache_text),
+                "word_count": len(cache_text.split()),
             },
         }
 

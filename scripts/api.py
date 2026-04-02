@@ -1256,16 +1256,9 @@ def reader_bootstrap_endpoint(
             identity["lid"],
         )
 
-    manifest = None
-    manifest_status = "ready"
-    if identity["format"] != "epub":
-        _, manifest, manifest_status = reader_manifest_service.ensure_manifest(
-            identity["filename"], identity["lid"]
-        )
-    else:
-        manifest = graph_db.get_reader_manifest(identity["filename"], identity["lid"])
-        if manifest and str(manifest.get("status") or "").lower() == "error":
-            manifest_status = "error"
+    _, manifest, manifest_status = reader_manifest_service.ensure_manifest(
+        identity["filename"], identity["lid"]
+    )
     annotations = graph_db.get_reader_annotations(identity["filename"], identity["lid"])
 
     manifest_summary = {

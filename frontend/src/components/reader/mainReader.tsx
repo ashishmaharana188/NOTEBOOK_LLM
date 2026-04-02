@@ -484,10 +484,9 @@ export default function Reader({
 
   const activeTextSection = loadedTextSections[currentTextSection] || null;
   const ext = String(book.extension || "").toLowerCase().replace(/^\./, "");
-  const supportsDesktopScroll = ext !== "pdf";
+  const supportsDesktopScroll = false;
   const platformLayout: ReaderPlatformLayout = isMobileLayout ? "mobile" : "desktop";
-  const effectivePresentationMode: ReaderPresentationMode =
-    platformLayout === "mobile" ? "paged" : supportsDesktopScroll ? presentationMode : "paged";
+  const effectivePresentationMode: ReaderPresentationMode = "paged";
   const noteAnnotations = annotations.filter((annotation) => annotation.kind === "note");
   const bookmarkAnnotations = annotations.filter((annotation) => annotation.kind === "bookmark");
   const tocItems = manifest?.toc?.length
@@ -512,12 +511,24 @@ export default function Reader({
       platformLayout,
     },
   };
-  const showReaderChrome =
-    platformLayout === "mobile"
-      ? chromeVisible || !!overlay || !!selection || overflowOpen
-      : effectivePresentationMode === "paged"
-        ? true
-        : chromeVisible || !!overlay || !!selection || overflowOpen;
+  const savedSectionIndex = (() => {
+    const explicit = Number(session?.view_state?.sectionIndex);
+    if (Number.isFinite(explicit) && explicit >= 0) {
+      return explicit;
+    }
+    if (currentLocationPayload.locationType === "text_section") {
+      const fallback = Number(currentLocationPayload.location);
+      if (Number.isFinite(fallback) && fallback >= 0) {
+        return fallback;
+      }
+    }
+    return 0;
+  })();
+  const initialPageIndexForSection =
+    savedSectionIndex === currentTextSection
+      ? Math.max(0, Number(session?.view_state?.pageIndex || 0))
+      : 0;
+  const showReaderChrome = chromeVisible || !!overlay || !!selection || overflowOpen;
   const showDesktopPagedEdges =
     platformLayout === "desktop" && effectivePresentationMode === "paged";
   const handleSaveLocation = useCallback(
@@ -535,8 +546,8 @@ export default function Reader({
   );
 
   useEffect(() => {
-    updateSetting("flow", effectivePresentationMode === "scroll" ? "scrolled" : "paginated");
-  }, [effectivePresentationMode, updateSetting]);
+    updateSetting("flow", "paginated");
+  }, [updateSetting]);
 
   const closeSelection = () => {
     setSelection(null);
@@ -833,15 +844,6 @@ export default function Reader({
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     if (overlay || selection) return;
-    if (effectivePresentationMode !== "paged") return;
-    event.preventDefault();
-    wheelDeltaRef.current += event.deltaY;
-    if (Math.abs(wheelDeltaRef.current) < 60) return;
-    if (wheelDeltaRef.current > 0) {
-      surfaceRef.current?.next();
-    } else {
-      surfaceRef.current?.prev();
-    }
     wheelDeltaRef.current = 0;
   };
 
@@ -875,6 +877,7 @@ export default function Reader({
     if (ext === "pdf") {
       return (
         <PlayBooksPdfSurface
+          key={`${book.filename}:pdf:${effectivePresentationMode}`}
           ref={surfaceRef}
           book={book}
           initialLocation={readerLocation}
@@ -882,7 +885,7 @@ export default function Reader({
           onStateChange={setSurfaceState}
           onSelection={handleSurfaceSelection}
           searchQuery={activeSearchQuery}
-          presentationMode="paged"
+          presentationMode={effectivePresentationMode}
           platformLayout={platformLayout}
           settings={settings}
         />
@@ -909,6 +912,7 @@ export default function Reader({
 
     return (
       <PlayBooksTextSurface
+        key={`${book.filename}:text:${effectivePresentationMode}`}
         ref={surfaceRef}
         content={activeTextSection?.content || ""}
         initialLocation={readerLocation}
@@ -916,11 +920,12 @@ export default function Reader({
         sectionCount={manifest?.section_index?.length || 0}
         sectionLabel={activeTextSection?.label || surfaceState.chapterLabel}
         sections={manifest?.section_index || []}
-        initialPageIndex={Number(session?.view_state?.pageIndex || 0)}
+        initialPageIndex={initialPageIndexForSection}
         isLoading={
           isBootstrapping ||
+          (usesSectionReader && !manifest) ||
           manifest?.status === "building" ||
-          (usesSectionReader && !!manifest?.section_index?.length && !activeTextSection)
+          (usesSectionReader && manifest?.status !== "error" && !activeTextSection)
         }
         onNavigateSection={(sectionIndex) => {
           setCurrentTextSection(
@@ -979,7 +984,7 @@ export default function Reader({
         ) {
           return;
         }
-        if (platformLayout === "desktop" && effectivePresentationMode === "scroll") {
+        if (platformLayout === "desktop") {
           event.preventDefault();
           setChromeVisible((prev) => !prev);
         }
@@ -1000,12 +1005,19 @@ export default function Reader({
           setOverflowOpen(false);
           return;
         }
+        if (!isMobileLayout) {
+          if (overlay) {
+            setOverlay(null);
+            return;
+          }
+          if (chromeVisible) {
+            setChromeVisible(false);
+          }
+          return;
+        }
         if (isMobileLayout) {
           setChromeVisible((prev) => !prev);
           return;
-        }
-        if (effectivePresentationMode === "scroll") {
-          setChromeVisible((prev) => !prev);
         }
       }}
     >
@@ -1071,7 +1083,7 @@ export default function Reader({
         ) : null}
       </div>
 
-      <div className={`relative z-[5] h-full ${showReaderChrome ? "pt-[72px] sm:pt-[88px]" : "pt-0"}`}>{renderSurface()}</div>
+      <div className="relative z-[5] h-full">{renderSurface()}</div>
 
       <div
         data-reader-chrome="true"
@@ -1292,7 +1304,7 @@ export default function Reader({
         title="Aa"
         open={overlay === "settings"}
         onClose={() => setOverlay(null)}
-        widthClass="max-w-[332px]"
+        widthClass="max-w-[248px]"
         placement={isMobileLayout ? "center" : "top-right"}
       >
         <div className="space-y-4">
@@ -1323,46 +1335,6 @@ export default function Reader({
 
           {settingsTab === "text" ? (
             <>
-          {!isMobileLayout ? (
-            <div className="space-y-3">
-              <div className="text-[0.76rem] font-medium uppercase tracking-[0.12em] text-[#6b7280]">
-                Reader mode
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 rounded-[10px] bg-white/75 p-1">
-                <button
-                  type="button"
-                  onClick={() => setPresentationMode("paged")}
-                  className={`rounded-[8px] px-3 py-2.5 text-[0.9rem] transition ${
-                    effectivePresentationMode === "paged"
-                      ? "bg-[#5670b5] text-white shadow-[0_8px_18px_rgba(86,112,181,0.22)]"
-                      : "text-[#202124]"
-                  }`}
-                >
-                  Paged
-                </button>
-                <button
-                  type="button"
-                  disabled={!supportsDesktopScroll}
-                  onClick={() => supportsDesktopScroll && setPresentationMode("scroll")}
-                  className={`rounded-[8px] px-3 py-2.5 text-[0.9rem] transition ${
-                    effectivePresentationMode === "scroll"
-                      ? "bg-[#5670b5] text-white shadow-[0_8px_18px_rgba(86,112,181,0.22)]"
-                      : supportsDesktopScroll
-                        ? "text-[#202124]"
-                        : "cursor-not-allowed text-[#9aa0a6]"
-                  }`}
-                >
-                  Scroll
-                </button>
-              </div>
-              {!supportsDesktopScroll ? (
-                <div className="text-[0.82rem] leading-5 text-[#6b7280]">
-                  PDF stays in paged mode on desktop in this version.
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
               <div className="overflow-x-auto pb-1">
             <div className="flex min-w-max gap-3">
               {PLAY_BOOKS_FONTS.map((font) => (

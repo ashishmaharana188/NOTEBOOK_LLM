@@ -52,6 +52,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const [loadError, setLoadError] = useState("");
     const desktopLayout = platformLayout === "desktop";
     const pagedMode = presentationMode === "paged";
+    const contentPadding = desktopLayout ? 20 : 16;
+    const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
 
     useEffect(() => {
       const node = containerRef.current;
@@ -205,7 +207,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         >
           <Page
             pageNumber={targetPage}
-            width={isActive ? activeWidth : peekWidth}
+            {...(isActive && desktopLayout && pagedMode
+              ? { height: activeHeight }
+              : { width: isActive ? activeWidth : peekWidth })}
             renderTextLayer
             renderAnnotationLayer
             onGetTextSuccess={(value) => capturePageText(targetPage, value)}
@@ -219,7 +223,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       <div
         ref={containerRef}
         className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
-          desktopLayout ? "items-center overflow-hidden" : "items-center overflow-hidden"
+          pagedMode ? "items-start overflow-hidden" : "items-start overflow-x-hidden overflow-y-auto"
         }`}
         onMouseUp={handleSelection}
         onTouchEnd={handleSelection}
@@ -251,20 +255,34 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           error={<div className="text-base text-rose-600">{loadError || "Could not render PDF."}</div>}
           className="w-full"
         >
-          <div
-            className={`mx-auto flex w-full ${
-              desktopLayout
-                ? "items-center justify-center"
-                : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
-            }`}
-            style={{
-              maxWidth: undefined,
-            }}
-          >
-            {usePeekLayout ? renderPdfPage(pageNumber - 1, "peek") : null}
-            {renderPdfPage(pageNumber, "active")}
-            {usePeekLayout ? renderPdfPage(pageNumber + 1, "peek") : null}
-          </div>
+          {pagedMode ? (
+            <div
+              className={`mx-auto flex w-full ${
+                desktopLayout
+                  ? "items-start justify-center"
+                  : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
+              }`}
+              style={{
+                maxWidth: undefined,
+                paddingTop: `${contentPadding}px`,
+                paddingBottom: `${contentPadding}px`,
+              }}
+            >
+              {usePeekLayout ? renderPdfPage(pageNumber - 1, "peek") : null}
+              {renderPdfPage(pageNumber, "active")}
+              {usePeekLayout ? renderPdfPage(pageNumber + 1, "peek") : null}
+            </div>
+          ) : (
+            <div
+              className="mx-auto flex w-full justify-center"
+              style={{
+                paddingTop: `${contentPadding}px`,
+                paddingBottom: `${contentPadding}px`,
+              }}
+            >
+              {renderPdfPage(pageNumber, "active")}
+            </div>
+          )}
         </Document>
       </div>
     );
