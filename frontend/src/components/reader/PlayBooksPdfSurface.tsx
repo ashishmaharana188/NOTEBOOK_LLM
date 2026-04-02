@@ -212,7 +212,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               : ""
           }`}
           style={{
-            width: `${isActive ? activeWidth : peekWidth}px`,
+            width:
+              isActive && desktopLayout && pagedMode
+                ? "fit-content"
+                : `${isActive ? activeWidth : peekWidth}px`,
             transform: !desktopLayout && pagedMode ? (isActive ? "scale(1)" : "scale(0.95)") : "none",
             borderRadius: !desktopLayout && pagedMode ? "18px" : "0px",
             display: "flex",
@@ -265,6 +268,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           .pdf-page-shell canvas {
             max-width: 100%;
             height: auto !important;
+          }
+          .pdf-page-shell .react-pdf__Page {
+            background: transparent !important;
           }
         `}</style>
         <Document

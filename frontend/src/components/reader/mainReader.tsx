@@ -115,12 +115,15 @@ function IconButton({
   label,
   onClick,
   active = false,
+  theme = "light",
 }: {
   icon: string;
   label: string;
   onClick: () => void;
   active?: boolean;
+  theme?: "light" | "dark" | "sepia";
 }) {
+  const isDark = theme === "dark";
   return (
     <button
       type="button"
@@ -129,8 +132,12 @@ function IconButton({
       aria-label={label}
       className={`inline-flex h-10 w-10 items-center justify-center rounded-[14px] text-[24px] transition ${
         active
-          ? "bg-white/70 text-[#5069ad] shadow-[0_6px_16px_rgba(15,23,42,0.08)] backdrop-blur-sm"
-          : "text-[#202124] hover:bg-white/55 hover:shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+          ? isDark
+            ? "bg-white/12 text-white shadow-[0_6px_16px_rgba(0,0,0,0.24)] backdrop-blur-sm"
+            : "bg-white/70 text-[#5069ad] shadow-[0_6px_16px_rgba(15,23,42,0.08)] backdrop-blur-sm"
+          : isDark
+            ? "text-white hover:bg-white/10 hover:shadow-[0_6px_16px_rgba(0,0,0,0.18)]"
+            : "text-[#202124] hover:bg-white/55 hover:shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
       }`}
     >
       <IonIcon icon={icon} />
@@ -145,6 +152,7 @@ function ReaderSheet({
   children,
   widthClass = "max-w-[480px]",
   placement = "bottom",
+  theme = "light",
 }: {
   title: string;
   open: boolean;
@@ -152,8 +160,10 @@ function ReaderSheet({
   children: ReactNode;
   widthClass?: string;
   placement?: "center" | "bottom" | "top-right";
+  theme?: "light" | "dark" | "sepia";
 }) {
   if (!open) return null;
+  const isDark = theme === "dark";
   const placementClass =
     placement === "top-right"
       ? "items-start justify-end px-3 pt-20 sm:px-6 sm:pt-24"
@@ -162,15 +172,26 @@ function ReaderSheet({
         : "items-end justify-center px-3 pb-3 pt-20 sm:px-6 sm:pb-8";
   return (
     <div data-reader-overlay="true" className={`absolute inset-0 z-[80] flex bg-black/10 ${placementClass}`}>
-      <div className={`w-full ${widthClass} overflow-hidden rounded-[12px] border border-black/10 bg-[#f2f3fb] shadow-[0_8px_18px_rgba(15,23,42,0.10)]`}>
-        <div className="flex items-center justify-between border-b border-black/8 px-4 py-2.5 sm:px-4.5">
-          <div className="text-[1.12rem] font-normal tracking-[-0.03em] text-[#202124] sm:text-[1.2rem]">
+      <div
+        className={`w-full ${widthClass} overflow-hidden rounded-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.10)]`}
+        style={{
+          border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,0,0,0.10)",
+          background: isDark ? "#171a20" : "#f2f3fb",
+          color: isDark ? "#f3f4f6" : "#202124",
+        }}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-2.5 sm:px-4.5"
+          style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)" }}
+        >
+          <div className="text-[1.12rem] font-normal tracking-[-0.03em] sm:text-[1.2rem]">
             {title}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[1.1rem] text-[#4b5563] hover:bg-black/5"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[1.1rem] hover:bg-black/5"
+            style={{ color: isDark ? "#f3f4f6" : "#4b5563" }}
             aria-label="Close"
           >
             <IonIcon icon={closeOutline} />
@@ -187,19 +208,29 @@ function TakeoverScreen({
   open,
   onClose,
   children,
+  theme = "light",
 }: {
   title: string;
   open: boolean;
   onClose: () => void;
   children: ReactNode;
+  theme?: "light" | "dark" | "sepia";
 }) {
   if (!open) return null;
+  const isDark = theme === "dark";
   return (
-    <div data-reader-overlay="true" className="absolute inset-0 z-[70] bg-[#f4f3fb]">
+    <div
+      data-reader-overlay="true"
+      className="absolute inset-0 z-[70]"
+      style={{ background: isDark ? "#0d1015" : "#f4f3fb", color: isDark ? "#f3f4f6" : "#202124" }}
+    >
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-3 border-b border-black/10 px-5 py-5 sm:px-8">
-          <IconButton icon={arrowBackOutline} label="Back" onClick={onClose} />
-          <div className="min-w-0 text-[2.1rem] font-normal tracking-[-0.05em] text-[#202124]">
+        <div
+          className="flex items-center gap-3 px-5 py-5 sm:px-8"
+          style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(0,0,0,0.10)" }}
+        >
+          <IconButton icon={arrowBackOutline} label="Back" onClick={onClose} theme={theme} />
+          <div className="min-w-0 text-[2.1rem] font-normal tracking-[-0.05em]">
             <div className="truncate">{title}</div>
           </div>
         </div>
@@ -257,6 +288,7 @@ function ReaderSelectionMenu({
   onSearch,
   onFindEchoes,
   onAskRag,
+  theme = "light",
 }: {
   open: boolean;
   color: string;
@@ -268,11 +300,24 @@ function ReaderSelectionMenu({
   onSearch: () => void;
   onFindEchoes: () => void;
   onAskRag: () => void;
+  theme?: "light" | "dark" | "sepia";
 }) {
   if (!open) return null;
+  const isDark = theme === "dark";
   return (
-    <div data-reader-overlay="true" className="absolute bottom-24 left-3 z-[75] w-[228px] overflow-hidden rounded-[12px] border border-black/8 bg-[#eff0fa] shadow-[0_10px_20px_rgba(15,23,42,0.10)] sm:bottom-28 sm:left-8">
-      <div className="flex items-center gap-3 border-b border-black/10 px-3.5 py-2.5">
+    <div
+      data-reader-overlay="true"
+      className="absolute bottom-24 left-3 z-[75] w-[228px] overflow-hidden rounded-[12px] shadow-[0_10px_20px_rgba(15,23,42,0.10)] sm:bottom-28 sm:left-8"
+      style={{
+        border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,0,0,0.08)",
+        background: isDark ? "#171a20" : "#eff0fa",
+        color: isDark ? "#f3f4f6" : "#202124",
+      }}
+    >
+      <div
+        className="flex items-center gap-3 px-3.5 py-2.5"
+        style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(0,0,0,0.10)" }}
+      >
           {HIGHLIGHT_COLORS.map((chip) => (
           <button
             key={chip.key}
@@ -300,9 +345,14 @@ function ReaderSelectionMenu({
             key={item.label}
             type="button"
             onClick={item.action}
-            className="flex items-center gap-3 px-3.5 py-2.5 text-left text-[0.88rem] text-[#202124] hover:bg-black/[0.03]"
+            className="flex items-center gap-3 px-3.5 py-2.5 text-left text-[0.88rem] hover:bg-black/[0.03]"
+            style={{ color: isDark ? "#f3f4f6" : "#202124" }}
           >
-            <IonIcon icon={item.icon} className="text-[1.3rem] text-[#49515e]" />
+            <IonIcon
+              icon={item.icon}
+              className="text-[1.3rem]"
+              style={{ color: isDark ? "#f3f4f6" : "#49515e" }}
+            />
             <span>{item.label}</span>
           </button>
         ))}
@@ -507,6 +557,10 @@ export default function Reader({
   const surfaceTheme = getReaderTheme(settings);
   const readerShellBackground =
     platformLayout === "desktop" ? surfaceTheme.paperBackground : surfaceTheme.shellBackground;
+  const chromePrimary = settings.theme === "dark" ? "#f3f4f6" : "#202124";
+  const chromeSecondary = settings.theme === "dark" ? "#d6d9e1" : "#5f6368";
+  const chromePanelBackground = settings.theme === "dark" ? "#171a20" : "#ffffff";
+  const chromePanelBorder = settings.theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
   const currentLocationPayload = surfaceState.locationPayload || {
     location: readerLocation || 0,
     locationType: "",
@@ -1052,19 +1106,20 @@ export default function Reader({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <IconButton icon={arrowBackOutline} label="Back" onClick={() => onBack?.()} />
-            <div className="min-w-0 text-[#202124]">
+            <IconButton icon={arrowBackOutline} label="Back" onClick={() => onBack?.()} theme={settings.theme} />
+            <div className="min-w-0" style={{ color: chromePrimary }}>
               <div className="truncate text-[1.45rem] font-normal tracking-[-0.045em] sm:text-[1.65rem]">
                 {book.title}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <IconButton icon={searchOutline} label="Search" onClick={() => void openSearch()} />
+            <IconButton icon={searchOutline} label="Search" onClick={() => void openSearch()} theme={settings.theme} />
             <IconButton
               icon={textOutline}
               label="Text settings"
               active={overlay === "settings"}
+              theme={settings.theme}
               onClick={() => {
                 setOverflowOpen(false);
                 setSettingsTab("text");
@@ -1075,26 +1130,32 @@ export default function Reader({
               icon={ellipsisVerticalOutline}
               label="More"
               active={overflowOpen}
+              theme={settings.theme}
               onClick={() => setOverflowOpen((prev) => !prev)}
             />
           </div>
         </div>
         {overflowOpen ? (
-          <div className="ml-auto mt-3 w-[210px] overflow-hidden rounded-[12px] border border-black/8 bg-white shadow-[0_10px_20px_rgba(15,23,42,0.10)]">
+          <div
+            className="ml-auto mt-3 w-[210px] overflow-hidden rounded-[12px] shadow-[0_10px_20px_rgba(15,23,42,0.10)]"
+            style={{ border: `1px solid ${chromePanelBorder}`, background: chromePanelBackground }}
+          >
             <button
               type="button"
               onClick={() => void handleAddBookmark()}
-              className="flex w-full items-center gap-4 px-4 py-3 text-left text-[0.9rem] text-[#202124] hover:bg-black/[0.03]"
+              className="flex w-full items-center gap-4 px-4 py-3 text-left text-[0.9rem] hover:bg-black/[0.03]"
+              style={{ color: chromePrimary }}
             >
-              <IonIcon icon={bookmarkOutline} className="text-xl text-[#5f6368]" />
+              <IonIcon icon={bookmarkOutline} className="text-xl" style={{ color: chromeSecondary }} />
               <span>Add bookmark</span>
             </button>
             <button
               type="button"
               onClick={() => void openTranslate("page")}
-              className="flex w-full items-center gap-4 px-4 py-3 text-left text-[0.9rem] text-[#202124] hover:bg-black/[0.03]"
+              className="flex w-full items-center gap-4 px-4 py-3 text-left text-[0.9rem] hover:bg-black/[0.03]"
+              style={{ color: chromePrimary }}
             >
-              <IonIcon icon={languageOutline} className="text-xl text-[#5f6368]" />
+              <IonIcon icon={languageOutline} className="text-xl" style={{ color: chromeSecondary }} />
               <span>Translate page</span>
             </button>
           </div>
@@ -1122,8 +1183,8 @@ export default function Reader({
           showReaderChrome ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
-        <div className="mx-auto flex max-w-[1080px] flex-col items-center gap-4 text-[#202124]">
-          <div className="text-center text-[1.05rem] tracking-[-0.03em] text-[#5f6368]">
+        <div className="mx-auto flex max-w-[1080px] flex-col items-center gap-4" style={{ color: chromePrimary }}>
+          <div className="text-center text-[1.05rem] tracking-[-0.03em]" style={{ color: chromeSecondary }}>
             {pagesLeftText}
           </div>
           <div className="flex w-full items-center gap-4">
@@ -1138,7 +1199,7 @@ export default function Reader({
               }}
               className="h-2 w-full cursor-pointer appearance-none rounded-full bg-[#bfc8ec] accent-[#5670b5]"
             />
-            <div className="min-w-[88px] text-right text-[1.1rem] tracking-[-0.03em] text-[#202124]">
+            <div className="min-w-[88px] text-right text-[1.1rem] tracking-[-0.03em]" style={{ color: chromePrimary }}>
               {surfaceState.currentPage} / {surfaceState.totalPages}
             </div>
           </div>
@@ -1173,6 +1234,7 @@ export default function Reader({
         title={book.title}
         open={overlay === "contents"}
         onClose={() => setOverlay(null)}
+        theme={settings.theme}
       >
         <div className="mx-auto w-full max-w-[980px]">
           <div className="flex items-center justify-center gap-10 border-b border-black/10 px-6 pt-4 sm:px-10">
@@ -1271,7 +1333,7 @@ export default function Reader({
         </div>
       </TakeoverScreen>
 
-      <TakeoverScreen title="Search in book" open={overlay === "search"} onClose={() => setOverlay(null)}>
+      <TakeoverScreen title="Search in book" open={overlay === "search"} onClose={() => setOverlay(null)} theme={settings.theme}>
         <div className="mx-auto flex h-full w-full max-w-[980px] flex-col">
           <div className="px-6 py-4 sm:px-10">
             <div className="flex items-center gap-4 rounded-[16px] bg-white px-6 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.08)]">
@@ -1349,6 +1411,7 @@ export default function Reader({
         onClose={() => setOverlay(null)}
         widthClass="max-w-[248px]"
         placement={isMobileLayout ? "center" : "top-right"}
+        theme={settings.theme}
       >
         <div className="space-y-4">
           <div className="flex items-center justify-center gap-6 border-b border-black/10 pb-2.5">
@@ -1544,6 +1607,7 @@ export default function Reader({
         onClose={() => setOverlay(null)}
         widthClass="max-w-[372px]"
         placement="bottom"
+        theme={settings.theme}
       >
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-[1px] overflow-hidden rounded-[12px] border border-black/20 bg-black/20">
@@ -1590,6 +1654,7 @@ export default function Reader({
         onClose={() => setOverlay(null)}
         widthClass="max-w-[372px]"
         placement="bottom"
+        theme={settings.theme}
       >
         <div className="space-y-5 text-[#202124]">
           {defineLoading ? (
@@ -1627,6 +1692,7 @@ export default function Reader({
         }}
         widthClass="max-w-[388px]"
         placement="bottom"
+        theme={settings.theme}
       >
         <div className="space-y-5">
           <textarea
@@ -1694,6 +1760,7 @@ export default function Reader({
         onClose={() => setOverlay(null)}
         widthClass="max-w-[372px]"
         placement="bottom"
+        theme={settings.theme}
       >
         <div className="space-y-5">
           <div className="rounded-[12px] bg-white px-5 py-4 text-[0.96rem] leading-7 text-[#5f6368]">
@@ -1720,6 +1787,7 @@ export default function Reader({
       <ReaderSelectionMenu
         open={!!selection && overlay === null}
         color={selection?.color || "amber"}
+        theme={settings.theme}
         onColor={(color) =>
           setSelection((prev) => (prev ? { ...prev, color } : prev))
         }
