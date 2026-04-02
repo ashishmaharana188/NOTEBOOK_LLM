@@ -973,6 +973,11 @@ export default function Reader({
           onSaveLocation={handleSaveLocation}
           onStateChange={setSurfaceState}
           onSelection={handleSurfaceSelection}
+          onContextMenuRequest={() => {
+            if (platformLayout === "desktop") {
+              setChromeVisible((prev) => !prev);
+            }
+          }}
           searchQuery={activeSearchQuery}
           onOpenContents={() => openContents("chapters")}
           presentationMode={effectivePresentationMode}

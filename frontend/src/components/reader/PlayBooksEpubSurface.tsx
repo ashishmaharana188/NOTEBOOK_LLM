@@ -39,6 +39,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             onSaveLocation,
             onStateChange,
             onSelection,
+            onContextMenuRequest,
             onOpenContents,
             settings,
             presentationMode,
@@ -501,8 +502,15 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 renditionRef.current = rendition;
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
+                    const doc = contents?.document;
+                    if (platformLayout === "desktop" && doc) {
+                        const handleContextMenu = (event: MouseEvent) => {
+                            event.preventDefault();
+                            onContextMenuRequest?.();
+                        };
+                        doc.addEventListener("contextmenu", handleContextMenu);
+                    }
                     if (desktopSectionPaging) {
-                        const doc = contents?.document;
                         const scrollingElement =
                             doc?.scrollingElement ||
                             doc?.documentElement ||
@@ -583,7 +591,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 chapterLabel,
                 desktopSectionPaging,
                 location,
+                onContextMenuRequest,
                 onSelection,
+                platformLayout,
                 syncRelocation,
                 syncScrollPagingState,
                 toc,

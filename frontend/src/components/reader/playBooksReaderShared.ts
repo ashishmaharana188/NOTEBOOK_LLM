@@ -27,6 +27,7 @@ export interface ReaderSurfaceCommonProps {
   onSaveLocation: (payload: ReaderLocationPayload) => void;
   onStateChange: (state: ReaderSurfaceState) => void;
   onSelection?: (text: string) => void;
+  onContextMenuRequest?: () => void;
   searchQuery?: string;
   onOpenContents?: () => void;
   presentationMode: ReaderPresentationMode;
