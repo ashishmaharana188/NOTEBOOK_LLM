@@ -378,10 +378,6 @@ export default function Reader({
   const [pageTurnDirection, setPageTurnDirection] = useState<"prev" | "next" | null>(null);
 
   useEffect(() => {
-    updateSetting("spread", "none");
-  }, [updateSetting]);
-
-  useEffect(() => {
     return () => {
       if (pageTurnTimeoutRef.current) {
         window.clearTimeout(pageTurnTimeoutRef.current);
@@ -1158,7 +1154,7 @@ export default function Reader({
           if (event.button !== 0) return;
           event.preventDefault();
           event.stopPropagation();
-          surfaceRef.current?.prev();
+          triggerPageTurn("prev", () => surfaceRef.current?.prev());
         }}
       />
       <button
@@ -1170,7 +1166,7 @@ export default function Reader({
           if (event.button !== 0) return;
           event.preventDefault();
           event.stopPropagation();
-          surfaceRef.current?.next();
+          triggerPageTurn("next", () => surfaceRef.current?.next());
         }}
       />
       <TakeoverScreen
@@ -1437,6 +1433,38 @@ export default function Reader({
               Looser spacing
             </button>
           </div>
+
+          {ext === "pdf" && platformLayout === "desktop" ? (
+            <div className="space-y-2">
+              <div className="text-[0.78rem] font-medium uppercase tracking-[0.18em] text-[#5f6368]">
+                Page Layout
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => updateSetting("spread", "none")}
+                  className={`rounded-[8px] border px-3.5 py-2 text-[0.86rem] ${
+                    settings.spread !== "always"
+                      ? "border-[#5670b5] bg-[#5670b5] text-white"
+                      : "border-black/20 bg-white text-[#202124]"
+                  }`}
+                >
+                  Single page
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateSetting("spread", "always")}
+                  className={`rounded-[8px] border px-3.5 py-2 text-[0.86rem] ${
+                    settings.spread === "always"
+                      ? "border-[#5670b5] bg-[#5670b5] text-white"
+                      : "border-black/20 bg-white text-[#202124]"
+                  }`}
+                >
+                  Two-page
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex items-center gap-3 rounded-[8px] bg-white px-3.5 py-2.5">
             <IonIcon icon={menuOutline} className="text-[1.35rem] text-[#5f6368]" />

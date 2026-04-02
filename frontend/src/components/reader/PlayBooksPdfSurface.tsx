@@ -37,6 +37,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       searchQuery = "",
       presentationMode,
       platformLayout,
+      settings,
     },
     ref,
   ) {
@@ -52,7 +53,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const [loadError, setLoadError] = useState("");
     const desktopLayout = platformLayout === "desktop";
     const pagedMode = presentationMode === "paged";
-    const contentPadding = desktopLayout ? 20 : 16;
+    const spreadMode = desktopLayout && pagedMode && settings.spread === "always";
+    const contentPadding = desktopLayout ? 12 : 16;
     const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
 
     useEffect(() => {
@@ -112,8 +114,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     useImperativeHandle(
       ref,
       () => ({
-        prev: () => goToPage(pageNumber - 1),
-        next: () => goToPage(pageNumber + 1),
+        prev: () => goToPage(pageNumber - (spreadMode ? 2 : 1)),
+        next: () => goToPage(pageNumber + (spreadMode ? 2 : 1)),
         goToPage,
         goToSearchResult: (result: ReaderSearchResult) => {
           if (typeof result.page === "number") {
@@ -126,7 +128,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           }
         },
       }),
-      [numPages, pageNumber],
+      [numPages, pageNumber, spreadMode],
     );
 
     const handleSelection = () => {
@@ -142,13 +144,23 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
     const usePeekLayout = !desktopLayout && pagedMode && viewport.width >= 1280;
     const activeWidth = Math.max(
-      420,
+      spreadMode ? 260 : 420,
       Math.min(
-        desktopLayout ? 1180 : 960,
-        Math.round(viewport.width * (desktopLayout ? 0.9 : usePeekLayout ? 0.66 : 0.82)),
+        spreadMode ? 620 : desktopLayout ? 1180 : 960,
+        Math.round(
+          spreadMode
+            ? (viewport.width - contentPadding * 2 - 28) / 2
+            : viewport.width * (desktopLayout ? 0.9 : usePeekLayout ? 0.66 : 0.82),
+        ),
       ),
     );
     const peekWidth = Math.max(150, Math.min(260, Math.round(activeWidth * 0.26)));
+    const pageToneFilter =
+      settings.theme === "dark"
+        ? "invert(1) hue-rotate(180deg) brightness(0.94) contrast(0.96)"
+        : settings.theme === "sepia"
+          ? "sepia(0.42) saturate(0.82) brightness(0.98)"
+          : "none";
 
     const highlightRenderer = useMemo(() => {
       if (!searchQuery.trim()) return undefined;
@@ -192,7 +204,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
       return (
         <div
-          className={`overflow-hidden ${
+          className={`pdf-page-shell overflow-hidden ${
             !desktopLayout && pagedMode
               ? isActive
                 ? "shadow-[0_18px_46px_rgba(15,23,42,0.12)]"
@@ -203,6 +215,16 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             width: `${isActive ? activeWidth : peekWidth}px`,
             transform: !desktopLayout && pagedMode ? (isActive ? "scale(1)" : "scale(0.95)") : "none",
             borderRadius: !desktopLayout && pagedMode ? "18px" : "0px",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "flex-start",
+            filter: pageToneFilter,
+            backgroundColor:
+              settings.theme === "dark"
+                ? "#111318"
+                : settings.theme === "sepia"
+                  ? "#f1e6d1"
+                  : "#ffffff",
           }}
         >
           <Page
@@ -240,6 +262,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             max-width: 100%;
             height: auto !important;
           }
+          .pdf-page-shell canvas {
+            max-width: 100%;
+            height: auto !important;
+          }
         `}</style>
         <Document
           file={book.url}
@@ -259,7 +285,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             <div
               className={`mx-auto flex w-full ${
                 desktopLayout
-                  ? "items-start justify-center"
+                  ? "items-start justify-center gap-7"
                   : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
               }`}
               style={{
@@ -268,9 +294,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                 paddingBottom: `${contentPadding}px`,
               }}
             >
-              {usePeekLayout ? renderPdfPage(pageNumber - 1, "peek") : null}
-              {renderPdfPage(pageNumber, "active")}
-              {usePeekLayout ? renderPdfPage(pageNumber + 1, "peek") : null}
+              {spreadMode ? (
+                <>
+                  {renderPdfPage(pageNumber, "active")}
+                  {pageNumber < numPages ? renderPdfPage(pageNumber + 1, "active") : null}
+                </>
+              ) : (
+                <>
+                  {usePeekLayout ? renderPdfPage(pageNumber - 1, "peek") : null}
+                  {renderPdfPage(pageNumber, "active")}
+                  {usePeekLayout ? renderPdfPage(pageNumber + 1, "peek") : null}
+                </>
+              )}
             </div>
           ) : (
             <div
