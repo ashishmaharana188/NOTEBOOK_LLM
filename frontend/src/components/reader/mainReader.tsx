@@ -325,6 +325,7 @@ export default function Reader({
   const wheelDeltaRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const hideChromeTimeoutRef = useRef<number | null>(null);
+  const pageTurnTimeoutRef = useRef<number | null>(null);
   const modeHydratedRef = useRef<string | null>(null);
   const {
     isBootstrapping,
@@ -374,10 +375,19 @@ export default function Reader({
   const [noteDraft, setNoteDraft] = useState("");
   const [activeNote, setActiveNote] = useState<ReaderAnnotation | null>(null);
   const [ragPrompt, setRagPrompt] = useState("");
+  const [pageTurnDirection, setPageTurnDirection] = useState<"prev" | "next" | null>(null);
 
   useEffect(() => {
     updateSetting("spread", "none");
   }, [updateSetting]);
+
+  useEffect(() => {
+    return () => {
+      if (pageTurnTimeoutRef.current) {
+        window.clearTimeout(pageTurnTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(recentQueries));
@@ -847,6 +857,18 @@ export default function Reader({
     wheelDeltaRef.current = 0;
   };
 
+  const triggerPageTurn = useCallback((direction: "prev" | "next", action: () => void) => {
+    if (pageTurnTimeoutRef.current) {
+      window.clearTimeout(pageTurnTimeoutRef.current);
+    }
+    setPageTurnDirection(direction);
+    action();
+    pageTurnTimeoutRef.current = window.setTimeout(() => {
+      setPageTurnDirection(null);
+      pageTurnTimeoutRef.current = null;
+    }, 220);
+  }, []);
+
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     const touch = event.touches[0];
     if (!touch) return;
@@ -865,9 +887,9 @@ export default function Reader({
     const deltaY = touch.clientY - touchStartRef.current.y;
     if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY)) {
       if (deltaX < 0) {
-        surfaceRef.current?.next();
+        triggerPageTurn("next", () => surfaceRef.current?.next());
       } else {
-        surfaceRef.current?.prev();
+        triggerPageTurn("prev", () => surfaceRef.current?.prev());
       }
     }
     touchStartRef.current = null;
@@ -1083,7 +1105,20 @@ export default function Reader({
         ) : null}
       </div>
 
-      <div className="relative z-[5] h-full">{renderSurface()}</div>
+      <div
+        className="relative z-[5] h-full transition-[transform,opacity] duration-200 ease-out"
+        style={{
+          transform:
+            pageTurnDirection === "next"
+              ? "translateX(-14px)"
+              : pageTurnDirection === "prev"
+                ? "translateX(14px)"
+                : "translateX(0)",
+          opacity: pageTurnDirection ? 0.985 : 1,
+        }}
+      >
+        {renderSurface()}
+      </div>
 
       <div
         data-reader-chrome="true"
@@ -1117,14 +1152,26 @@ export default function Reader({
       <button
         type="button"
         aria-label="Previous page"
-        className={`absolute inset-y-0 left-0 z-10 hidden w-[10%] md:block ${showDesktopPagedEdges ? "" : "pointer-events-none opacity-0"}`}
-        onClick={() => surfaceRef.current?.prev()}
+        data-reader-chrome="true"
+        className={`absolute inset-y-0 left-0 z-10 hidden w-[10%] cursor-pointer md:block ${showDesktopPagedEdges ? "" : "pointer-events-none opacity-0"}`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          surfaceRef.current?.prev();
+        }}
       />
       <button
         type="button"
         aria-label="Next page"
-        className={`absolute inset-y-0 right-0 z-10 hidden w-[10%] md:block ${showDesktopPagedEdges ? "" : "pointer-events-none opacity-0"}`}
-        onClick={() => surfaceRef.current?.next()}
+        data-reader-chrome="true"
+        className={`absolute inset-y-0 right-0 z-10 hidden w-[10%] cursor-pointer md:block ${showDesktopPagedEdges ? "" : "pointer-events-none opacity-0"}`}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          surfaceRef.current?.next();
+        }}
       />
       <TakeoverScreen
         title={book.title}
