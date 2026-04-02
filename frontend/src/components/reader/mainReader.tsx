@@ -8,6 +8,7 @@ import React, {
 import axios from "axios";
 import { IonIcon } from "@ionic/react";
 import {
+  addOutline,
   arrowBackOutline,
   bookmarkOutline,
   chevronDownOutline,
@@ -15,9 +16,13 @@ import {
   copyOutline,
   createOutline,
   ellipsisVerticalOutline,
+  menuSharp,
+  removeOutline,
+  reorderThreeOutline,
   menuOutline,
   searchOutline,
   sparklesOutline,
+  swapVerticalOutline,
   textOutline,
   languageOutline,
 } from "ionicons/icons";
@@ -172,32 +177,52 @@ function ReaderSheet({
         : "items-end justify-center px-3 pb-3 pt-20 sm:px-6 sm:pb-8";
   return (
     <div data-reader-overlay="true" className={`absolute inset-0 z-[80] flex bg-black/10 ${placementClass}`}>
+      <style>{`
+        .reader-sheet-scroll {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+          overscroll-behavior: contain;
+        }
+        .reader-sheet-scroll::-webkit-scrollbar,
+        .reader-font-strip::-webkit-scrollbar {
+          display: none;
+        }
+        .reader-font-strip {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+      `}</style>
       <div
-        className={`w-full ${widthClass} overflow-hidden rounded-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.10)]`}
+        className={`w-full ${widthClass} overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)]`}
         style={{
-          border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,0,0,0.10)",
-          background: isDark ? "#171a20" : "#f2f3fb",
+          border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(136,142,156,0.45)",
+          background: isDark ? "#171a20" : "#eef0fa",
           color: isDark ? "#f3f4f6" : "#202124",
         }}
       >
         <div
-          className="flex items-center justify-between px-4 py-2.5 sm:px-4.5"
-          style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)" }}
+          className="flex items-center justify-between px-4 py-3 sm:px-5"
+          style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(136,142,156,0.35)" }}
         >
-          <div className="text-[1.12rem] font-normal tracking-[-0.03em] sm:text-[1.2rem]">
+          <div className="text-[1.16rem] font-normal tracking-[-0.03em] sm:text-[1.22rem]">
             {title}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[1.1rem] hover:bg-black/5"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[1.1rem] hover:bg-black/5"
             style={{ color: isDark ? "#f3f4f6" : "#4b5563" }}
             aria-label="Close"
           >
             <IonIcon icon={closeOutline} />
           </button>
         </div>
-        <div className="max-h-[54vh] overflow-y-auto px-4 py-3.5 sm:px-4.5 sm:py-3.5">{children}</div>
+        <div
+          className="reader-sheet-scroll max-h-[58vh] overflow-y-auto px-4 py-3.5 sm:px-5 sm:py-4"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -307,23 +332,23 @@ function ReaderSelectionMenu({
   return (
     <div
       data-reader-overlay="true"
-      className="absolute bottom-24 left-3 z-[75] w-[228px] overflow-hidden rounded-[12px] shadow-[0_10px_20px_rgba(15,23,42,0.10)] sm:bottom-28 sm:left-8"
+      className="absolute bottom-24 left-3 z-[75] w-[248px] overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)] sm:bottom-28 sm:left-8"
       style={{
-        border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,0,0,0.08)",
-        background: isDark ? "#171a20" : "#eff0fa",
+        border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(136,142,156,0.4)",
+        background: isDark ? "#171a20" : "#eef0fa",
         color: isDark ? "#f3f4f6" : "#202124",
       }}
     >
       <div
-        className="flex items-center gap-3 px-3.5 py-2.5"
-        style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(0,0,0,0.10)" }}
+        className="flex items-center gap-4 px-4 py-3"
+        style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(136,142,156,0.35)" }}
       >
           {HIGHLIGHT_COLORS.map((chip) => (
           <button
             key={chip.key}
             type="button"
             onClick={() => onColor(chip.key)}
-            className={`h-7.5 w-7.5 rounded-full border-[3px] transition ${
+            className={`h-8 w-8 rounded-full border-[3px] transition ${
               color === chip.key ? "border-white ring-2 ring-current" : "border-transparent"
             }`}
             style={{ backgroundColor: chip.swatch, color: chip.swatch }}
@@ -345,12 +370,12 @@ function ReaderSelectionMenu({
             key={item.label}
             type="button"
             onClick={item.action}
-            className="flex items-center gap-3 px-3.5 py-2.5 text-left text-[0.88rem] hover:bg-black/[0.03]"
+            className="flex items-center gap-3 px-4 py-3 text-left text-[0.92rem] hover:bg-black/[0.03]"
             style={{ color: isDark ? "#f3f4f6" : "#202124" }}
           >
             <IonIcon
               icon={item.icon}
-              className="text-[1.3rem]"
+              className="text-[1.35rem]"
               style={{ color: isDark ? "#f3f4f6" : "#49515e" }}
             />
             <span>{item.label}</span>
@@ -912,11 +937,13 @@ export default function Reader({
       window.clearTimeout(pageTurnTimeoutRef.current);
     }
     setPageTurnDirection(direction);
-    action();
+    window.setTimeout(() => {
+      action();
+    }, 48);
     pageTurnTimeoutRef.current = window.setTimeout(() => {
       setPageTurnDirection(null);
       pageTurnTimeoutRef.current = null;
-    }, 220);
+    }, 320);
   }, []);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -1172,15 +1199,44 @@ export default function Reader({
         style={{
           transform:
             pageTurnDirection === "next"
-              ? "translateX(-14px)"
+              ? "translateX(-18px) scale(0.992)"
               : pageTurnDirection === "prev"
-                ? "translateX(14px)"
-                : "translateX(0)",
-          opacity: pageTurnDirection ? 0.985 : 1,
+                ? "translateX(18px) scale(0.992)"
+                : "translateX(0) scale(1)",
+          opacity: pageTurnDirection ? 0.992 : 1,
         }}
       >
         {renderSurface()}
       </div>
+
+      <div
+        className={`pointer-events-none absolute inset-y-0 z-[6] hidden transition-all duration-300 ease-out md:block ${
+          pageTurnDirection ? "opacity-100" : "opacity-0"
+        }`}
+        style={{
+          width: "34%",
+          left: pageTurnDirection === "prev" ? 0 : "auto",
+          right: pageTurnDirection === "next" ? 0 : "auto",
+          transform:
+            pageTurnDirection === "next"
+              ? "translateX(12%) skewX(-4deg)"
+              : pageTurnDirection === "prev"
+                ? "translateX(-12%) skewX(4deg)"
+                : "translateX(0)",
+          background:
+            pageTurnDirection === "next"
+              ? "linear-gradient(to left, rgba(255,255,255,0.44), rgba(255,255,255,0.12), transparent)"
+              : pageTurnDirection === "prev"
+                ? "linear-gradient(to right, rgba(255,255,255,0.44), rgba(255,255,255,0.12), transparent)"
+                : "transparent",
+          boxShadow:
+            pageTurnDirection === "next"
+              ? "-24px 0 30px rgba(15,23,42,0.08)"
+              : pageTurnDirection === "prev"
+                ? "24px 0 30px rgba(15,23,42,0.08)"
+                : "none",
+        }}
+      />
 
       <div
         data-reader-chrome="true"
@@ -1414,12 +1470,12 @@ export default function Reader({
         title="Aa"
         open={overlay === "settings"}
         onClose={() => setOverlay(null)}
-        widthClass="max-w-[248px]"
+        widthClass="max-w-[360px]"
         placement={isMobileLayout ? "center" : "top-right"}
         theme={settings.theme}
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-center gap-6 border-b border-black/10 pb-2.5">
+          <div className="flex items-center justify-center gap-10 border-b border-black/10 pb-2.5">
             <button
               type="button"
               onClick={() => setSettingsTab("text")}
@@ -1446,61 +1502,74 @@ export default function Reader({
 
           {settingsTab === "text" ? (
             <>
-              <div className="overflow-x-auto pb-1">
-            <div className="flex min-w-max gap-3">
-              {PLAY_BOOKS_FONTS.map((font) => (
-                <button
-                  key={font.value}
-                  type="button"
-                  onClick={() => updateSetting("fontFamily", font.value)}
-                  className="flex flex-col items-center gap-2 text-[#202124]"
-                >
-                  <span
-                    className={`flex h-12 w-12 items-center justify-center rounded-full border text-[2rem] ${
-                      settings.fontFamily === font.value
-                        ? "border-[#5670b5] bg-[#5670b5] text-white"
-                        : "border-black/30 bg-white"
-                    }`}
-                    style={{ fontFamily: font.value }}
-                  >
-                    A
-                  </span>
-                  <span className="text-[0.8rem]">{font.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+              <div className="reader-font-strip overflow-x-auto pb-1">
+                <div className="flex min-w-max gap-4 pr-4">
+                  {PLAY_BOOKS_FONTS.map((font) => (
+                    <button
+                      key={font.value}
+                      type="button"
+                      onClick={() => updateSetting("fontFamily", font.value)}
+                      className="flex flex-col items-center gap-2 text-[#202124]"
+                    >
+                      <span
+                        className={`flex h-[64px] w-[64px] items-center justify-center rounded-full border text-[2.55rem] ${
+                          settings.fontFamily === font.value
+                            ? "border-[#5670b5] bg-[#5670b5] text-white"
+                            : "border-black/25 bg-white"
+                        }`}
+                        style={{ fontFamily: font.value }}
+                      >
+                        A
+                      </span>
+                      <span className="text-[0.8rem]">{font.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => updateSetting("fontSize", clamp(settings.fontSize - 10, 80, 180))}
-              className="rounded-[8px] border border-black/20 bg-white px-3.5 py-2 text-[0.86rem] text-[#202124]"
-            >
-              Smaller text
-            </button>
-            <button
-              type="button"
-              onClick={() => updateSetting("fontSize", clamp(settings.fontSize + 10, 80, 180))}
-              className="rounded-[8px] border border-black/20 bg-white px-3.5 py-2 text-[0.86rem] text-[#202124]"
-            >
-              Larger text
-            </button>
-            <button
-              type="button"
-              onClick={() => updateSetting("lineHeight", clamp(settings.lineHeight - 0.1, 1.3, 2.2))}
-              className="rounded-[8px] border border-black/20 bg-white px-3.5 py-2 text-[0.86rem] text-[#202124]"
-            >
-              Tighter spacing
-            </button>
-            <button
-              type="button"
-              onClick={() => updateSetting("lineHeight", clamp(settings.lineHeight + 0.1, 1.3, 2.2))}
-              className="rounded-[8px] border border-black/20 bg-white px-3.5 py-2 text-[0.86rem] text-[#202124]"
-            >
-              Looser spacing
-            </button>
-          </div>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-3 gap-y-3">
+                <button
+                  type="button"
+                  onClick={() => updateSetting("fontSize", clamp(settings.fontSize - 10, 80, 180))}
+                  className="flex h-[58px] items-center justify-center rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                  aria-label="Smaller text"
+                >
+                  <span className="text-[1.9rem] font-semibold leading-none">T</span>
+                </button>
+                <div className="text-center text-[0.94rem] text-[#5f6368]">
+                  {Math.round((settings.fontSize / 100) * 100)}%
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateSetting("fontSize", clamp(settings.fontSize + 10, 80, 180))}
+                  className="flex h-[58px] items-center justify-center rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                  aria-label="Larger text"
+                >
+                  <span className="text-[2.35rem] font-semibold leading-none">T</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateSetting("lineHeight", clamp(settings.lineHeight - 0.1, 1.3, 2.2))}
+                  className="flex h-[58px] items-center justify-center gap-1 rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                  aria-label="Tighter spacing"
+                >
+                  <IonIcon icon={swapVerticalOutline} className="text-[1.15rem]" />
+                  <IonIcon icon={reorderThreeOutline} className="text-[1.45rem]" />
+                </button>
+                <div className="text-center text-[0.94rem] text-[#5f6368]">
+                  {Math.round((settings.lineHeight / 1.6) * 100)}%
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateSetting("lineHeight", clamp(settings.lineHeight + 0.1, 1.3, 2.2))}
+                  className="flex h-[58px] items-center justify-center gap-1 rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                  aria-label="Looser spacing"
+                >
+                  <IonIcon icon={swapVerticalOutline} className="text-[1.15rem]" />
+                  <IonIcon icon={menuOutline} className="text-[1.45rem]" />
+                </button>
+              </div>
 
           {ext === "pdf" && platformLayout === "desktop" ? (
             <div className="space-y-2">
@@ -1534,8 +1603,8 @@ export default function Reader({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 rounded-[8px] bg-white px-3.5 py-2.5">
-            <IonIcon icon={menuOutline} className="text-[1.35rem] text-[#5f6368]" />
+          <div className="flex items-center gap-3 rounded-[8px] border border-black/12 bg-white px-3.5 py-3">
+            <IonIcon icon={menuSharp} className="text-[1.35rem] text-[#5f6368]" />
             <div className="flex-1 text-[0.9rem] text-[#202124]">
               {settings.alignment === "left"
                 ? "Left"
@@ -1560,7 +1629,7 @@ export default function Reader({
           ) : null}
 
           {settingsTab === "lighting" ? (
-          <div className="space-y-4 rounded-[10px] bg-[#eceef8] p-3.5">
+          <div className="space-y-4">
             <div className="text-[0.96rem] text-[#202124]">Reading brightness</div>
             <input
               type="range"
@@ -1577,7 +1646,7 @@ export default function Reader({
                   key={theme.value}
                   type="button"
                   onClick={() => updateSetting("theme", theme.value)}
-                    className={`h-12 rounded-[8px] border ${
+                    className={`h-12 rounded-[6px] border ${
                       settings.theme === theme.value ? "border-[#202124]" : "border-black/10"
                     }`}
                   style={{ backgroundColor: theme.paper }}
@@ -1615,7 +1684,7 @@ export default function Reader({
         theme={settings.theme}
       >
         <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-[1px] overflow-hidden rounded-[12px] border border-black/20 bg-black/20">
+          <div className="grid grid-cols-2 gap-[1px] overflow-hidden border border-black/18 bg-[#b8bdcc]">
             <select
               value={translateSourceLanguage}
               onChange={(event) => {
@@ -1623,7 +1692,7 @@ export default function Reader({
                 setTranslateSourceLanguage(value);
                 void runTranslate(translateInputText, value, translateTargetLanguage, translateMode);
               }}
-              className="bg-[#eff0fa] px-4 py-2.5 text-[0.94rem] text-[#202124] outline-none"
+              className="bg-[#eef0fa] px-4 py-3 text-[0.96rem] text-[#202124] outline-none"
             >
               {LANGUAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1638,7 +1707,7 @@ export default function Reader({
                 setTranslateTargetLanguage(value);
                 void runTranslate(translateInputText, translateSourceLanguage, value, translateMode);
               }}
-              className="bg-[#eff0fa] px-4 py-2.5 text-[0.94rem] text-[#202124] outline-none"
+              className="bg-[#eef0fa] px-4 py-3 text-[0.96rem] text-[#202124] outline-none"
             >
               {LANGUAGE_OPTIONS.filter((option) => option.value !== "auto").map((option) => (
                 <option key={option.value} value={option.value}>
@@ -1647,7 +1716,7 @@ export default function Reader({
               ))}
             </select>
           </div>
-          <div className="min-h-[132px] rounded-[12px] border border-black/10 bg-white px-4 py-4 text-[0.94rem] leading-7 text-[#202124]">
+          <div className="min-h-[180px] border border-black/12 bg-white px-4 py-4 text-[0.96rem] leading-7 text-[#202124]">
             {translateLoading ? "Translating…" : translateState?.translated_text || "No translation yet."}
           </div>
         </div>
@@ -1704,7 +1773,7 @@ export default function Reader({
             value={noteDraft}
             onChange={(event) => setNoteDraft(event.target.value)}
             placeholder="Add note"
-            className="min-h-[120px] w-full resize-none rounded-[12px] border border-black/10 bg-white px-4 py-4 text-[0.96rem] leading-7 text-[#202124] outline-none placeholder:text-[#9aa0a6]"
+            className="min-h-[220px] w-full resize-none border border-black/12 bg-white px-4 py-4 text-[0.98rem] leading-7 text-[#202124] outline-none placeholder:text-[#9aa0a6]"
           />
           <div className="flex items-center gap-5 px-1">
             {HIGHLIGHT_COLORS.map((chip) => (
@@ -1744,14 +1813,14 @@ export default function Reader({
                   closeSelection();
                 }
               }}
-              className="rounded-full border border-[#6d7382] bg-white px-6 py-2.5 text-[0.94rem] text-[#5670b5]"
+              className="rounded-full border border-[#6d7382] bg-white px-6 py-2.5 text-[0.96rem] text-[#5670b5]"
             >
               {activeNote ? "Delete" : "Cancel"}
             </button>
             <button
               type="button"
               onClick={() => void saveNote()}
-              className="rounded-full bg-[#5670b5] px-6 py-2.5 text-[0.94rem] text-white"
+              className="rounded-full bg-[#5670b5] px-6 py-2.5 text-[0.96rem] text-white"
             >
               Save
             </button>
