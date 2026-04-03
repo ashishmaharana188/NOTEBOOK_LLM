@@ -500,6 +500,7 @@ class GraphDBManager:
                 lid TEXT,
                 filename TEXT NOT NULL,
                 format TEXT,
+                manifest_version INTEGER DEFAULT 0,
                 file_fingerprint TEXT,
                 status TEXT DEFAULT 'pending',
                 toc_json TEXT DEFAULT '[]',
@@ -511,6 +512,18 @@ class GraphDBManager:
             )
         """
         )
+
+        manifest_columns = {
+            row["name"]
+            for row in c.execute("PRAGMA table_info(reader_manifests)").fetchall()
+        }
+        if "manifest_version" not in manifest_columns:
+            c.execute(
+                """
+                ALTER TABLE reader_manifests
+                ADD COLUMN manifest_version INTEGER DEFAULT 0
+                """
+            )
         self.conn.commit()
 
         # --- SPATIAL METADATA ---
@@ -1531,6 +1544,7 @@ class GraphDBManager:
         if not row:
             return None
         data = dict(row)
+        data["manifest_version"] = int(data.get("manifest_version") or 0)
         data["toc"] = self._safe_json_loads(data.pop("toc_json", "[]"), [])
         data["section_index"] = self._safe_json_loads(
             data.pop("section_index_json", "[]"), []
@@ -1873,6 +1887,7 @@ class GraphDBManager:
                 lid,
                 filename,
                 format,
+                manifest_version,
                 file_fingerprint,
                 status,
                 toc_json,
@@ -1887,6 +1902,7 @@ class GraphDBManager:
                 lid = excluded.lid,
                 filename = excluded.filename,
                 format = excluded.format,
+                manifest_version = excluded.manifest_version,
                 file_fingerprint = excluded.file_fingerprint,
                 status = excluded.status,
                 toc_json = excluded.toc_json,
@@ -1901,6 +1917,7 @@ class GraphDBManager:
                 identity["lid"] or None,
                 identity["filename"],
                 manifest_payload.get("format") or identity["format"],
+                int(manifest_payload.get("manifest_version") or 0),
                 manifest_payload.get("file_fingerprint") or "",
                 manifest_payload.get("status") or "ready",
                 json.dumps(manifest_payload.get("toc") or []),

@@ -290,6 +290,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
   ) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const pageShellRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    const selectingRef = useRef(false);
     const [pageNumber, setPageNumber] = useState(() => {
       const numeric =
         typeof initialLocation === "string" ? Number.parseInt(initialLocation, 10) : Number(initialLocation);
@@ -566,6 +567,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const fallbackRect = range.getClientRects().item(0);
       const resolvedRect =
         boundingRect.width > 0 || boundingRect.height > 0 ? boundingRect : fallbackRect;
+      const anchorRect =
+        resolvedRect ||
+        startRoot?.getBoundingClientRect() ||
+        endRoot?.getBoundingClientRect() ||
+        null;
       const localStart =
         startMeta && startRoot
           ? startMeta.start +
@@ -578,7 +584,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           : localStart + text.length;
       onSelection({
         text,
-        rect: getDomRectPayload(resolvedRect),
+        rect: getDomRectPayload(anchorRect),
         anchor: {
           page: targetPage,
           page_local_start: Math.max(0, Math.min(localStart, localEnd)),
@@ -589,12 +595,22 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
     useEffect(() => {
       if (!onSelection || !containerRef.current) return;
+      const markSelecting = (event: Event) => {
+        const target = event.target as Node | null;
+        if (!target || !containerRef.current?.contains(target)) return;
+        selectingRef.current = true;
+      };
       const scheduleSelectionCapture = () => {
+        selectingRef.current = false;
         window.requestAnimationFrame(handleSelection);
       };
+      document.addEventListener("mousedown", markSelecting, true);
+      document.addEventListener("touchstart", markSelecting, true);
       document.addEventListener("mouseup", scheduleSelectionCapture, true);
       document.addEventListener("touchend", scheduleSelectionCapture, true);
       return () => {
+        document.removeEventListener("mousedown", markSelecting, true);
+        document.removeEventListener("touchstart", markSelecting, true);
         document.removeEventListener("mouseup", scheduleSelectionCapture, true);
         document.removeEventListener("touchend", scheduleSelectionCapture, true);
       };
@@ -604,6 +620,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const container = containerRef.current;
       if (!onSelection || !container) return;
       const handleSelectionChange = () => {
+        if (selectingRef.current) return;
         const selection = window.getSelection();
         if (!selection || selection.rangeCount === 0) {
           onSelection({ text: "", rect: null });
@@ -808,11 +825,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const alignSide =
         targetPage < pageNumber ? "flex-end" : targetPage > pageNumber ? "flex-start" : "center";
       const sizeProps =
-        isActive && desktopLayout && pagedMode && !desktopFocusPreview
-          ? { height: activeHeight }
-          : focusPreviewPeek
-            ? { width: peekPageWidth }
-            : { width: isActive ? activeWidth : peekWidth };
+        focusPreviewPeek
+          ? { width: peekPageWidth }
+          : { width: isActive ? activeWidth : peekWidth };
 
       return (
         <div
@@ -984,12 +999,20 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           .react-pdf__Page__textContent {
             user-select: text;
             -webkit-user-select: text;
+            pointer-events: auto;
             z-index: 2;
+            line-height: 1;
+          }
+          .react-pdf__Page__textContent span {
+            color: transparent !important;
+            background: transparent !important;
+            opacity: 1 !important;
+            cursor: text;
           }
           .react-pdf__Page__textContent ::selection,
           .react-pdf__Page__textContent span::selection {
             background: rgba(243, 221, 115, 0.38);
-            color: inherit;
+            color: transparent !important;
           }
           .react-pdf__Page__canvas {
             max-width: 100%;
