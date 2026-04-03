@@ -109,6 +109,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       annotations = [],
       onAnnotationPress,
       onVisibleNoteMarkersChange,
+      onContextMenuRequest,
       searchQuery = "",
       presentationMode,
       platformLayout,
@@ -577,6 +578,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         }`}
         onMouseUp={handleSelection}
         onTouchEnd={handleSelection}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onContextMenuRequest?.();
+        }}
       >
         <style>{`
           .react-pdf__Page__textContent {

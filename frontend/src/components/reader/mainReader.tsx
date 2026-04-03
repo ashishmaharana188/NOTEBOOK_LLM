@@ -1471,6 +1471,24 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
+                    onContextMenuRequest={() => {
+                        if (
+                            Date.now() < suppressContextMenuUntilRef.current
+                        ) {
+                            return;
+                        }
+                        if (
+                            overlay ||
+                            overflowOpen ||
+                            selection ||
+                            getLiveSelectionText()
+                        ) {
+                            return;
+                        }
+                        if (platformLayout === "desktop") {
+                            setChromeVisible((prev) => !prev);
+                        }
+                    }}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     presentationMode={effectivePresentationMode}

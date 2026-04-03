@@ -1897,7 +1897,7 @@ class GraphDBManager:
                 content_meta_json,
                 updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(book_key) DO UPDATE SET
                 lid = excluded.lid,
                 filename = excluded.filename,
