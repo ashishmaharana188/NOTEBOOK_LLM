@@ -616,6 +616,10 @@ export default function Reader({
   const showReaderChrome = chromeVisible || !!overlay || !!selection || overflowOpen;
   const showDesktopPagedEdges =
     platformLayout === "desktop" && effectivePresentationMode === "paged";
+  const showDesktopFocusPreview =
+    platformLayout === "desktop" &&
+    effectivePresentationMode === "paged" &&
+    showReaderChrome;
   const handleSaveLocation = useCallback(
     (payload: any) => {
       reportLocation({
@@ -984,6 +988,7 @@ export default function Reader({
           onStateChange={setSurfaceState}
           onSelection={handleSurfaceSelection}
           searchQuery={activeSearchQuery}
+          showFocusPreview={showDesktopFocusPreview}
           presentationMode={effectivePresentationMode}
           platformLayout={platformLayout}
           settings={settings}
@@ -1006,6 +1011,7 @@ export default function Reader({
             }
           }}
           searchQuery={activeSearchQuery}
+          showFocusPreview={showDesktopFocusPreview}
           onOpenContents={() => openContents("chapters")}
           presentationMode={effectivePresentationMode}
           platformLayout={platformLayout}
@@ -1040,6 +1046,7 @@ export default function Reader({
         onStateChange={setSurfaceState}
         onSelection={handleSurfaceSelection}
         searchQuery={activeSearchQuery}
+        showFocusPreview={showDesktopFocusPreview}
         onOpenContents={() => openContents("chapters")}
         presentationMode={effectivePresentationMode}
         platformLayout={platformLayout}
@@ -1757,76 +1764,84 @@ export default function Reader({
         </div>
       </ReaderSheet>
 
-      <ReaderSheet
-        title="Add note"
-        open={overlay === "note"}
-        onClose={() => {
-          setOverlay(null);
-          setActiveNote(null);
-        }}
-        widthClass="max-w-[388px]"
-        placement="bottom"
-        theme={settings.theme}
-      >
-        <div className="space-y-5">
-          <textarea
-            value={noteDraft}
-            onChange={(event) => setNoteDraft(event.target.value)}
-            placeholder="Add note"
-            className="min-h-[220px] w-full resize-none border border-black/12 bg-white px-4 py-4 text-[0.98rem] leading-7 text-[#202124] outline-none placeholder:text-[#9aa0a6]"
-          />
-          <div className="flex items-center gap-5 px-1">
-            {HIGHLIGHT_COLORS.map((chip) => (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={() =>
-                  setSelection((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          color: chip.key,
-                        }
-                      : {
-                          text: activeNote?.quote_text || "",
-                          color: chip.key,
-                        },
-                  )
-                }
-              className={`h-10 w-10 rounded-full border-4 ${
-                  (selection?.color || activeNote?.color || "amber") === chip.key
-                    ? "border-white ring-2 ring-current"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: chip.swatch, color: chip.swatch }}
+      {overlay === "note" ? (
+        <div
+          data-reader-overlay="true"
+          className="absolute inset-0 z-[80] flex items-end justify-center bg-black/10 px-3 pb-3 pt-20 sm:px-6 sm:pb-8"
+        >
+          <div
+            className="w-full max-w-[388px] overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)]"
+            style={{
+              border:
+                settings.theme === "dark"
+                  ? "1px solid rgba(255,255,255,0.12)"
+                  : "1px solid rgba(136,142,156,0.35)",
+              background: settings.theme === "dark" ? "#171a20" : "#eef0fa",
+            }}
+          >
+            <div className="px-4 pt-5">
+              <textarea
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                placeholder="Add note"
+                className="min-h-[250px] w-full resize-none bg-transparent px-0 py-0 text-[1rem] leading-7 text-[#202124] outline-none placeholder:text-[#9aa0a6]"
               />
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-5">
-            <button
-              type="button"
-              onClick={() => {
-                if (activeNote) {
-                  void deleteNoteRecord();
-                } else {
-                  setOverlay(null);
-                  closeSelection();
-                }
-              }}
-              className="rounded-full border border-[#6d7382] bg-white px-6 py-2.5 text-[0.96rem] text-[#5670b5]"
-            >
-              {activeNote ? "Delete" : "Cancel"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void saveNote()}
-              className="rounded-full bg-[#5670b5] px-6 py-2.5 text-[0.96rem] text-white"
-            >
-              Save
-            </button>
+            </div>
+            <div className="px-4 pb-5 pt-2">
+              <div className="flex items-center gap-5 pb-5">
+                {HIGHLIGHT_COLORS.map((chip) => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={() =>
+                      setSelection((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              color: chip.key,
+                            }
+                          : {
+                              text: activeNote?.quote_text || "",
+                              color: chip.key,
+                            },
+                      )
+                    }
+                    className={`h-10 w-10 rounded-full border-4 ${
+                      (selection?.color || activeNote?.color || "amber") === chip.key
+                        ? "border-white ring-2 ring-current"
+                        : "border-transparent"
+                    }`}
+                    style={{ backgroundColor: chip.swatch, color: chip.swatch }}
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeNote) {
+                      void deleteNoteRecord();
+                    } else {
+                      setOverlay(null);
+                      closeSelection();
+                    }
+                  }}
+                  className="rounded-full border border-[#6d7382] bg-white px-6 py-2.5 text-[0.96rem] text-[#5670b5]"
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveNote()}
+                  className="rounded-full bg-[#5670b5] px-6 py-2.5 text-[0.96rem] text-white"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </ReaderSheet>
+      ) : null}
 
       <ReaderSheet
         title="Ask RAG"

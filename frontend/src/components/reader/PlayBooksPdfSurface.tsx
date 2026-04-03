@@ -38,6 +38,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       presentationMode,
       platformLayout,
       settings,
+      showFocusPreview = false,
     },
     ref,
   ) {
@@ -54,6 +55,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const desktopLayout = platformLayout === "desktop";
     const pagedMode = presentationMode === "paged";
     const spreadMode = desktopLayout && pagedMode && settings.spread === "always";
+    const desktopFocusPreview =
+      desktopLayout && pagedMode && !spreadMode && showFocusPreview;
     const contentPadding = desktopLayout ? 12 : 16;
     const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
 
@@ -142,15 +145,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onSelection(text);
     };
 
-    const usePeekLayout = !desktopLayout && pagedMode && viewport.width >= 1280;
+    const usePeekLayout =
+      desktopFocusPreview || (!desktopLayout && pagedMode && viewport.width >= 1280);
     const activeWidth = Math.max(
-      spreadMode ? 260 : 420,
+      spreadMode ? 260 : desktopFocusPreview ? 420 : 420,
       Math.min(
-        spreadMode ? 620 : desktopLayout ? 1180 : 960,
+        spreadMode ? 620 : desktopFocusPreview ? 760 : desktopLayout ? 1180 : 960,
         Math.round(
           spreadMode
             ? (viewport.width - contentPadding * 2 - 28) / 2
-            : viewport.width * (desktopLayout ? 0.9 : usePeekLayout ? 0.66 : 0.82),
+            : viewport.width *
+              (desktopFocusPreview ? 0.46 : desktopLayout ? 0.9 : usePeekLayout ? 0.66 : 0.82),
         ),
       ),
     );
@@ -205,19 +210,25 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       return (
         <div
           className={`pdf-page-shell overflow-hidden ${
-            !desktopLayout && pagedMode
+            pagedMode && (desktopFocusPreview || !desktopLayout)
               ? isActive
                 ? "shadow-[0_18px_46px_rgba(15,23,42,0.12)]"
-                : "hidden opacity-68 xl:block"
+                : "hidden opacity-72 md:block"
               : ""
           }`}
           style={{
             width:
-              isActive && desktopLayout && pagedMode
+              isActive && desktopLayout && pagedMode && !desktopFocusPreview
                 ? "fit-content"
                 : `${isActive ? activeWidth : peekWidth}px`,
-            transform: !desktopLayout && pagedMode ? (isActive ? "scale(1)" : "scale(0.95)") : "none",
-            borderRadius: !desktopLayout && pagedMode ? "18px" : "0px",
+            transform:
+              pagedMode && (desktopFocusPreview || !desktopLayout)
+                ? isActive
+                  ? "scale(1)"
+                  : "scale(0.95)"
+                : "none",
+            borderRadius:
+              pagedMode && (desktopFocusPreview || !desktopLayout) ? "18px" : "0px",
             display: "flex",
             justifyContent: "center",
             alignItems: "flex-start",
@@ -248,7 +259,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       <div
         ref={containerRef}
         className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
-          pagedMode ? "items-start overflow-hidden" : "items-start overflow-x-hidden overflow-y-auto"
+          pagedMode
+            ? desktopFocusPreview
+              ? "items-center overflow-hidden"
+              : "items-start overflow-hidden"
+            : "items-start overflow-x-hidden overflow-y-auto"
         }`}
         onMouseUp={handleSelection}
         onTouchEnd={handleSelection}
@@ -291,13 +306,15 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             <div
               className={`mx-auto flex w-full ${
                 desktopLayout
-                  ? "items-start justify-center gap-7"
+                  ? desktopFocusPreview
+                    ? "items-center justify-center gap-8 overflow-hidden"
+                    : "items-start justify-center gap-7"
                   : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
               }`}
               style={{
                 maxWidth: undefined,
-                paddingTop: `${contentPadding}px`,
-                paddingBottom: `${contentPadding}px`,
+                paddingTop: `${desktopFocusPreview ? 28 : contentPadding}px`,
+                paddingBottom: `${desktopFocusPreview ? 28 : contentPadding}px`,
               }}
             >
               {spreadMode ? (

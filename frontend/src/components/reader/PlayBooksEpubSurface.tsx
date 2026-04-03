@@ -44,6 +44,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             settings,
             presentationMode,
             platformLayout,
+            showFocusPreview = false,
         },
         ref,
     ) {
@@ -67,6 +68,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
         const desktopSectionPaging = pagedMode && desktopLayout;
+        const desktopFocusPreview = pagedMode && desktopLayout && showFocusPreview;
 
         const getActiveContents = useCallback(() => {
             const contents = renditionRef.current?.getContents?.() || [];
@@ -750,9 +752,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             [desktopSectionPaging, pagedMode],
         );
         const showMobilePagedShell = pagedMode && !desktopLayout;
+        const paperBackground =
+            settings.theme === "dark"
+                ? "#050505"
+                : settings.theme === "sepia"
+                  ? "#f8f0df"
+                  : "#ffffff";
         const viewportPadding = pagedMode
             ? desktopLayout
-                ? "0 0 8px"
+                ? desktopFocusPreview
+                    ? "0"
+                    : "0 0 8px"
                 : "20px 20px 34px"
             : desktopLayout
               ? "24px 0 96px"
@@ -764,107 +774,94 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             : desktopLayout
               ? "840px"
               : "100%";
-
-        return (
+        const renderDesktopPeekShell = () => (
             <div
-                ref={containerRef}
-                className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
-                    pagedMode
-                        ? "items-center overflow-hidden"
-                        : "items-start overflow-x-hidden overflow-y-auto pb-16 pt-12 sm:pb-24 sm:pt-16"
-                }`}
-            >
+                className="hidden shrink-0 md:block"
+                style={{
+                    width: "168px",
+                    height: "82%",
+                    maxHeight: "920px",
+                    borderRadius: "18px",
+                    background: paperBackground,
+                    boxShadow: "0 14px 32px rgba(15,23,42,0.08)",
+                    opacity: 0.82,
+                }}
+            />
+        );
+        const epubViewNode = (
+            <>
                 <div
-                    className={`relative mx-auto w-full ${
-                        pagedMode
-                            ? showMobilePagedShell
-                                ? "h-full min-h-0 max-w-[1040px] overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(15,23,42,0.1)]"
-                                : "h-full min-h-0 overflow-hidden"
-                            : ""
+                    className={`mx-auto ${
+                        pagedMode && desktopLayout
+                            ? "h-full w-full"
+                            : pagedMode
+                              ? "h-full"
+                              : "min-h-[calc(100vh-180px)]"
                     }`}
                     style={{
-                        background: pagedMode
-                            ? settings.theme === "dark"
-                                ? "#050505"
-                                : settings.theme === "sepia"
-                                  ? "#f8f0df"
-                                  : "#ffffff"
-                            : "transparent",
-                        maxWidth: undefined,
+                        maxWidth: viewportMaxWidth,
                     }}
                 >
                     <div
-                        className={`mx-auto ${
-                            pagedMode && desktopLayout
-                                ? "h-full w-full"
-                                : pagedMode
-                                  ? "h-full"
-                                  : "min-h-[calc(100vh-180px)]"
-                        }`}
+                        ref={viewportRef}
+                        className={`h-full min-h-0 w-full ${pagedMode ? "" : "mx-auto"}`}
+                        data-reader-epub-viewport="true"
                         style={{
+                            padding: viewportPadding,
                             maxWidth: viewportMaxWidth,
+                            boxSizing: "border-box",
                         }}
                     >
-                        <div
-                            ref={viewportRef}
-                            className={`h-full min-h-0 w-full ${pagedMode ? "" : "mx-auto"}`}
-                            data-reader-epub-viewport="true"
-                            style={{
-                                padding: viewportPadding,
-                                maxWidth: viewportMaxWidth,
-                                boxSizing: "border-box",
+                        <EpubView
+                            key={`${book.filename}:${presentationMode}:${platformLayout}:${settings.fontFamily}:${settings.fontSize}:${settings.lineHeight}:${settings.alignment}:${settings.theme}`}
+                            ref={readerRef}
+                            url={book.url}
+                            location={location}
+                            tocChanged={(value) =>
+                                setToc(normalizeToc(value))
+                            }
+                            locationChanged={(value) => {
+                                setLocation(value);
                             }}
-                        >
-                            <EpubView
-                                key={`${book.filename}:${presentationMode}:${platformLayout}:${settings.fontFamily}:${settings.fontSize}:${settings.lineHeight}:${settings.alignment}:${settings.theme}`}
-                                ref={readerRef}
-                                url={book.url}
-                                location={location}
-                                tocChanged={(value) =>
-                                    setToc(normalizeToc(value))
-                                }
-                                locationChanged={(value) => {
-                                    setLocation(value);
-                                }}
-                                getRendition={configureRendition}
-                                epubOptions={epubOptions}
-                                epubViewStyles={{
-                                    viewHolder: {
-                                        position: "relative",
-                                        height: "100%",
-                                        width: "100%",
-                                        overflowX: "hidden",
-                                        overflowY: "hidden",
-                                        scrollbarWidth: "none",
-                                        msOverflowStyle: "none",
-                                    },
-                                    view: {
-                                        height: "100%",
-                                        width: "100%",
-                                        overflowX: "hidden",
-                                        overflowY: desktopSectionPaging
-                                            ? "auto"
-                                            : pagedMode
-                                              ? "hidden"
-                                              : "visible",
-                                        scrollbarWidth: "none",
-                                        msOverflowStyle: "none",
-                                    },
-                                }}
-                                loadingView={
-                                    <div className="flex h-full items-center justify-center text-base text-slate-500">
-                                        Loading EPUB...
-                                    </div>
-                                }
-                                errorView={
-                                    <div className="flex h-full items-center justify-center text-base text-rose-600">
-                                        Could not render EPUB.
-                                    </div>
-                                }
-                            />
-                        </div>
+                            getRendition={configureRendition}
+                            epubOptions={epubOptions}
+                            epubViewStyles={{
+                                viewHolder: {
+                                    position: "relative",
+                                    height: "100%",
+                                    width: "100%",
+                                    overflowX: "hidden",
+                                    overflowY: "hidden",
+                                    scrollbarWidth: "none",
+                                    msOverflowStyle: "none",
+                                },
+                                view: {
+                                    height: "100%",
+                                    width: "100%",
+                                    overflowX: "hidden",
+                                    overflowY: desktopSectionPaging
+                                        ? "auto"
+                                        : pagedMode
+                                          ? "hidden"
+                                          : "visible",
+                                    scrollbarWidth: "none",
+                                    msOverflowStyle: "none",
+                                },
+                            }}
+                            loadingView={
+                                <div className="flex h-full items-center justify-center text-base text-slate-500">
+                                    Loading EPUB...
+                                </div>
+                            }
+                            errorView={
+                                <div className="flex h-full items-center justify-center text-base text-rose-600">
+                                    Could not render EPUB.
+                                </div>
+                            }
+                        />
                     </div>
-                    <style>{`
+                </div>
+                <style>{`
             [data-reader-epub-viewport="true"],
             [data-reader-epub-viewport="true"] *,
             [data-reader-epub-viewport="true"] iframe {
@@ -879,7 +876,55 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
               display: none;
             }
           `}</style>
-                    {!pagedMode ? (
+            </>
+        );
+
+        return (
+            <div
+                ref={containerRef}
+                className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
+                    pagedMode
+                        ? "items-center overflow-hidden"
+                        : "items-start overflow-x-hidden overflow-y-auto pb-16 pt-12 sm:pb-24 sm:pt-16"
+                }`}
+            >
+                {desktopFocusPreview ? (
+                    <div className="flex h-full w-full items-center justify-center gap-8 overflow-hidden px-6 py-8 sm:px-10 sm:py-10">
+                        <div className="hidden flex-1 justify-end md:flex">
+                            {renderDesktopPeekShell()}
+                        </div>
+                        <div
+                            className="relative h-full min-h-0 shrink-0 overflow-hidden rounded-[18px] shadow-[0_18px_46px_rgba(15,23,42,0.12)]"
+                            style={{
+                                width: "clamp(560px, 54vw, 760px)",
+                                maxWidth: "760px",
+                                background: paperBackground,
+                            }}
+                        >
+                            {epubViewNode}
+                        </div>
+                        <div className="hidden flex-1 justify-start md:flex">
+                            {renderDesktopPeekShell()}
+                        </div>
+                    </div>
+                ) : (
+                    <div
+                        className={`relative mx-auto w-full ${
+                            pagedMode
+                                ? showMobilePagedShell
+                                    ? "h-full min-h-0 max-w-[1040px] overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(15,23,42,0.1)]"
+                                    : "h-full min-h-0 overflow-hidden"
+                                : ""
+                        }`}
+                        style={{
+                            background: pagedMode ? paperBackground : "transparent",
+                            maxWidth: undefined,
+                        }}
+                    >
+                        {epubViewNode}
+                    </div>
+                )}
+                {!pagedMode ? (
                         <div className="mx-auto mt-12 max-w-[760px] px-2 text-[#202124]">
                             <div className="flex justify-end">
                                 <div className="flex flex-col items-end gap-3 text-[1.08rem]">
@@ -914,7 +959,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             </div>
                         </div>
                     ) : null}
-                </div>
             </div>
         );
     },

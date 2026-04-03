@@ -28,6 +28,7 @@ export interface ReaderSurfaceCommonProps {
   onStateChange: (state: ReaderSurfaceState) => void;
   onSelection?: (text: string) => void;
   onContextMenuRequest?: () => void;
+  showFocusPreview?: boolean;
   searchQuery?: string;
   onOpenContents?: () => void;
   presentationMode: ReaderPresentationMode;

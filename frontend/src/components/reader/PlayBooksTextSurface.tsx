@@ -156,6 +156,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       onStateChange,
       onSelection,
       searchQuery = "",
+      showFocusPreview = false,
       onOpenContents,
       presentationMode,
       platformLayout,
@@ -176,10 +177,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
 
     const scrollMode = presentationMode === "scroll";
     const desktopLayout = platformLayout === "desktop";
+    const desktopFocusPreview = desktopLayout && !scrollMode && showFocusPreview;
     const fontSizePx = Math.max(24, Math.round((settings.fontSize / 100) * 30));
     const lineHeightPx = Math.max(fontSizePx * settings.lineHeight, fontSizePx + 16);
     const mobilePaged = !desktopLayout;
-    const usePeekLayout = mobilePaged && viewport.width >= 1100;
+    const usePeekLayout = desktopFocusPreview || (mobilePaged && viewport.width >= 1100);
     const mobilePagedWidth = Math.max(
       420,
       Math.min(980, Math.round(viewport.width * (usePeekLayout ? 0.68 : 0.86))),
@@ -193,9 +195,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           ),
         )
       : Math.max(460, Math.min(900, viewport.width - 88));
-    const planeWidth = desktopLayout ? viewport.width : mobilePagedWidth;
-    const innerWidth = Math.max(320, desktopLayout ? contentColumnWidth : planeWidth - 88);
-    const innerHeight = Math.max(420, viewport.height - (scrollMode ? 84 : desktopLayout ? 96 : 160));
+    const planeWidth = desktopFocusPreview
+      ? Math.max(560, Math.min(760, Math.round(viewport.width * 0.46)))
+      : desktopLayout
+        ? viewport.width
+        : mobilePagedWidth;
+    const innerWidth = Math.max(320, desktopLayout ? (desktopFocusPreview ? planeWidth - 96 : contentColumnWidth) : planeWidth - 88);
+    const innerHeight = Math.max(420, viewport.height - (scrollMode ? 84 : desktopLayout ? (desktopFocusPreview ? 188 : 96) : 160));
 
     useEffect(() => {
       const node = containerRef.current;
@@ -619,11 +625,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
         <div
           className={`relative overflow-hidden ${isActive ? "opacity-100" : "opacity-72"}`}
           style={{
-            width: isActive ? `${planeWidth}px` : `${Math.max(180, planeWidth * 0.28)}px`,
+            width: isActive ? `${planeWidth}px` : `${Math.max(desktopFocusPreview ? 132 : 180, planeWidth * (desktopFocusPreview ? 0.22 : 0.28))}px`,
             minHeight: `${Math.max(520, innerHeight + 92)}px`,
             color: inkColor,
             background: paperColor,
-            borderRadius: isActive ? "18px" : "14px",
+            borderRadius: "18px",
             transform: isActive ? "scale(1)" : "scale(0.95)",
             boxShadow: isActive
               ? "0 18px 46px rgba(15, 23, 42, 0.12)"
@@ -722,7 +728,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       );
     }
 
-    if (desktopLayout) {
+    if (desktopLayout && !desktopFocusPreview) {
       return (
         <div
           ref={containerRef}
@@ -759,22 +765,22 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
     return (
       <div
         ref={containerRef}
-        className="relative flex h-full min-h-0 items-center justify-center overflow-hidden px-3 py-6 sm:px-6"
+        className={`relative flex h-full min-h-0 items-center justify-center overflow-hidden px-3 py-6 sm:px-6 ${desktopFocusPreview ? "md:px-8 md:py-10" : ""}`}
         onMouseUp={selectText}
         onTouchEnd={selectText}
       >
         {isLoading ? (
           <div className="text-base text-slate-500">Loading section...</div>
         ) : (
-          <div className="flex w-full max-w-[1680px] items-center justify-center gap-6 overflow-hidden">
+          <div className={`flex w-full items-center justify-center overflow-hidden ${desktopFocusPreview ? "max-w-none gap-10" : "max-w-[1680px] gap-6"}`}>
             {usePeekLayout ? (
-              <div className="hidden flex-1 justify-end xl:flex">
+              <div className={`hidden flex-1 justify-end ${desktopFocusPreview ? "md:flex" : "xl:flex"}`}>
                 {renderPagedShell(prevPage, "peek", Math.max(safePageIndex - 1, 0))}
               </div>
             ) : null}
             {renderPagedShell(currentPage, "active", safePageIndex)}
             {usePeekLayout ? (
-              <div className="hidden flex-1 justify-start xl:flex">
+              <div className={`hidden flex-1 justify-start ${desktopFocusPreview ? "md:flex" : "xl:flex"}`}>
                 {renderPagedShell(nextPage, "peek", Math.min(safePageIndex + 1, pages.length - 1))}
               </div>
             ) : null}
