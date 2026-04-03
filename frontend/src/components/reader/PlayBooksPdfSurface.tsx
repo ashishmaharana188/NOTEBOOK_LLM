@@ -1,6 +1,5 @@
 import React, {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -34,55 +33,6 @@ interface PlayBooksPdfSurfaceProps extends ReaderSurfaceCommonProps {
   initialLocation: string | number | null;
 }
 
-interface PdfTextItemMeta {
-  text: string;
-  start: number;
-  end: number;
-  hasEOL: boolean;
-}
-
-interface PdfAnnotationRange {
-  annotation: ReaderAnnotation;
-  start: number;
-  end: number;
-}
-
-interface PdfOverlayRect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  clientRect: ReaderNoteMarker["rect"];
-}
-
-interface PdfAnnotationOverlayRect extends PdfOverlayRect {
-  annotation: ReaderAnnotation;
-}
-
-interface PdfPageOverlayState {
-  annotationRects: PdfAnnotationOverlayRect[];
-  searchRects: PdfOverlayRect[];
-}
-
-function arePdfTextItemsEqual(
-  left: PdfTextItemMeta[] | undefined,
-  right: PdfTextItemMeta[],
-) {
-  if (!left) return false;
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (
-      left[index]?.text !== right[index]?.text ||
-      left[index]?.start !== right[index]?.start ||
-      left[index]?.end !== right[index]?.end ||
-      left[index]?.hasEOL !== right[index]?.hasEOL
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
 function getDomRectPayload(
   rect: DOMRect | null | undefined,
 ): NonNullable<ReaderSelectionPayload["rect"]> | null {
@@ -104,169 +54,48 @@ const PDF_HIGHLIGHT_SWATCHES: Record<string, string> = {
   blue: "rgba(55, 197, 221, 0.28)",
 };
 
-function areOverlayRectsEqual(left: PdfOverlayRect[], right: PdfOverlayRect[]) {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    const leftRect = left[index];
-    const rightRect = right[index];
-    if (!leftRect || !rightRect) return false;
-    if (
-      leftRect.left !== rightRect.left ||
-      leftRect.top !== rightRect.top ||
-      leftRect.width !== rightRect.width ||
-      leftRect.height !== rightRect.height ||
-      leftRect.clientRect.left !== rightRect.clientRect.left ||
-      leftRect.clientRect.top !== rightRect.clientRect.top ||
-      leftRect.clientRect.width !== rightRect.clientRect.width ||
-      leftRect.clientRect.height !== rightRect.clientRect.height
-    ) {
-      return false;
-    }
-  }
-  return true;
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-function areAnnotationOverlayRectsEqual(
-  left: PdfAnnotationOverlayRect[],
-  right: PdfAnnotationOverlayRect[],
-) {
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index]?.annotation.annotation_id !== right[index]?.annotation.annotation_id) {
-      return false;
-    }
-  }
-  return areOverlayRectsEqual(left, right);
-}
-
-function buildPdfAnnotationRanges(
-  pageTextItems: PdfTextItemMeta[],
+function renderPdfTextWithHighlights(
+  value: string,
   annotations: ReaderAnnotation[],
+  searchQuery: string,
 ) {
-  const pageText = pageTextItems.map((item) => item.text).join("");
-  let fallbackCursor = 0;
-
-  return annotations
-    .map((annotation) => {
-      const anchoredStart = Number(annotation.anchor?.page_local_start);
-      const anchoredEnd = Number(annotation.anchor?.page_local_end);
-      if (Number.isFinite(anchoredStart) && Number.isFinite(anchoredEnd)) {
-        return {
-          annotation,
-          start: Math.max(0, Math.min(anchoredStart, anchoredEnd)),
-          end: Math.max(anchoredStart, anchoredEnd),
-        };
-      }
-
-      const quote = String(annotation.quote_text || "");
-      if (!quote) return null;
-      const matchIndex = pageText.indexOf(quote, fallbackCursor);
-      if (matchIndex < 0) {
-        const firstIndex = pageText.indexOf(quote);
-        if (firstIndex < 0) return null;
-        fallbackCursor = firstIndex + quote.length;
-        return {
-          annotation,
-          start: firstIndex,
-          end: firstIndex + quote.length,
-        };
-      }
-      fallbackCursor = matchIndex + quote.length;
-      return {
-        annotation,
-        start: matchIndex,
-        end: matchIndex + quote.length,
-      };
-    })
-    .filter(Boolean) as PdfAnnotationRange[];
-}
-
-function getPdfItemRoot(node: Node | null): HTMLElement | null {
-  let current: Node | null = node;
-  while (current) {
+  const rawValue = String(value || "");
+  let output = escapeHtml(rawValue);
+  annotations.forEach((annotation) => {
+    const quote = String(annotation.quote_text || "").trim();
+    if (!quote) return;
+    const normalizedValue = rawValue.trim();
     if (
-      current instanceof HTMLElement &&
-      current.dataset.pdfItemIndex !== undefined
+      normalizedValue &&
+      normalizedValue.length >= 3 &&
+      quote.includes(normalizedValue)
     ) {
-      return current;
+      output = `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(rawValue)}</mark>`;
+      return;
     }
-    current = current.parentNode;
+    const escapedQuote = quote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    output = output.replace(
+      new RegExp(escapedQuote, "g"),
+      `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(quote)}</mark>`,
+    );
+  });
+  if (searchQuery.trim()) {
+    const escapedSearch = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    output = output.replace(
+      new RegExp(`(${escapedSearch})`, "ig"),
+      '<mark style="background:rgba(243,221,115,0.32);padding:0 0.02em;">$1</mark>',
+    );
   }
-  return null;
-}
-
-function getTextOffsetWithin(root: HTMLElement, targetNode: Node, targetOffset: number) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let total = 0;
-  let current = walker.nextNode();
-  while (current) {
-    const textLength = current.textContent?.length || 0;
-    if (current === targetNode) {
-      return total + Math.min(targetOffset, textLength);
-    }
-    total += textLength;
-    current = walker.nextNode();
-  }
-  return total;
-}
-
-function findTextPosition(root: HTMLElement, targetOffset: number) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let remaining = Math.max(0, targetOffset);
-  let current = walker.nextNode();
-  let lastTextNode: Node | null = null;
-  while (current) {
-    const textLength = current.textContent?.length || 0;
-    lastTextNode = current;
-    if (remaining <= textLength) {
-      return {
-        node: current,
-        offset: Math.min(remaining, textLength),
-      };
-    }
-    remaining -= textLength;
-    current = walker.nextNode();
-  }
-
-  return lastTextNode
-    ? {
-        node: lastTextNode,
-        offset: lastTextNode.textContent?.length || 0,
-      }
-    : null;
-}
-
-function buildPdfSearchRanges(pageText: string, searchQuery: string) {
-  const query = String(searchQuery || "").trim().toLocaleLowerCase();
-  if (!query) return [];
-  const source = String(pageText || "").toLocaleLowerCase();
-  const ranges: Array<{ start: number; end: number }> = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const matchIndex = source.indexOf(query, cursor);
-    if (matchIndex < 0) break;
-    ranges.push({
-      start: matchIndex,
-      end: matchIndex + query.length,
-    });
-    cursor = matchIndex + query.length;
-  }
-  return ranges;
-}
-
-function getPdfPageNumber(node: Node | null) {
-  let current: Node | null = node;
-  while (current) {
-    if (
-      current instanceof HTMLElement &&
-      current.dataset.readerPdfPage !== undefined
-    ) {
-      const page = Number(current.dataset.readerPdfPage);
-      return Number.isFinite(page) && page > 0 ? page : null;
-    }
-    current = current.parentNode;
-  }
-  return null;
+  return output;
 }
 
 export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
@@ -289,172 +118,32 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const pageShellRefs = useRef<Record<number, HTMLDivElement | null>>({});
-    const selectingRef = useRef(false);
     const [pageNumber, setPageNumber] = useState(() => {
       const numeric =
-        typeof initialLocation === "string" ? Number.parseInt(initialLocation, 10) : Number(initialLocation);
+        typeof initialLocation === "string"
+          ? Number.parseInt(initialLocation, 10)
+          : Number(initialLocation);
       return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
     });
     const [numPages, setNumPages] = useState<number>(1);
     const [viewport, setViewport] = useState({ width: 0, height: 0 });
     const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
-    const [pageTextItems, setPageTextItems] = useState<Record<number, PdfTextItemMeta[]>>({});
-    const [pageOverlays, setPageOverlays] = useState<Record<number, PdfPageOverlayState>>({});
     const [loadError, setLoadError] = useState("");
-    const effectiveDevicePixelRatio = useMemo(() => {
-      if (typeof window === "undefined") return 1.25;
-      return Math.min(window.devicePixelRatio || 1, 1.35);
-    }, []);
     const desktopLayout = platformLayout === "desktop";
     const pagedMode = presentationMode === "paged";
-    const spreadMode = desktopLayout && pagedMode && settings.spread === "always";
+    const spreadMode =
+      desktopLayout && pagedMode && settings.spread === "always";
     const desktopFocusPreview =
       desktopLayout && pagedMode && !spreadMode && showFocusPreview;
     const contentPadding = desktopLayout ? 12 : 16;
     const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
     const noteAnnotations = useMemo(
-      () => annotations.filter((annotation) => annotationHasAttachedNote(annotation)),
+      () =>
+        annotations.filter((annotation) =>
+          annotationHasAttachedNote(annotation),
+        ),
       [annotations],
     );
-
-    const setPageOverlayState = (
-      targetPage: number,
-      nextState: PdfPageOverlayState,
-    ) => {
-      setPageOverlays((prev) => {
-        const current = prev[targetPage];
-        if (
-          current &&
-          areAnnotationOverlayRectsEqual(
-            current.annotationRects,
-            nextState.annotationRects,
-          ) &&
-          areOverlayRectsEqual(current.searchRects, nextState.searchRects)
-        ) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [targetPage]: nextState,
-        };
-      });
-    };
-
-    const measurePdfRangeRects = (
-      pageShell: HTMLElement,
-      pageItems: PdfTextItemMeta[],
-      start: number,
-      end: number,
-    ) => {
-      if (end <= start) return [];
-      const shellRect = pageShell.getBoundingClientRect();
-      const results: PdfOverlayRect[] = [];
-
-      pageItems.forEach((item, itemIndex) => {
-        if (item.end <= start || item.start >= end) return;
-        const itemElement = pageShell.querySelector(
-          `[data-pdf-item-index="${itemIndex}"]`,
-        ) as HTMLElement | null;
-        if (!itemElement) return;
-
-        const localStart = Math.max(0, start - item.start);
-        const localEnd = Math.max(
-          localStart,
-          Math.min(item.text.length, end - item.start),
-        );
-        const startPosition = findTextPosition(itemElement, localStart);
-        const endPosition = findTextPosition(itemElement, localEnd);
-        if (!startPosition || !endPosition) return;
-
-        const range = document.createRange();
-        range.setStart(startPosition.node, startPosition.offset);
-        range.setEnd(endPosition.node, endPosition.offset);
-        const rects = Array.from(range.getClientRects());
-        range.detach?.();
-
-        rects.forEach((rect) => {
-          if (rect.width <= 0 || rect.height <= 0) return;
-          results.push({
-            left: rect.left - shellRect.left,
-            top: rect.top - shellRect.top,
-            width: rect.width,
-            height: rect.height,
-            clientRect: {
-              left: rect.left,
-              top: rect.top,
-              right: rect.right,
-              bottom: rect.bottom,
-              width: rect.width,
-              height: rect.height,
-            },
-          });
-        });
-      });
-
-      return results;
-    };
-
-    const syncPdfPageDecorations = (targetPage: number) => {
-      const pageShell = pageShellRefs.current[targetPage];
-      const pageItems = pageTextItems[targetPage] || [];
-      if (!pageShell || !pageItems.length) {
-        setPageOverlayState(targetPage, {
-          annotationRects: [],
-          searchRects: [],
-        });
-        return;
-      }
-
-      const textLayer = pageShell.querySelector(
-        ".react-pdf__Page__textContent",
-      ) as HTMLElement | null;
-      if (!textLayer) {
-        setPageOverlayState(targetPage, {
-          annotationRects: [],
-          searchRects: [],
-        });
-        return;
-      }
-
-      const presentationNodes = Array.from(
-        textLayer.querySelectorAll("[role=\"presentation\"]"),
-      ) as HTMLElement[];
-      let childIndex = 0;
-      pageItems.forEach((item, itemIndex) => {
-        const node = presentationNodes[childIndex];
-        if (node) {
-          node.dataset.pdfItemIndex = String(itemIndex);
-        }
-        childIndex += item.text && item.hasEOL ? 2 : 1;
-      });
-
-      const pageAnnotations = annotations.filter(
-        (annotation) =>
-          annotation.kind !== "bookmark" &&
-          Number(annotation.anchor?.page) === targetPage,
-      );
-      const annotationRects = buildPdfAnnotationRanges(pageItems, pageAnnotations)
-        .flatMap((range) =>
-          measurePdfRangeRects(pageShell, pageItems, range.start, range.end).map(
-            (rect) => ({
-              ...rect,
-              annotation: range.annotation,
-            }),
-          ),
-        );
-      const searchRects = buildPdfSearchRanges(
-        pageTexts[targetPage] || "",
-        searchQuery,
-      ).flatMap((range) =>
-        measurePdfRangeRects(pageShell, pageItems, range.start, range.end),
-      );
-
-      setPageOverlayState(targetPage, {
-        annotationRects,
-        searchRects,
-      });
-    };
 
     useEffect(() => {
       const node = containerRef.current;
@@ -474,7 +163,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
     useEffect(() => {
       const numeric =
-        typeof initialLocation === "string" ? Number.parseInt(initialLocation, 10) : Number(initialLocation);
+        typeof initialLocation === "string"
+          ? Number.parseInt(initialLocation, 10)
+          : Number(initialLocation);
       if (Number.isFinite(numeric) && numeric > 0) {
         setPageNumber(numeric);
       }
@@ -504,7 +195,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         locationPayload,
       });
       onSaveLocation(locationPayload);
-    }, [numPages, onSaveLocation, onStateChange, pageNumber, pageTexts, pagedMode]);
+    }, [
+      numPages,
+      onSaveLocation,
+      onStateChange,
+      pageNumber,
+      pageTexts,
+      pagedMode,
+    ]);
 
     const goToPage = (page: number) => {
       setPageNumber(clamp(page, 1, Math.max(numPages, 1)));
@@ -533,7 +231,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       [numPages, pageNumber, spreadMode],
     );
 
-    const handleSelection = useCallback(() => {
+    const handleSelection = () => {
       if (!onSelection || !containerRef.current) return;
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
@@ -550,98 +248,24 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         onSelection({ text: "", rect: null });
         return;
       }
-      const startRoot = getPdfItemRoot(range.startContainer);
-      const endRoot = getPdfItemRoot(range.endContainer);
-      const targetPage =
-        getPdfPageNumber(startRoot) ||
-        getPdfPageNumber(endRoot) ||
-        pageNumber;
-      const startIndex = Number(startRoot?.dataset.pdfItemIndex ?? -1);
-      const endIndex = Number(endRoot?.dataset.pdfItemIndex ?? -1);
-      const items = pageTextItems[targetPage] || [];
-      const startMeta =
-        Number.isFinite(startIndex) && startIndex >= 0 ? items[startIndex] : null;
-      const endMeta =
-        Number.isFinite(endIndex) && endIndex >= 0 ? items[endIndex] : null;
       const boundingRect = range.getBoundingClientRect();
       const fallbackRect = range.getClientRects().item(0);
       const resolvedRect =
-        boundingRect.width > 0 || boundingRect.height > 0 ? boundingRect : fallbackRect;
-      const anchorRect =
-        resolvedRect ||
-        startRoot?.getBoundingClientRect() ||
-        endRoot?.getBoundingClientRect() ||
-        null;
-      const localStart =
-        startMeta && startRoot
-          ? startMeta.start +
-            getTextOffsetWithin(startRoot, range.startContainer, range.startOffset)
-          : 0;
-      const localEnd =
-        endMeta && endRoot
-          ? endMeta.start +
-            getTextOffsetWithin(endRoot, range.endContainer, range.endOffset)
-          : localStart + text.length;
+        boundingRect.width > 0 || boundingRect.height > 0
+          ? boundingRect
+          : fallbackRect;
       onSelection({
         text,
-        rect: getDomRectPayload(anchorRect),
+        rect: getDomRectPayload(resolvedRect),
         anchor: {
-          page: targetPage,
-          page_local_start: Math.max(0, Math.min(localStart, localEnd)),
-          page_local_end: Math.max(localStart, localEnd),
+          page: pageNumber,
         },
       });
-    }, [onSelection, pageNumber, pageTextItems]);
-
-    useEffect(() => {
-      if (!onSelection || !containerRef.current) return;
-      const markSelecting = (event: Event) => {
-        const target = event.target as Node | null;
-        if (!target || !containerRef.current?.contains(target)) return;
-        selectingRef.current = true;
-      };
-      const scheduleSelectionCapture = () => {
-        selectingRef.current = false;
-        window.requestAnimationFrame(handleSelection);
-      };
-      document.addEventListener("mousedown", markSelecting, true);
-      document.addEventListener("touchstart", markSelecting, true);
-      document.addEventListener("mouseup", scheduleSelectionCapture, true);
-      document.addEventListener("touchend", scheduleSelectionCapture, true);
-      return () => {
-        document.removeEventListener("mousedown", markSelecting, true);
-        document.removeEventListener("touchstart", markSelecting, true);
-        document.removeEventListener("mouseup", scheduleSelectionCapture, true);
-        document.removeEventListener("touchend", scheduleSelectionCapture, true);
-      };
-    }, [onSelection, handleSelection]);
-
-    useEffect(() => {
-      const container = containerRef.current;
-      if (!onSelection || !container) return;
-      const handleSelectionChange = () => {
-        if (selectingRef.current) return;
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) {
-          onSelection({ text: "", rect: null });
-          return;
-        }
-        const text = selection.toString().trim();
-        if (text) return;
-        if (
-          container.contains(selection.anchorNode) ||
-          container.contains(selection.focusNode)
-        ) {
-          onSelection({ text: "", rect: null });
-        }
-      };
-      document.addEventListener("selectionchange", handleSelectionChange);
-      return () =>
-        document.removeEventListener("selectionchange", handleSelectionChange);
-    }, [onSelection]);
+    };
 
     const usePeekLayout =
-      desktopFocusPreview || (!desktopLayout && pagedMode && viewport.width >= 1280);
+      desktopFocusPreview ||
+      (!desktopLayout && pagedMode && viewport.width >= 1280);
     const activeWidth = Math.max(
       spreadMode ? 260 : desktopFocusPreview ? 420 : 420,
       Math.min(
@@ -650,11 +274,20 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           spreadMode
             ? (viewport.width - contentPadding * 2 - 28) / 2
             : viewport.width *
-              (desktopFocusPreview ? 0.46 : desktopLayout ? 0.9 : usePeekLayout ? 0.66 : 0.82),
+                (desktopFocusPreview
+                  ? 0.46
+                  : desktopLayout
+                    ? 0.9
+                    : usePeekLayout
+                      ? 0.66
+                      : 0.82),
         ),
       ),
     );
-    const peekWidth = Math.max(150, Math.min(260, Math.round(activeWidth * 0.26)));
+    const peekWidth = Math.max(
+      150,
+      Math.min(260, Math.round(activeWidth * 0.26)),
+    );
     const pageToneFilter =
       settings.theme === "dark"
         ? "invert(1) hue-rotate(180deg) brightness(0.94) contrast(0.96)"
@@ -666,34 +299,26 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const node = containerRef.current;
       if (!node || !onAnnotationPress) return;
       const handleClick = (event: MouseEvent) => {
-        if (window.getSelection()?.toString().trim()) return;
-
-        const matches: PdfAnnotationOverlayRect[] = [];
-        Object.values(pageOverlays).forEach((pageOverlay) => {
-          pageOverlay.annotationRects.forEach((rect) => {
-            const hit =
-              event.clientX >= rect.clientRect.left &&
-              event.clientX <= rect.clientRect.right &&
-              event.clientY >= rect.clientRect.top &&
-              event.clientY <= rect.clientRect.bottom;
-            if (!hit) return;
-            matches.push(rect);
-          });
-        });
-
-        const bestMatch = matches.sort(
-          (left, right) =>
-            left.clientRect.width * left.clientRect.height -
-            right.clientRect.width * right.clientRect.height,
-        )[0];
-        if (!bestMatch) return;
+        const target = event.target as HTMLElement | null;
+        const hit = target?.closest?.(
+          "[data-reader-annotation-id]",
+        ) as HTMLElement | null;
+        if (!hit) return;
+        const annotationId = String(hit.dataset.readerAnnotationId || "");
+        const annotation = annotations.find(
+          (item) => item.annotation_id === annotationId,
+        );
+        if (!annotation) return;
         event.preventDefault();
         event.stopPropagation();
-        onAnnotationPress(bestMatch.annotation, bestMatch.clientRect);
+        onAnnotationPress(
+          annotation,
+          getDomRectPayload(hit.getBoundingClientRect()),
+        );
       };
       node.addEventListener("click", handleClick, true);
       return () => node.removeEventListener("click", handleClick, true);
-    }, [onAnnotationPress, pageOverlays]);
+    }, [annotations, onAnnotationPress]);
 
     useEffect(() => {
       if (!onVisibleNoteMarkersChange) return;
@@ -708,28 +333,35 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         const containerRect = container.getBoundingClientRect();
         const nextMarkers: ReaderNoteMarker[] = [];
         const seen = new Set<string>();
+        const nodes = Array.from(
+          container.querySelectorAll("[data-reader-annotation-id]"),
+        ) as HTMLElement[];
 
-        Object.values(pageOverlays).forEach((pageOverlay) => {
-          pageOverlay.annotationRects.forEach((rect) => {
-            const annotation = rect.annotation;
-            if (
-              !annotationHasAttachedNote(annotation) ||
-              seen.has(annotation.annotation_id)
-            ) {
-              return;
-            }
-            const clientRect = rect.clientRect;
-            const isVisible =
-              clientRect.width > 0 &&
-              clientRect.height > 0 &&
-              clientRect.bottom >= containerRect.top &&
-              clientRect.top <= containerRect.bottom;
-            if (!isVisible) return;
-            seen.add(annotation.annotation_id);
-            nextMarkers.push({
-              annotation,
-              rect: clientRect,
-            });
+        nodes.forEach((node) => {
+          const annotationId = String(node.dataset.readerAnnotationId || "");
+          if (!annotationId || seen.has(annotationId)) return;
+          const annotation = noteAnnotations.find(
+            (item) => item.annotation_id === annotationId,
+          );
+          if (!annotation) return;
+          const rect = node.getBoundingClientRect();
+          const isVisible =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom >= containerRect.top &&
+            rect.top <= containerRect.bottom;
+          if (!isVisible) return;
+          seen.add(annotationId);
+          nextMarkers.push({
+            annotation,
+            rect: {
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom,
+              width: rect.width,
+              height: rect.height,
+            },
           });
         });
 
@@ -751,9 +383,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         onVisibleNoteMarkersChange([]);
       };
     }, [
+      noteAnnotations,
       onVisibleNoteMarkersChange,
       pageNumber,
-      pageOverlays,
+      pageTexts,
       presentationMode,
       viewport.height,
       viewport.width,
@@ -763,79 +396,64 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       pageIndex: number,
       value: { items?: Array<unknown> } | undefined,
     ) => {
-      const items: Array<unknown> = Array.isArray(value?.items) ? value.items : [];
-      let cursor = 0;
-      const normalizedItems = items.map((item) => {
-        const row =
-          item && typeof item === "object" ? (item as { str?: string; hasEOL?: boolean }) : {};
-        const text = String(row.str || "");
-        const suffix = row.hasEOL ? "\n" : "";
-        const start = cursor;
-        cursor += text.length + suffix.length;
-        return {
-          text: text + suffix,
-          start,
-          end: cursor,
-          hasEOL: Boolean(row.hasEOL),
-        };
-      });
-      const joined = normalizedItems.map((item) => item.text).join("");
-      setPageTextItems((prev) =>
-        arePdfTextItemsEqual(prev[pageIndex], normalizedItems)
-          ? prev
-          : { ...prev, [pageIndex]: normalizedItems },
+      const items: Array<unknown> = Array.isArray(value?.items)
+        ? value.items
+        : [];
+      const joined = items
+        .map((item) =>
+          item && typeof item === "object" && "str" in item
+            ? String((item as { str?: string }).str || "").trim()
+            : "",
+        )
+        .filter(Boolean)
+        .join(" ");
+      setPageTexts((prev) =>
+        prev[pageIndex] === joined ? prev : { ...prev, [pageIndex]: joined },
       );
-      setPageTexts((prev) => (prev[pageIndex] === joined ? prev : { ...prev, [pageIndex]: joined }));
     };
-
-    useEffect(() => {
-      const frame = window.requestAnimationFrame(() => {
-        Object.keys(pageShellRefs.current).forEach((pageKey) => {
-          syncPdfPageDecorations(Number(pageKey));
-        });
-      });
-      return () => window.cancelAnimationFrame(frame);
-    }, [
-      annotations,
-      pageNumber,
-      pageTextItems,
-      pageTexts,
-      searchQuery,
-      viewport.height,
-      viewport.width,
-    ]);
 
     const renderPdfPage = (targetPage: number, mode: "peek" | "active") => {
       if (targetPage < 1 || targetPage > numPages) {
         return null;
       }
 
+      const pageProps: {
+        customTextRenderer?: ({ str }: { str: string }) => string;
+      } = {};
+      const pageAnnotations = annotations.filter(
+        (annotation) =>
+          annotation.kind !== "bookmark" &&
+          Number(annotation.anchor?.page) === targetPage,
+      );
+      if (mode === "active" && (searchQuery.trim() || pageAnnotations.length > 0)) {
+        pageProps.customTextRenderer = ({ str }: { str: string }) =>
+          renderPdfTextWithHighlights(str, pageAnnotations, searchQuery);
+      }
+
       const isActive = mode === "active";
       const focusPreviewPeek = desktopFocusPreview && !isActive;
-      const focusPreviewCardWidth = Math.max(520, Math.round(activeWidth * 0.94));
-      const cardWidth =
-        isActive
-          ? activeWidth
-          : focusPreviewPeek
-            ? focusPreviewCardWidth
-            : peekWidth;
+      const focusPreviewCardWidth = Math.max(
+        520,
+        Math.round(activeWidth * 0.94),
+      );
+      const cardWidth = isActive
+        ? activeWidth
+        : focusPreviewPeek
+          ? focusPreviewCardWidth
+          : peekWidth;
       const peekPageWidth = focusPreviewPeek
         ? focusPreviewCardWidth
         : peekWidth;
-      const alignSide =
-        targetPage < pageNumber ? "flex-end" : targetPage > pageNumber ? "flex-start" : "center";
       const sizeProps =
-        focusPreviewPeek
-          ? { width: peekPageWidth }
-          : { width: isActive ? activeWidth : peekWidth };
+        isActive && desktopLayout && pagedMode && !desktopFocusPreview
+          ? { height: activeHeight }
+          : focusPreviewPeek
+            ? { width: peekPageWidth }
+            : { width: isActive ? activeWidth : peekWidth };
 
       return (
         <div
-          ref={(node) => {
-            pageShellRefs.current[targetPage] = node;
-          }}
-          data-reader-pdf-page={targetPage}
-          className={`pdf-page-shell relative overflow-hidden ${
+          className={`pdf-page-shell overflow-hidden ${
             pagedMode && (desktopFocusPreview || !desktopLayout)
               ? isActive
                 ? "shadow-[0_18px_46px_rgba(15,23,42,0.12)]"
@@ -847,7 +465,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               isActive && desktopLayout && pagedMode && !desktopFocusPreview
                 ? "fit-content"
                 : `${cardWidth}px`,
-            minHeight: focusPreviewPeek ? `${Math.max(560, activeHeight + 96)}px` : undefined,
+            minHeight: focusPreviewPeek
+              ? `${Math.max(560, activeHeight + 96)}px`
+              : undefined,
             transform:
               pagedMode && (desktopFocusPreview || !desktopLayout)
                 ? isActive
@@ -857,7 +477,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                     : "scale(0.95)"
                 : "none",
             borderRadius:
-              pagedMode && (desktopFocusPreview || !desktopLayout) ? "18px" : "0px",
+              pagedMode && (desktopFocusPreview || !desktopLayout)
+                ? "18px"
+                : "0px",
             display: "flex",
             justifyContent: focusPreviewPeek ? "center" : "center",
             alignItems: focusPreviewPeek ? "center" : "flex-start",
@@ -873,48 +495,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           <Page
             pageNumber={targetPage}
             {...sizeProps}
-            devicePixelRatio={effectiveDevicePixelRatio}
             renderTextLayer
-            renderAnnotationLayer={false}
+            renderAnnotationLayer
             onGetTextSuccess={(value) => capturePageText(targetPage, value)}
-            onRenderTextLayerSuccess={() => {
-              window.requestAnimationFrame(() =>
-                syncPdfPageDecorations(targetPage),
-              );
-            }}
+            {...pageProps}
           />
-          {isActive ? (
-            <div className="pointer-events-none absolute inset-0 z-[1]">
-              {(pageOverlays[targetPage]?.searchRects || []).map((rect, index) => (
-                <span
-                  key={`search-${targetPage}-${index}`}
-                  className="absolute rounded-[4px]"
-                  style={{
-                    left: `${rect.left}px`,
-                    top: `${rect.top}px`,
-                    width: `${rect.width}px`,
-                    height: `${rect.height}px`,
-                    background: "rgba(243,221,115,0.22)",
-                  }}
-                />
-              ))}
-              {(pageOverlays[targetPage]?.annotationRects || []).map((rect, index) => (
-                <span
-                  key={`${rect.annotation.annotation_id}-${targetPage}-${index}`}
-                  className="absolute rounded-[4px]"
-                  style={{
-                    left: `${rect.left}px`,
-                    top: `${rect.top}px`,
-                    width: `${rect.width}px`,
-                    height: `${rect.height}px`,
-                    background:
-                      PDF_HIGHLIGHT_SWATCHES[rect.annotation.color] ||
-                      PDF_HIGHLIGHT_SWATCHES.amber,
-                  }}
-                />
-              ))}
-            </div>
-          ) : null}
         </div>
       );
     };
@@ -931,7 +516,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const visibleWidth = Math.max(132, Math.round(activeWidth * 0.17));
       const shellHeight = Math.max(620, activeHeight + 116);
       const revealDepth = Math.max(74, Math.round(peekCardWidth * 0.13));
-      const hiddenOffset = Math.max(0, peekCardWidth - visibleWidth - revealDepth);
+      const hiddenOffset = Math.max(
+        0,
+        peekCardWidth - visibleWidth - revealDepth,
+      );
 
       return (
         <div
@@ -968,7 +556,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               <Page
                 pageNumber={targetPage}
                 width={peekCardWidth}
-                devicePixelRatio={1}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />
@@ -988,31 +575,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               : "items-start overflow-hidden"
             : "items-start overflow-x-hidden overflow-y-auto"
         }`}
-        onMouseUp={() => {
-          window.requestAnimationFrame(handleSelection);
-        }}
-        onTouchEnd={() => {
-          window.requestAnimationFrame(handleSelection);
-        }}
+        onMouseUp={handleSelection}
+        onTouchEnd={handleSelection}
       >
         <style>{`
           .react-pdf__Page__textContent {
             user-select: text;
             -webkit-user-select: text;
-            pointer-events: auto;
-            z-index: 2;
-            line-height: 1;
-          }
-          .react-pdf__Page__textContent span {
-            color: transparent !important;
-            background: transparent !important;
-            opacity: 1 !important;
-            cursor: text;
           }
           .react-pdf__Page__textContent ::selection,
           .react-pdf__Page__textContent span::selection {
             background: rgba(243, 221, 115, 0.38);
-            color: transparent !important;
+            color: inherit;
           }
           .react-pdf__Page__canvas {
             max-width: 100%;
@@ -1037,7 +611,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             setLoadError("Could not render this PDF in the cloud reader.");
           }}
           loading={<div className="text-base text-slate-500">Loading PDF...</div>}
-          error={<div className="text-base text-rose-600">{loadError || "Could not render PDF."}</div>}
+          error={
+            <div className="text-base text-rose-600">
+              {loadError || "Could not render PDF."}
+            </div>
+          }
           className="w-full"
         >
           {pagedMode ? (
@@ -1058,7 +636,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               {spreadMode ? (
                 <>
                   {renderPdfPage(pageNumber, "active")}
-                  {pageNumber < numPages ? renderPdfPage(pageNumber + 1, "active") : null}
+                  {pageNumber < numPages
+                    ? renderPdfPage(pageNumber + 1, "active")
+                    : null}
                 </>
               ) : (
                 <>
@@ -1069,9 +649,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                     >
                       {renderDesktopFocusPeekPage(pageNumber - 1, "left")}
                     </div>
-                  ) : usePeekLayout
-                    ? renderPdfPage(pageNumber - 1, "peek")
-                    : null}
+                  ) : usePeekLayout ? (
+                    renderPdfPage(pageNumber - 1, "peek")
+                  ) : null}
                   {renderPdfPage(pageNumber, "active")}
                   {desktopFocusPreview ? (
                     <div
@@ -1080,9 +660,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                     >
                       {renderDesktopFocusPeekPage(pageNumber + 1, "right")}
                     </div>
-                  ) : usePeekLayout
-                    ? renderPdfPage(pageNumber + 1, "peek")
-                    : null}
+                  ) : usePeekLayout ? (
+                    renderPdfPage(pageNumber + 1, "peek")
+                  ) : null}
                 </>
               )}
             </div>
