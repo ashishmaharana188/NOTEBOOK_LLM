@@ -206,6 +206,25 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       }
 
       const isActive = mode === "active";
+      const focusPreviewPeek = desktopFocusPreview && !isActive;
+      const focusPreviewCardWidth = Math.max(520, Math.round(activeWidth * 0.94));
+      const cardWidth =
+        isActive
+          ? activeWidth
+          : focusPreviewPeek
+            ? focusPreviewCardWidth
+            : peekWidth;
+      const peekPageWidth = focusPreviewPeek
+        ? focusPreviewCardWidth
+        : peekWidth;
+      const alignSide =
+        targetPage < pageNumber ? "flex-end" : targetPage > pageNumber ? "flex-start" : "center";
+      const sizeProps =
+        isActive && desktopLayout && pagedMode && !desktopFocusPreview
+          ? { height: activeHeight }
+          : focusPreviewPeek
+            ? { width: peekPageWidth }
+            : { width: isActive ? activeWidth : peekWidth };
 
       return (
         <div
@@ -220,18 +239,21 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             width:
               isActive && desktopLayout && pagedMode && !desktopFocusPreview
                 ? "fit-content"
-                : `${isActive ? activeWidth : peekWidth}px`,
+                : `${cardWidth}px`,
+            minHeight: focusPreviewPeek ? `${Math.max(560, activeHeight + 96)}px` : undefined,
             transform:
               pagedMode && (desktopFocusPreview || !desktopLayout)
                 ? isActive
                   ? "scale(1)"
-                  : "scale(0.95)"
+                  : desktopFocusPreview
+                    ? "scale(1)"
+                    : "scale(0.95)"
                 : "none",
             borderRadius:
               pagedMode && (desktopFocusPreview || !desktopLayout) ? "18px" : "0px",
             display: "flex",
-            justifyContent: "center",
-            alignItems: "flex-start",
+            justifyContent: focusPreviewPeek ? "center" : "center",
+            alignItems: focusPreviewPeek ? "center" : "flex-start",
             filter: pageToneFilter,
             backgroundColor:
               settings.theme === "dark"
@@ -243,14 +265,69 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         >
           <Page
             pageNumber={targetPage}
-            {...(isActive && desktopLayout && pagedMode
-              ? { height: activeHeight }
-              : { width: isActive ? activeWidth : peekWidth })}
+            {...sizeProps}
             renderTextLayer
             renderAnnotationLayer
             onGetTextSuccess={(value) => capturePageText(targetPage, value)}
             {...pageProps}
           />
+        </div>
+      );
+    };
+
+    const renderDesktopFocusPeekPage = (
+      targetPage: number,
+      side: "left" | "right",
+    ) => {
+      if (targetPage < 1 || targetPage > numPages) {
+        return null;
+      }
+
+      const peekCardWidth = Math.max(560, Math.round(activeWidth * 0.98));
+      const visibleWidth = Math.max(124, Math.round(activeWidth * 0.16));
+      const shellHeight = Math.max(620, activeHeight + 116);
+      const hiddenOffset = Math.max(0, peekCardWidth - visibleWidth - 28);
+
+      return (
+        <div
+          className="hidden shrink-0 overflow-hidden md:block"
+          style={{
+            width: `${visibleWidth}px`,
+            height: `${shellHeight}px`,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            className="pdf-page-shell relative h-full overflow-hidden shadow-[0_18px_42px_rgba(15,23,42,0.10)]"
+            style={{
+              width: `${peekCardWidth}px`,
+              height: "100%",
+              borderRadius: "18px",
+              backgroundColor:
+                settings.theme === "dark"
+                  ? "#111318"
+                  : settings.theme === "sepia"
+                    ? "#f1e6d1"
+                    : "#ffffff",
+              filter: pageToneFilter,
+              transform: `translateX(${side === "left" ? -hiddenOffset : 0}px)`,
+            }}
+          >
+            <div
+              className="flex h-full items-center justify-center"
+              style={{
+                paddingTop: "32px",
+                paddingBottom: "32px",
+              }}
+            >
+              <Page
+                pageNumber={targetPage}
+                width={peekCardWidth}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+              />
+            </div>
+          </div>
         </div>
       );
     };
@@ -307,14 +384,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               className={`mx-auto flex w-full ${
                 desktopLayout
                   ? desktopFocusPreview
-                    ? "items-center justify-center gap-8 overflow-hidden"
+                    ? "items-center justify-center gap-8 overflow-hidden px-4"
                     : "items-start justify-center gap-7"
                   : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
               }`}
               style={{
                 maxWidth: undefined,
-                paddingTop: `${desktopFocusPreview ? 28 : contentPadding}px`,
-                paddingBottom: `${desktopFocusPreview ? 28 : contentPadding}px`,
+                paddingTop: `${desktopFocusPreview ? 34 : contentPadding}px`,
+                paddingBottom: `${desktopFocusPreview ? 34 : contentPadding}px`,
               }}
             >
               {spreadMode ? (
@@ -324,9 +401,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                 </>
               ) : (
                 <>
-                  {usePeekLayout ? renderPdfPage(pageNumber - 1, "peek") : null}
+                  {desktopFocusPreview
+                    ? renderDesktopFocusPeekPage(pageNumber - 1, "left")
+                    : usePeekLayout
+                      ? renderPdfPage(pageNumber - 1, "peek")
+                      : null}
                   {renderPdfPage(pageNumber, "active")}
-                  {usePeekLayout ? renderPdfPage(pageNumber + 1, "peek") : null}
+                  {desktopFocusPreview
+                    ? renderDesktopFocusPeekPage(pageNumber + 1, "right")
+                    : usePeekLayout
+                      ? renderPdfPage(pageNumber + 1, "peek")
+                      : null}
                 </>
               )}
             </div>

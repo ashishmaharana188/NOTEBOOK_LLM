@@ -526,7 +526,13 @@ export default function Reader({
     if (hideChromeTimeoutRef.current) {
       window.clearTimeout(hideChromeTimeoutRef.current);
     }
-    if (!chromeVisible || overlay || selection || overflowOpen) {
+    if (
+      !chromeVisible ||
+      overlay ||
+      selection ||
+      overflowOpen ||
+      !isMobileLayout
+    ) {
       return undefined;
     }
     hideChromeTimeoutRef.current = window.setTimeout(() => {
@@ -620,6 +626,7 @@ export default function Reader({
     platformLayout === "desktop" &&
     effectivePresentationMode === "paged" &&
     showReaderChrome;
+  const showTopBarTitle = !showDesktopFocusPreview || overlay === "contents";
   const handleSaveLocation = useCallback(
     (payload: any) => {
       reportLocation({
@@ -1117,13 +1124,6 @@ export default function Reader({
           return;
         }
         if (!isMobileLayout) {
-          if (overlay) {
-            setOverlay(null);
-            return;
-          }
-          if (chromeVisible) {
-            setChromeVisible(false);
-          }
           return;
         }
         if (isMobileLayout) {
@@ -1146,11 +1146,13 @@ export default function Reader({
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <IconButton icon={arrowBackOutline} label="Back" onClick={() => onBack?.()} theme={settings.theme} />
-            <div className="min-w-0" style={{ color: chromePrimary }}>
-              <div className="truncate text-[1.45rem] font-normal tracking-[-0.045em] sm:text-[1.65rem]">
-                {book.title}
+            {showTopBarTitle ? (
+              <div className="min-w-0" style={{ color: chromePrimary }}>
+                <div className="truncate text-[1.45rem] font-normal tracking-[-0.045em] sm:text-[1.65rem]">
+                  {book.title}
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-1">
             <IconButton icon={searchOutline} label="Search" onClick={() => void openSearch()} theme={settings.theme} />

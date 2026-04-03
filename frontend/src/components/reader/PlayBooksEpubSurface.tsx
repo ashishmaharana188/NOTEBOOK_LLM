@@ -761,7 +761,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const viewportPadding = pagedMode
             ? desktopLayout
                 ? desktopFocusPreview
-                    ? "0"
+                    ? "18px 0 22px"
                     : "0 0 8px"
                 : "20px 20px 34px"
             : desktopLayout
@@ -774,20 +774,74 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             : desktopLayout
               ? "840px"
               : "100%";
-        const renderDesktopPeekShell = () => (
-            <div
-                className="hidden shrink-0 md:block"
-                style={{
-                    width: "168px",
-                    height: "82%",
-                    maxHeight: "920px",
-                    borderRadius: "18px",
-                    background: paperBackground,
-                    boxShadow: "0 14px 32px rgba(15,23,42,0.08)",
-                    opacity: 0.82,
-                }}
-            />
-        );
+        const renderDesktopPeekShell = (side: "left" | "right") => {
+            const visibleWidth = 136;
+            const cardWidth = 420;
+            const hiddenOffset = cardWidth - visibleWidth - 24;
+
+            return (
+                <div
+                    className="hidden shrink-0 overflow-hidden md:block"
+                    style={{
+                        width: `${visibleWidth}px`,
+                        height: "88%",
+                        maxHeight: "940px",
+                        pointerEvents: "none",
+                    }}
+                >
+                    <div
+                        style={{
+                            position: "relative",
+                            width: `${cardWidth}px`,
+                            height: "100%",
+                            borderRadius: "18px",
+                            background: paperBackground,
+                            boxShadow: "0 18px 42px rgba(15,23,42,0.10)",
+                            overflow: "hidden",
+                            transform: `translateX(${side === "left" ? -hiddenOffset : 0}px)`,
+                        }}
+                    >
+                        <div
+                            style={{
+                                position: "absolute",
+                                inset: 0,
+                                background: paperBackground,
+                            }}
+                        />
+                        <div
+                            style={{
+                                position: "absolute",
+                                top: "26px",
+                                left: "28px",
+                                right: "28px",
+                                bottom: "26px",
+                                borderRadius: "14px",
+                                background:
+                                    settings.theme === "dark"
+                                        ? "#050505"
+                                        : settings.theme === "sepia"
+                                          ? "#fcf4e4"
+                                          : "#ffffff",
+                            }}
+                        />
+                        <div
+                            style={{
+                                position: "absolute",
+                                top: "92px",
+                                left: "74px",
+                                right: "72px",
+                                bottom: "84px",
+                                opacity: settings.theme === "dark" ? 0.92 : 0.54,
+                                background:
+                                    settings.theme === "dark"
+                                        ? "repeating-linear-gradient(180deg, rgba(255,255,255,0.98) 0, rgba(255,255,255,0.98) 3px, transparent 3px, transparent 28px)"
+                                        : "repeating-linear-gradient(180deg, rgba(17,24,39,0.78) 0, rgba(17,24,39,0.78) 2px, transparent 2px, transparent 24px)",
+                            }}
+                        />
+                    </div>
+                </div>
+            );
+        };
         const epubViewNode = (
             <>
                 <div
@@ -889,10 +943,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 }`}
             >
                 {desktopFocusPreview ? (
-                    <div className="flex h-full w-full items-center justify-center gap-8 overflow-hidden px-6 py-8 sm:px-10 sm:py-10">
-                        <div className="hidden flex-1 justify-end md:flex">
-                            {renderDesktopPeekShell()}
-                        </div>
+                    <div className="flex h-full w-full items-center justify-center gap-8 overflow-hidden px-2 py-10 sm:px-4 sm:py-12">
+                        {renderDesktopPeekShell("left")}
                         <div
                             className="relative h-full min-h-0 shrink-0 overflow-hidden rounded-[18px] shadow-[0_18px_46px_rgba(15,23,42,0.12)]"
                             style={{
@@ -903,9 +955,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         >
                             {epubViewNode}
                         </div>
-                        <div className="hidden flex-1 justify-start md:flex">
-                            {renderDesktopPeekShell()}
-                        </div>
+                        {renderDesktopPeekShell("right")}
                     </div>
                 ) : (
                     <div
