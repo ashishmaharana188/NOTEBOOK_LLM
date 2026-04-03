@@ -124,6 +124,7 @@ export function useReaderSession(book: ReaderBook | null) {
     const bootstrapIdentityRef = useRef("");
     const bootstrapRequestRef = useRef<Promise<ReaderBootstrapPayload | null> | null>(null);
     const latestBootstrapRef = useRef("");
+    const manifestRef = useRef<ReaderManifestSummary | null>(null);
 
     const normalizedExtension = useMemo(() => {
         return String(book?.extension || "")
@@ -142,6 +143,10 @@ export function useReaderSession(book: ReaderBook | null) {
     useEffect(() => {
         sessionRef.current = session;
     }, [session]);
+
+    useEffect(() => {
+        manifestRef.current = manifest;
+    }, [manifest]);
 
     const persistLocalCache = useCallback(
         (payload: Record<string, any>) => {
@@ -570,6 +575,10 @@ export function useReaderSession(book: ReaderBook | null) {
         lastLoadedSectionRef.current = null;
         hasHydratedLocationRef.current = false;
         hasHydratedSectionRef.current = false;
+        if (bootstrapPollRef.current) {
+            window.clearInterval(bootstrapPollRef.current);
+            bootstrapPollRef.current = null;
+        }
         setManifest(null);
         setSession(null);
         setAnnotations([]);
@@ -610,8 +619,9 @@ export function useReaderSession(book: ReaderBook | null) {
             // Ignore corrupted cache.
         }
 
-        if (book.initialReaderBootstrap) {
-            const bootstrap = book.initialReaderBootstrap;
+        const initialBootstrap = book.initialReaderBootstrap;
+        if (initialBootstrap) {
+            const bootstrap = initialBootstrap;
             setManifest(bootstrap.manifest || null);
             setSession(bootstrap.session || null);
             setAnnotations(
@@ -636,14 +646,28 @@ export function useReaderSession(book: ReaderBook | null) {
                 setCurrentTextSection(resolveInitialSectionIndex(bootstrap.session));
                 hasHydratedSectionRef.current = true;
             }
+            latestBootstrapRef.current = stableStringify({
+                manifest: bootstrap.manifest || null,
+                session: bootstrap.session || null,
+                annotations: Array.isArray(bootstrap.annotations)
+                    ? bootstrap.annotations
+                    : [],
+            });
             persistLocalCache(bootstrap);
         }
 
-        void refreshBootstrap();
+        const shouldBootstrapFromNetwork =
+            !initialBootstrap ||
+            usesSectionReader ||
+            String(initialBootstrap?.manifest?.status || "").toLowerCase() ===
+                "building";
+
+        if (shouldBootstrapFromNetwork) {
+            void refreshBootstrap();
+        }
     }, [
         bootstrapIdentity,
         book?.filename,
-        book?.initialReaderBootstrap,
         clearPendingFlush,
         persistLocalCache,
         refreshBootstrap,
@@ -696,7 +720,20 @@ export function useReaderSession(book: ReaderBook | null) {
                     payload.type === "READER_MANIFEST_READY" &&
                     payload.filename === book.filename
                 ) {
-                    void refreshBootstrap();
+                    const activeManifestStatus = String(
+                        manifestRef.current?.status || "",
+                    ).toLowerCase();
+                    const waitingForBuild =
+                        activeManifestStatus === "building" ||
+                        !latestBootstrapRef.current;
+                    const payloadLid = String(payload.lid || "");
+                    const activeLid = String(book.lid || "");
+                    if (
+                        waitingForBuild &&
+                        payloadLid === activeLid
+                    ) {
+                        void refreshBootstrap();
+                    }
                 }
                 if (
                     payload.type === "READER_SESSION_UPDATED" &&
