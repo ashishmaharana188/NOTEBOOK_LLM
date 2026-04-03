@@ -2,7 +2,6 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -10,14 +9,11 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import type {
-  ReaderAnnotation,
   ReaderBook,
   ReaderSearchResult,
 } from "../../types/readerBackendTypes";
 import {
-  annotationHasAttachedNote,
   clamp,
-  type ReaderNoteMarker,
   type ReaderSelectionPayload,
   type ReaderSurfaceCommonProps,
   type ReaderSurfaceHandle,
@@ -47,57 +43,6 @@ function getDomRectPayload(
   };
 }
 
-const PDF_HIGHLIGHT_SWATCHES: Record<string, string> = {
-  amber: "rgba(247, 201, 72, 0.38)",
-  orange: "rgba(255, 116, 72, 0.28)",
-  green: "rgba(138, 198, 80, 0.28)",
-  blue: "rgba(55, 197, 221, 0.28)",
-};
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function renderPdfTextWithHighlights(
-  value: string,
-  annotations: ReaderAnnotation[],
-  searchQuery: string,
-) {
-  const rawValue = String(value || "");
-  let output = escapeHtml(rawValue);
-  annotations.forEach((annotation) => {
-    const quote = String(annotation.quote_text || "").trim();
-    if (!quote) return;
-    const normalizedValue = rawValue.trim();
-    if (
-      normalizedValue &&
-      normalizedValue.length >= 3 &&
-      quote.includes(normalizedValue)
-    ) {
-      output = `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(rawValue)}</mark>`;
-      return;
-    }
-    const escapedQuote = quote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    output = output.replace(
-      new RegExp(escapedQuote, "g"),
-      `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(quote)}</mark>`,
-    );
-  });
-  if (searchQuery.trim()) {
-    const escapedSearch = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    output = output.replace(
-      new RegExp(`(${escapedSearch})`, "ig"),
-      '<mark style="background:rgba(243,221,115,0.32);padding:0 0.02em;">$1</mark>',
-    );
-  }
-  return output;
-}
-
 export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
   function PlayBooksPdfSurface(
     {
@@ -106,11 +51,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onSaveLocation,
       onStateChange,
       onSelection,
-      annotations = [],
-      onAnnotationPress,
       onVisibleNoteMarkersChange,
       onContextMenuRequest,
-      searchQuery = "",
       presentationMode,
       platformLayout,
       settings,
@@ -138,13 +80,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       desktopLayout && pagedMode && !spreadMode && showFocusPreview;
     const contentPadding = desktopLayout ? 12 : 16;
     const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
-    const noteAnnotations = useMemo(
-      () =>
-        annotations.filter((annotation) =>
-          annotationHasAttachedNote(annotation),
-        ),
-      [annotations],
-    );
 
     useEffect(() => {
       const node = containerRef.current;
@@ -161,6 +96,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       observer.observe(node);
       return () => observer.disconnect();
     }, []);
+
+    useEffect(() => {
+      onVisibleNoteMarkersChange?.([]);
+      return () => onVisibleNoteMarkersChange?.([]);
+    }, [onVisibleNoteMarkersChange]);
 
     useEffect(() => {
       const numeric =
@@ -296,103 +236,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           ? "sepia(0.42) saturate(0.82) brightness(0.98)"
           : "none";
 
-    useEffect(() => {
-      const node = containerRef.current;
-      if (!node || !onAnnotationPress) return;
-      const handleClick = (event: MouseEvent) => {
-        const target = event.target as HTMLElement | null;
-        const hit = target?.closest?.(
-          "[data-reader-annotation-id]",
-        ) as HTMLElement | null;
-        if (!hit) return;
-        const annotationId = String(hit.dataset.readerAnnotationId || "");
-        const annotation = annotations.find(
-          (item) => item.annotation_id === annotationId,
-        );
-        if (!annotation) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onAnnotationPress(
-          annotation,
-          getDomRectPayload(hit.getBoundingClientRect()),
-        );
-      };
-      node.addEventListener("click", handleClick, true);
-      return () => node.removeEventListener("click", handleClick, true);
-    }, [annotations, onAnnotationPress]);
-
-    useEffect(() => {
-      if (!onVisibleNoteMarkersChange) return;
-
-      const emitVisibleNoteMarkers = () => {
-        const container = containerRef.current;
-        if (!container || !noteAnnotations.length) {
-          onVisibleNoteMarkersChange([]);
-          return;
-        }
-
-        const containerRect = container.getBoundingClientRect();
-        const nextMarkers: ReaderNoteMarker[] = [];
-        const seen = new Set<string>();
-        const nodes = Array.from(
-          container.querySelectorAll("[data-reader-annotation-id]"),
-        ) as HTMLElement[];
-
-        nodes.forEach((node) => {
-          const annotationId = String(node.dataset.readerAnnotationId || "");
-          if (!annotationId || seen.has(annotationId)) return;
-          const annotation = noteAnnotations.find(
-            (item) => item.annotation_id === annotationId,
-          );
-          if (!annotation) return;
-          const rect = node.getBoundingClientRect();
-          const isVisible =
-            rect.width > 0 &&
-            rect.height > 0 &&
-            rect.bottom >= containerRect.top &&
-            rect.top <= containerRect.bottom;
-          if (!isVisible) return;
-          seen.add(annotationId);
-          nextMarkers.push({
-            annotation,
-            rect: {
-              left: rect.left,
-              top: rect.top,
-              right: rect.right,
-              bottom: rect.bottom,
-              width: rect.width,
-              height: rect.height,
-            },
-          });
-        });
-
-        onVisibleNoteMarkersChange(nextMarkers);
-      };
-
-      const frame = window.requestAnimationFrame(emitVisibleNoteMarkers);
-      const handleSync = () => {
-        window.requestAnimationFrame(emitVisibleNoteMarkers);
-      };
-      const container = containerRef.current;
-      container?.addEventListener("scroll", handleSync, { passive: true });
-      window.addEventListener("resize", handleSync);
-
-      return () => {
-        window.cancelAnimationFrame(frame);
-        container?.removeEventListener("scroll", handleSync);
-        window.removeEventListener("resize", handleSync);
-        onVisibleNoteMarkersChange([]);
-      };
-    }, [
-      noteAnnotations,
-      onVisibleNoteMarkersChange,
-      pageNumber,
-      pageTexts,
-      presentationMode,
-      viewport.height,
-      viewport.width,
-    ]);
-
     const capturePageText = (
       pageIndex: number,
       value: { items?: Array<unknown> } | undefined,
@@ -416,19 +259,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const renderPdfPage = (targetPage: number, mode: "peek" | "active") => {
       if (targetPage < 1 || targetPage > numPages) {
         return null;
-      }
-
-      const pageProps: {
-        customTextRenderer?: ({ str }: { str: string }) => string;
-      } = {};
-      const pageAnnotations = annotations.filter(
-        (annotation) =>
-          annotation.kind !== "bookmark" &&
-          Number(annotation.anchor?.page) === targetPage,
-      );
-      if (mode === "active" && (searchQuery.trim() || pageAnnotations.length > 0)) {
-        pageProps.customTextRenderer = ({ str }: { str: string }) =>
-          renderPdfTextWithHighlights(str, pageAnnotations, searchQuery);
       }
 
       const isActive = mode === "active";
@@ -499,7 +329,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             renderTextLayer
             renderAnnotationLayer
             onGetTextSuccess={(value) => capturePageText(targetPage, value)}
-            {...pageProps}
           />
         </div>
       );
