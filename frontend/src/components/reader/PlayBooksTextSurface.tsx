@@ -345,7 +345,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           ),
         )
       : scrollMode
-        ? Math.max(168, Math.min(680, viewport.width - 48))
+        ? Math.max(168, Math.min(720, viewport.width - 32))
         : Math.max(460, Math.min(900, viewport.width - 88));
     const planeWidth = desktopFocusPreview
       ? Math.max(560, Math.min(760, Math.round(viewport.width * 0.46)))
@@ -1017,9 +1017,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           ) : (
             <div className="min-h-full w-full">
               <div
-                className={`mx-auto w-full ${desktopLayout ? "px-6 pb-20 pt-8 sm:px-10 sm:pb-28 sm:pt-10" : "px-5 pb-16 pt-6"}`}
+                className={`mx-auto w-full ${desktopLayout ? "px-6 pb-20 pt-8 sm:px-10 sm:pb-28 sm:pt-10" : "px-4 pb-16 pt-6"}`}
                 style={{
-                  maxWidth: `${contentColumnWidth + (desktopLayout ? 80 : 40)}px`,
+                  maxWidth: `${contentColumnWidth + (desktopLayout ? 80 : 24)}px`,
                   color: inkColor,
                 }}
               >

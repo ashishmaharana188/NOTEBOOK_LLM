@@ -1670,10 +1670,14 @@ export default function Reader({
                     onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
-                    onOpenContents={() => openContents("chapters")}
                     presentationMode={effectivePresentationMode}
                     platformLayout={platformLayout}
                     settings={settings}
+                    {...(showDesktopContentsControl
+                        ? {
+                              onOpenContents: () => openContents("chapters"),
+                          }
+                        : {})}
                 />
             );
         }
@@ -1720,10 +1724,14 @@ export default function Reader({
                 onTapZoneRequest={handleTapZoneRequest}
                 searchQuery={activeSearchQuery}
                 showFocusPreview={showDesktopFocusPreview}
-                onOpenContents={() => openContents("chapters")}
                 presentationMode={effectivePresentationMode}
                 platformLayout={platformLayout}
                 settings={settings}
+                {...(showDesktopContentsControl
+                    ? {
+                          onOpenContents: () => openContents("chapters"),
+                      }
+                    : {})}
             />
         );
     };
@@ -1756,6 +1764,8 @@ export default function Reader({
         typeof window === "undefined" ? 1440 : window.innerWidth;
     const viewportHeight =
         typeof window === "undefined" ? 900 : window.innerHeight;
+    const showDesktopContentsControl =
+        platformLayout === "desktop" && viewportWidth > 900;
 
     return (
         <div
@@ -1918,6 +1928,21 @@ export default function Reader({
                             />
                             <span>Add bookmark</span>
                         </button>
+                        {isMobileLayout ? (
+                            <button
+                                type="button"
+                                onClick={() => openContents("chapters")}
+                                className="flex w-full items-center gap-4 px-4 py-3 text-left text-[0.9rem] hover:bg-black/[0.03]"
+                                style={{ color: chromePrimary }}
+                            >
+                                <IonIcon
+                                    icon={menuOutline}
+                                    className="text-xl"
+                                    style={{ color: chromeSecondary }}
+                                />
+                                <span>Table of contents</span>
+                            </button>
+                        ) : null}
                         <button
                             type="button"
                             onClick={() => void openTranslate("page")}
@@ -2024,12 +2049,14 @@ export default function Reader({
                         {pagesLeftText}
                     </div>
                     <div className="flex w-full min-w-0 items-center gap-2 sm:gap-4">
-                        <IconButton
-                            icon={menuOutline}
-                            label="Contents"
-                            onClick={() => openContents("chapters")}
-                            compact={isMobileLayout}
-                        />
+                        {showDesktopContentsControl ? (
+                            <IconButton
+                                icon={menuOutline}
+                                label="Contents"
+                                onClick={() => openContents("chapters")}
+                                compact={isMobileLayout}
+                            />
+                        ) : null}
                         <button
                             type="button"
                             data-reader-chrome="true"
