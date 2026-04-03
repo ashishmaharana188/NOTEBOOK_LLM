@@ -505,7 +505,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
                     const doc = contents?.document;
-                    const syncIframeSelection = () => {
+                    const clearIframeSelection = () => {
+                        if (!onSelection || !doc) return;
+                        const selection = doc.getSelection?.();
+                        const text = String(
+                            selection?.toString?.() || "",
+                        ).trim();
+                        if (!text || !selection || selection.rangeCount === 0) {
+                            onSelection({ text: "", rect: null });
+                        }
+                    };
+                    const finalizeIframeSelection = () => {
                         if (!onSelection || !doc) return;
                         const selection = doc.getSelection?.();
                         const text = String(
@@ -551,9 +561,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (doc) {
                         doc.addEventListener(
                             "selectionchange",
-                            syncIframeSelection,
+                            clearIframeSelection,
                         );
-                        doc.addEventListener("mouseup", syncIframeSelection);
+                        doc.addEventListener("mouseup", finalizeIframeSelection);
+                        doc.addEventListener("touchend", finalizeIframeSelection);
                     }
                     if (desktopSectionPaging) {
                         const scrollingElement =
