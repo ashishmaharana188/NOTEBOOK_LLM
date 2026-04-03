@@ -505,12 +505,55 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
                     const doc = contents?.document;
+                    const syncIframeSelection = () => {
+                        if (!onSelection || !doc) return;
+                        const selection = doc.getSelection?.();
+                        const text = String(
+                            selection?.toString?.() || "",
+                        ).trim();
+                        if (!text || !selection || selection.rangeCount === 0) {
+                            onSelection({ text: "", rect: null });
+                            return;
+                        }
+                        const range = selection.getRangeAt(0);
+                        const localRect = range.getBoundingClientRect();
+                        const fallbackRect = range.getClientRects().item(0);
+                        const resolvedRect =
+                            localRect.width > 0 || localRect.height > 0
+                                ? localRect
+                                : fallbackRect;
+                        const frameElement = contents?.window?.frameElement as
+                            | HTMLElement
+                            | null;
+                        const iframeRect = frameElement?.getBoundingClientRect();
+                        onSelection({
+                            text,
+                            rect:
+                                resolvedRect && iframeRect
+                                    ? {
+                                          left: iframeRect.left + resolvedRect.left,
+                                          top: iframeRect.top + resolvedRect.top,
+                                          right: iframeRect.left + resolvedRect.right,
+                                          bottom: iframeRect.top + resolvedRect.bottom,
+                                          width: resolvedRect.width,
+                                          height: resolvedRect.height,
+                                      }
+                                    : null,
+                        });
+                    };
                     if (platformLayout === "desktop" && doc) {
                         const handleContextMenu = (event: MouseEvent) => {
                             event.preventDefault();
                             onContextMenuRequest?.();
                         };
                         doc.addEventListener("contextmenu", handleContextMenu);
+                    }
+                    if (doc) {
+                        doc.addEventListener(
+                            "selectionchange",
+                            syncIframeSelection,
+                        );
+                        doc.addEventListener("mouseup", syncIframeSelection);
                     }
                     if (desktopSectionPaging) {
                         const scrollingElement =
@@ -559,8 +602,32 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 rendition.on("selected", (cfiRange: string) => {
                     const range = rendition.getRange?.(cfiRange);
                     const text = String(range?.toString?.() || "").trim();
-                    if (text && onSelection) {
-                        onSelection(text);
+                    if (onSelection) {
+                        const localRect = range?.getBoundingClientRect?.();
+                        const fallbackRect = range?.getClientRects?.()?.item?.(0);
+                        const resolvedRect =
+                            localRect && (localRect.width > 0 || localRect.height > 0)
+                                ? localRect
+                                : fallbackRect;
+                        const activeContents = rendition.getContents?.()?.[0];
+                        const frameElement = activeContents?.window?.frameElement as
+                            | HTMLElement
+                            | null;
+                        const iframeRect = frameElement?.getBoundingClientRect();
+                        onSelection({
+                            text,
+                            rect:
+                                text && resolvedRect && iframeRect
+                                    ? {
+                                          left: iframeRect.left + resolvedRect.left,
+                                          top: iframeRect.top + resolvedRect.top,
+                                          right: iframeRect.left + resolvedRect.right,
+                                          bottom: iframeRect.top + resolvedRect.bottom,
+                                          width: resolvedRect.width,
+                                          height: resolvedRect.height,
+                                      }
+                                    : null,
+                        });
                     }
                 });
                 rendition.on("relocated", syncRelocation);
@@ -776,23 +843,19 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
               : "100%";
         const renderDesktopPeekShell = (side: "left" | "right") => {
             const visibleWidth = 136;
-            const cardWidth = 420;
-            const hiddenOffset = cardWidth - visibleWidth - 24;
-            const pageInsetStyle =
-                side === "left"
-                    ? {
-                          left: "236px",
-                          right: "28px",
-                      }
-                    : {
-                          left: "28px",
-                          right: "236px",
-                      };
+            const cardWidth = 520;
+            const revealDepth = 82;
+            const hiddenOffset = cardWidth - visibleWidth - revealDepth;
             const previewSeed = visibleText.trim() || chapterLabel || book.title;
             const previewText =
                 side === "left"
-                    ? previewSeed.slice(0, 950)
-                    : previewSeed.slice(220, 1240) || previewSeed.slice(0, 950);
+                    ? previewSeed.slice(0, 2400)
+                    : previewSeed.slice(640, 3040) || previewSeed.slice(0, 2400);
+            const previewParagraphs = previewText
+                .split(/\n{2,}|(?<=[.!?])\s+/)
+                .map((chunk) => chunk.replace(/\s+/g, " ").trim())
+                .filter(Boolean)
+                .slice(0, 12);
 
             return (
                 <div
@@ -842,9 +905,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         <div
                             style={{
                                 position: "absolute",
-                                top: "54px",
-                                ...pageInsetStyle,
-                                bottom: "52px",
+                                top: "44px",
+                                left: "42px",
+                                right: "42px",
+                                bottom: "44px",
                                 overflow: "hidden",
                                 color:
                                     settings.theme === "dark"
@@ -852,9 +916,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                         : settings.theme === "sepia"
                                           ? "#3a2f20"
                                           : "#171717",
-                                opacity: settings.theme === "dark" ? 0.96 : 0.74,
+                                opacity: settings.theme === "dark" ? 0.96 : 0.82,
                                 fontFamily: settings.fontFamily,
-                                fontSize: `${Math.max(15, settings.fontSize * 0.17)}px`,
+                                fontSize: `${Math.max(17, settings.fontSize * 0.2)}px`,
                                 lineHeight: 1.72,
                                 textAlign: settings.alignment === "left" ? "left" : "justify",
                                 wordBreak: "break-word",
@@ -866,28 +930,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                 style={{
                                     display: "flex",
                                     flexDirection: "column",
-                                    gap: "14px",
+                                    gap: "18px",
                                 }}
                             >
-                                {previewText
-                                    .split(/\s+/)
-                                    .reduce<string[]>((lines, word) => {
-                                        if (!word) return lines;
-                                        const next = lines[lines.length - 1]
-                                            ? `${lines[lines.length - 1]} ${word}`
-                                            : word;
-                                        if (next.length > 22) {
-                                            lines.push(word);
-                                        } else if (lines.length) {
-                                            lines[lines.length - 1] = next;
-                                        } else {
-                                            lines.push(word);
-                                        }
-                                        return lines;
-                                    }, [])
-                                    .slice(0, 34)
-                                    .map((line, index) => (
-                                        <div key={`${side}-${index}`}>{line}</div>
+                                {previewParagraphs.map((paragraph, index) => (
+                                        <p
+                                            key={`${side}-${index}`}
+                                            style={{
+                                                margin: 0,
+                                            }}
+                                        >
+                                            {paragraph}
+                                        </p>
                                     ))}
                             </div>
                         </div>

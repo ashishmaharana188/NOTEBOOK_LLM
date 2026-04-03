@@ -12,6 +12,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 import type { ReaderBook, ReaderSearchResult } from "../../types/readerBackendTypes";
 import {
   clamp,
+  type ReaderSelectionPayload,
   type ReaderSurfaceCommonProps,
   type ReaderSurfaceHandle,
 } from "./playBooksReaderShared";
@@ -24,6 +25,20 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PlayBooksPdfSurfaceProps extends ReaderSurfaceCommonProps {
   book: ReaderBook;
   initialLocation: string | number | null;
+}
+
+function getDomRectPayload(
+  rect: DOMRect | null | undefined,
+): NonNullable<ReaderSelectionPayload["rect"]> | null {
+  if (!rect) return null;
+  return {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
 }
 
 export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
@@ -137,12 +152,28 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const handleSelection = () => {
       if (!onSelection || !containerRef.current) return;
       const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
+      if (!selection || selection.rangeCount === 0) {
+        onSelection({ text: "", rect: null });
+        return;
+      }
       const text = selection.toString().trim();
-      if (!text) return;
+      if (!text) {
+        onSelection({ text: "", rect: null });
+        return;
+      }
       const range = selection.getRangeAt(0);
-      if (!containerRef.current.contains(range.commonAncestorContainer)) return;
-      onSelection(text);
+      if (!containerRef.current.contains(range.commonAncestorContainer)) {
+        onSelection({ text: "", rect: null });
+        return;
+      }
+      const boundingRect = range.getBoundingClientRect();
+      const fallbackRect = range.getClientRects().item(0);
+      const resolvedRect =
+        boundingRect.width > 0 || boundingRect.height > 0 ? boundingRect : fallbackRect;
+      onSelection({
+        text,
+        rect: getDomRectPayload(resolvedRect),
+      });
     };
 
     const usePeekLayout =
@@ -283,10 +314,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         return null;
       }
 
-      const peekCardWidth = Math.max(560, Math.round(activeWidth * 0.98));
-      const visibleWidth = Math.max(124, Math.round(activeWidth * 0.16));
+      const peekCardWidth = Math.max(620, Math.round(activeWidth * 0.96));
+      const visibleWidth = Math.max(132, Math.round(activeWidth * 0.17));
       const shellHeight = Math.max(620, activeHeight + 116);
-      const hiddenOffset = Math.max(0, peekCardWidth - visibleWidth - 28);
+      const revealDepth = Math.max(74, Math.round(peekCardWidth * 0.13));
+      const hiddenOffset = Math.max(0, peekCardWidth - visibleWidth - revealDepth);
 
       return (
         <div
@@ -402,7 +434,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               ) : (
                 <>
                   {desktopFocusPreview ? (
-                    <div className="pointer-events-none absolute inset-y-0 left-0 hidden items-center justify-start md:flex">
+                    <div
+                      className="pointer-events-none absolute inset-y-0 left-0 hidden items-center justify-start md:flex"
+                      style={{ paddingLeft: "0px" }}
+                    >
                       {renderDesktopFocusPeekPage(pageNumber - 1, "left")}
                     </div>
                   ) : usePeekLayout
@@ -410,7 +445,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                     : null}
                   {renderPdfPage(pageNumber, "active")}
                   {desktopFocusPreview ? (
-                    <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center justify-end md:flex">
+                    <div
+                      className="pointer-events-none absolute inset-y-0 right-0 hidden items-center justify-end md:flex"
+                      style={{ paddingRight: "0px" }}
+                    >
                       {renderDesktopFocusPeekPage(pageNumber + 1, "right")}
                     </div>
                   ) : usePeekLayout

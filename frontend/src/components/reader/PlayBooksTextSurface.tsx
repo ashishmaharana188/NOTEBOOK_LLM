@@ -16,6 +16,7 @@ import type {
 import {
   clamp,
   normalizeAlignment,
+  type ReaderSelectionPayload,
   type ReaderSurfaceCommonProps,
   type ReaderSurfaceHandle,
 } from "./playBooksReaderShared";
@@ -138,6 +139,20 @@ function buildParagraphs(content: string): ParagraphMeta[] {
 
   flush();
   return paragraphs;
+}
+
+function getDomRectPayload(
+  rect: DOMRect | null | undefined,
+): NonNullable<ReaderSelectionPayload["rect"]> | null {
+  if (!rect) return null;
+  return {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  };
 }
 
 export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
@@ -419,12 +434,28 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
     const selectText = () => {
       if (!onSelection || !containerRef.current) return;
       const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
+      if (!selection || selection.rangeCount === 0) {
+        onSelection({ text: "", rect: null });
+        return;
+      }
       const text = selection.toString().trim();
-      if (!text) return;
+      if (!text) {
+        onSelection({ text: "", rect: null });
+        return;
+      }
       const range = selection.getRangeAt(0);
-      if (!containerRef.current.contains(range.commonAncestorContainer)) return;
-      onSelection(text);
+      if (!containerRef.current.contains(range.commonAncestorContainer)) {
+        onSelection({ text: "", rect: null });
+        return;
+      }
+      const boundingRect = range.getBoundingClientRect();
+      const fallbackRect = range.getClientRects().item(0);
+      const resolvedRect =
+        boundingRect.width > 0 || boundingRect.height > 0 ? boundingRect : fallbackRect;
+      onSelection({
+        text,
+        rect: getDomRectPayload(resolvedRect),
+      });
     };
 
     const syncScrollPageIndex = useCallback(() => {

@@ -45,6 +45,8 @@ import {
   PLAY_BOOKS_THEMES,
   type ReaderPlatformLayout,
   type ReaderPresentationMode,
+  type ReaderSelectionPayload,
+  type ReaderSelectionRect,
   type ReaderSurfaceHandle,
   type ReaderSurfaceState,
 } from "./playBooksReaderShared";
@@ -85,6 +87,7 @@ type ContentsTab = "chapters" | "bookmarks" | "notes";
 interface SelectionState {
   text: string;
   color: string;
+  rect?: ReaderSelectionRect | null;
 }
 
 interface DefineResult {
@@ -305,6 +308,7 @@ function ReaderListRow({
 function ReaderSelectionMenu({
   open,
   color,
+  anchorRect,
   onColor,
   onAddNote,
   onDefine,
@@ -317,6 +321,7 @@ function ReaderSelectionMenu({
 }: {
   open: boolean;
   color: string;
+  anchorRect?: ReaderSelectionRect | null;
   onColor: (color: string) => void;
   onAddNote: () => void;
   onDefine: () => void;
@@ -327,23 +332,83 @@ function ReaderSelectionMenu({
   onAskRag: () => void;
   theme?: "light" | "dark" | "sepia";
 }) {
-  if (!open) return null;
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(open);
+  const [position, setPosition] = useState({ left: 20, top: 20 });
   const isDark = theme === "dark";
+  const panelWidth = 252;
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      window.requestAnimationFrame(() => setVisible(true));
+      return;
+    }
+    setVisible(false);
+    const timeout = window.setTimeout(() => {
+      setMounted(false);
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [open]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const updatePosition = () => {
+      const node = panelRef.current;
+      const panelHeight = node?.offsetHeight || 360;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const fallbackLeft = Math.min(24, Math.max(12, viewportWidth - panelWidth - 12));
+      const fallbackTop = Math.max(24, viewportHeight - panelHeight - 28);
+      if (!anchorRect) {
+        setPosition({ left: fallbackLeft, top: fallbackTop });
+        return;
+      }
+      const desiredLeft = anchorRect.left + anchorRect.width / 2 - panelWidth / 2;
+      const left = Math.min(
+        Math.max(12, desiredLeft),
+        Math.max(12, viewportWidth - panelWidth - 12),
+      );
+      let top = anchorRect.bottom + 14;
+      if (top + panelHeight > viewportHeight - 12) {
+        top = Math.max(12, anchorRect.top - panelHeight - 14);
+      }
+      setPosition({ left, top });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchorRect, mounted, open, panelWidth]);
+
+  if (!mounted) return null;
   return (
     <div
+      ref={panelRef}
       data-reader-overlay="true"
-      className="absolute bottom-24 left-3 z-[75] w-[248px] overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)] sm:bottom-28 sm:left-8"
+      className="fixed z-[75] w-[252px] overflow-hidden rounded-[18px] shadow-[0_14px_28px_rgba(15,23,42,0.14)] transition-[opacity,transform] duration-180 ease-out"
       style={{
-        border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(136,142,156,0.4)",
+        left: `${position.left}px`,
+        top: `${position.top}px`,
+        border: isDark ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(168,174,190,0.46)",
         background: isDark ? "#171a20" : "#eef0fa",
         color: isDark ? "#f3f4f6" : "#202124",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0) scale(1)" : "translateY(10px) scale(0.98)",
+        transformOrigin: "top center",
+        fontFamily: "'Google Sans', 'Roboto', 'Helvetica Neue', Arial, sans-serif",
       }}
     >
       <div
-        className="flex items-center gap-4 px-4 py-3"
-        style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(136,142,156,0.35)" }}
+        className="flex items-center gap-7 px-8 py-5"
+        style={{ borderBottom: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(168,174,190,0.38)" }}
       >
-          {HIGHLIGHT_COLORS.map((chip) => (
+        {HIGHLIGHT_COLORS.map((chip) => (
           <button
             key={chip.key}
             type="button"
@@ -370,15 +435,15 @@ function ReaderSelectionMenu({
             key={item.label}
             type="button"
             onClick={item.action}
-            className="flex items-center gap-3 px-4 py-3 text-left text-[0.92rem] hover:bg-black/[0.03]"
+            className="flex items-center gap-4 px-8 py-[15px] text-left text-[0.98rem] hover:bg-black/[0.03]"
             style={{ color: isDark ? "#f3f4f6" : "#202124" }}
           >
             <IonIcon
               icon={item.icon}
-              className="text-[1.35rem]"
+              className="text-[1.7rem]"
               style={{ color: isDark ? "#f3f4f6" : "#49515e" }}
             />
-            <span>{item.label}</span>
+            <span className="tracking-[-0.02em]">{item.label}</span>
           </button>
         ))}
       </div>
@@ -400,7 +465,6 @@ export default function Reader({
   const wheelDeltaRef = useRef(0);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const hideChromeTimeoutRef = useRef<number | null>(null);
-  const pageTurnTimeoutRef = useRef<number | null>(null);
   const modeHydratedRef = useRef<string | null>(null);
   const {
     isBootstrapping,
@@ -450,14 +514,12 @@ export default function Reader({
   const [noteDraft, setNoteDraft] = useState("");
   const [activeNote, setActiveNote] = useState<ReaderAnnotation | null>(null);
   const [ragPrompt, setRagPrompt] = useState("");
-  const [pageTurnDirection, setPageTurnDirection] = useState<"prev" | "next" | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (pageTurnTimeoutRef.current) {
-        window.clearTimeout(pageTurnTimeoutRef.current);
-      }
-    };
+  const getLiveSelectionText = useCallback(() => {
+    try {
+      return window.getSelection?.()?.toString().trim() || "";
+    } catch {
+      return "";
+    }
   }, []);
 
   useEffect(() => {
@@ -543,7 +605,7 @@ export default function Reader({
         window.clearTimeout(hideChromeTimeoutRef.current);
       }
     };
-  }, [chromeVisible, isMobileLayout, overlay, overflowOpen, selection]);
+  }, [chromeVisible, isMobileLayout, overlay, overflowOpen]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -619,7 +681,7 @@ export default function Reader({
     savedSectionIndex === currentTextSection
       ? Math.max(0, Number(session?.view_state?.pageIndex || 0))
       : 0;
-  const showReaderChrome = chromeVisible || !!overlay || !!selection || overflowOpen;
+  const showReaderChrome = chromeVisible || !!overlay || overflowOpen;
   const showDesktopPagedEdges =
     platformLayout === "desktop" && effectivePresentationMode === "paged";
   const showDesktopFocusPreview =
@@ -650,6 +712,19 @@ export default function Reader({
     window.getSelection()?.removeAllRanges();
   };
 
+  useEffect(() => {
+    const syncSelectionState = () => {
+      if (overlay !== null) return;
+      const liveText = getLiveSelectionText();
+      if (!liveText) {
+        setSelection(null);
+      }
+    };
+
+    document.addEventListener("selectionchange", syncSelectionState);
+    return () => document.removeEventListener("selectionchange", syncSelectionState);
+  }, [getLiveSelectionText, overlay]);
+
   const openContents = (tab: ContentsTab) => {
     setContentsTab(tab);
     setOverlay("contents");
@@ -658,14 +733,18 @@ export default function Reader({
     closeSelection();
   };
 
-  const handleSurfaceSelection = (text: string) => {
-    if (!text.trim()) return;
+  const handleSurfaceSelection = (payload: ReaderSelectionPayload) => {
+    const nextText = String(payload?.text || "").trim();
+    if (!nextText) {
+      setSelection(null);
+      return;
+    }
     setOverflowOpen(false);
     setSelection((prev) => ({
-      text,
+      text: nextText,
       color: prev?.color || "amber",
+      rect: payload?.rect || null,
     }));
-    setChromeVisible(true);
   };
 
   const runSearch = async (queryArg?: string) => {
@@ -943,18 +1022,8 @@ export default function Reader({
     wheelDeltaRef.current = 0;
   };
 
-  const triggerPageTurn = useCallback((direction: "prev" | "next", action: () => void) => {
-    if (pageTurnTimeoutRef.current) {
-      window.clearTimeout(pageTurnTimeoutRef.current);
-    }
-    setPageTurnDirection(direction);
-    window.setTimeout(() => {
-      action();
-    }, 48);
-    pageTurnTimeoutRef.current = window.setTimeout(() => {
-      setPageTurnDirection(null);
-      pageTurnTimeoutRef.current = null;
-    }, 320);
+  const triggerPageTurn = useCallback((_direction: "prev" | "next", action: () => void) => {
+    action();
   }, []);
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -1013,6 +1082,9 @@ export default function Reader({
           onStateChange={setSurfaceState}
           onSelection={handleSurfaceSelection}
           onContextMenuRequest={() => {
+            if (selection || getLiveSelectionText()) {
+              return;
+            }
             if (platformLayout === "desktop") {
               setChromeVisible((prev) => !prev);
             }
@@ -1096,6 +1168,11 @@ export default function Reader({
       onTouchEnd={handleTouchEnd}
       onContextMenu={(event) => {
         const target = event.target as HTMLElement;
+        const liveSelectionText = getLiveSelectionText();
+        if (selection || liveSelectionText) {
+          event.preventDefault();
+          return;
+        }
         if (
           target.closest("[data-reader-chrome='true']") ||
           target.closest("[data-reader-overlay='true']")
@@ -1203,49 +1280,9 @@ export default function Reader({
         ) : null}
       </div>
 
-      <div
-        className="relative z-[5] h-full transition-[transform,opacity] duration-200 ease-out"
-        style={{
-          transform:
-            pageTurnDirection === "next"
-              ? "translateX(-18px) scale(0.992)"
-              : pageTurnDirection === "prev"
-                ? "translateX(18px) scale(0.992)"
-                : "translateX(0) scale(1)",
-          opacity: pageTurnDirection ? 0.992 : 1,
-        }}
-      >
+      <div className="relative z-[5] h-full">
         {renderSurface()}
       </div>
-
-      <div
-        className={`pointer-events-none absolute inset-y-0 z-[6] hidden transition-all duration-300 ease-out md:block ${
-          pageTurnDirection ? "opacity-100" : "opacity-0"
-        }`}
-        style={{
-          width: "34%",
-          left: pageTurnDirection === "prev" ? 0 : "auto",
-          right: pageTurnDirection === "next" ? 0 : "auto",
-          transform:
-            pageTurnDirection === "next"
-              ? "translateX(12%) skewX(-4deg)"
-              : pageTurnDirection === "prev"
-                ? "translateX(-12%) skewX(4deg)"
-                : "translateX(0)",
-          background:
-            pageTurnDirection === "next"
-              ? "linear-gradient(to left, rgba(255,255,255,0.44), rgba(255,255,255,0.12), transparent)"
-              : pageTurnDirection === "prev"
-                ? "linear-gradient(to right, rgba(255,255,255,0.44), rgba(255,255,255,0.12), transparent)"
-                : "transparent",
-          boxShadow:
-            pageTurnDirection === "next"
-              ? "-24px 0 30px rgba(15,23,42,0.08)"
-              : pageTurnDirection === "prev"
-                ? "24px 0 30px rgba(15,23,42,0.08)"
-                : "none",
-        }}
-      />
 
       <div
         data-reader-chrome="true"
@@ -1878,6 +1915,7 @@ export default function Reader({
       <ReaderSelectionMenu
         open={!!selection && overlay === null}
         color={selection?.color || "amber"}
+        anchorRect={selection?.rect || null}
         theme={settings.theme}
         onColor={(color) =>
           setSelection((prev) => (prev ? { ...prev, color } : prev))

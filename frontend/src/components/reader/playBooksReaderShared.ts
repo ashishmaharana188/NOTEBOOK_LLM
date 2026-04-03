@@ -14,6 +14,20 @@ export interface ReaderSurfaceState {
   locationPayload?: ReaderLocationPayload;
 }
 
+export interface ReaderSelectionRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+}
+
+export interface ReaderSelectionPayload {
+  text: string;
+  rect?: ReaderSelectionRect | null;
+}
+
 export interface ReaderSurfaceHandle {
   prev: () => void;
   next: () => void;
@@ -26,7 +40,7 @@ export interface ReaderSurfaceCommonProps {
   settings: ReaderSettings;
   onSaveLocation: (payload: ReaderLocationPayload) => void;
   onStateChange: (state: ReaderSurfaceState) => void;
-  onSelection?: (text: string) => void;
+  onSelection?: (payload: ReaderSelectionPayload) => void;
   onContextMenuRequest?: () => void;
   showFocusPreview?: boolean;
   searchQuery?: string;
