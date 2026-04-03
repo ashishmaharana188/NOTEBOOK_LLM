@@ -553,6 +553,11 @@ export default function Reader({
     const pendingHighlightPromiseRef = useRef<
         Promise<ReaderAnnotation | null> | null
     >(null);
+    const selectionColorRef = useRef("amber");
+    const overlayRef = useRef<OverlayMode>(null);
+    const overflowOpenRef = useRef(false);
+    const selectionOpenRef = useRef(false);
+    const platformLayoutRef = useRef<ReaderPlatformLayout>("desktop");
     const {
         isBootstrapping,
         manifest,
@@ -617,6 +622,11 @@ export default function Reader({
         ReaderNoteMarker[]
     >([]);
     const [ragPrompt, setRagPrompt] = useState("");
+    selectionColorRef.current = selection?.color || selectionColorRef.current;
+    overlayRef.current = overlay;
+    overflowOpenRef.current = overflowOpen;
+    selectionOpenRef.current = Boolean(selection);
+
     const getLiveSelectionText = useCallback(() => {
         try {
             return window.getSelection?.()?.toString().trim() || "";
@@ -772,6 +782,7 @@ export default function Reader({
     const platformLayout: ReaderPlatformLayout = isMobileLayout
         ? "mobile"
         : "desktop";
+    platformLayoutRef.current = platformLayout;
     const effectivePresentationMode: ReaderPresentationMode = "paged";
     const noteAnnotations = annotations.filter(
         (annotation) => annotation.kind !== "bookmark",
@@ -1069,28 +1080,48 @@ export default function Reader({
         ],
     );
 
-    const handleSurfaceSelection = (payload: ReaderSelectionPayload) => {
-        const nextText = String(payload?.text || "").trim();
-        if (!nextText) {
-            setSelection(null);
+    const handleSurfaceSelection = useCallback(
+        (payload: ReaderSelectionPayload) => {
+            const nextText = String(payload?.text || "").trim();
+            if (!nextText) {
+                setSelection(null);
+                return;
+            }
+            suppressSelectionCloseUntilRef.current = Date.now() + 250;
+            setOverflowOpen(false);
+            const nextSelection: SelectionSnapshot = {
+                text: nextText,
+                color: selectionColorRef.current || "amber",
+                rect: payload?.rect || null,
+                ...(payload?.anchor ? { anchor: payload.anchor } : {}),
+                ...(payload?.annotationId
+                    ? { annotationId: payload.annotationId }
+                    : {}),
+            };
+            setSelection(nextSelection);
+            if (!payload?.annotationId && ext !== "pdf") {
+                void ensureSelectionHighlight(nextSelection);
+            }
+        },
+        [ensureSelectionHighlight, ext],
+    );
+
+    const handleSurfaceContextMenuRequest = useCallback(() => {
+        if (Date.now() < suppressContextMenuUntilRef.current) {
             return;
         }
-        suppressSelectionCloseUntilRef.current = Date.now() + 250;
-        setOverflowOpen(false);
-        const nextSelection: SelectionSnapshot = {
-            text: nextText,
-            color: selection?.color || "amber",
-            rect: payload?.rect || null,
-            ...(payload?.anchor ? { anchor: payload.anchor } : {}),
-            ...(payload?.annotationId
-                ? { annotationId: payload.annotationId }
-                : {}),
-        };
-        setSelection(nextSelection);
-        if (!payload?.annotationId) {
-            void ensureSelectionHighlight(nextSelection);
+        if (
+            overlayRef.current ||
+            overflowOpenRef.current ||
+            selectionOpenRef.current ||
+            getLiveSelectionText()
+        ) {
+            return;
         }
-    };
+        if (platformLayoutRef.current === "desktop") {
+            setChromeVisible((prev) => !prev);
+        }
+    }, [getLiveSelectionText]);
 
     const handleSelectionColor = useCallback(
         async (color: string) => {
@@ -1479,24 +1510,7 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
-                    onContextMenuRequest={() => {
-                        if (
-                            Date.now() < suppressContextMenuUntilRef.current
-                        ) {
-                            return;
-                        }
-                        if (
-                            overlay ||
-                            overflowOpen ||
-                            selection ||
-                            getLiveSelectionText()
-                        ) {
-                            return;
-                        }
-                        if (platformLayout === "desktop") {
-                            setChromeVisible((prev) => !prev);
-                        }
-                    }}
+                    onContextMenuRequest={handleSurfaceContextMenuRequest}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     presentationMode={effectivePresentationMode}
@@ -1518,24 +1532,7 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
-                    onContextMenuRequest={() => {
-                        if (
-                            Date.now() < suppressContextMenuUntilRef.current
-                        ) {
-                            return;
-                        }
-                        if (
-                            overlay ||
-                            overflowOpen ||
-                            selection ||
-                            getLiveSelectionText()
-                        ) {
-                            return;
-                        }
-                        if (platformLayout === "desktop") {
-                            setChromeVisible((prev) => !prev);
-                        }
-                    }}
+                    onContextMenuRequest={handleSurfaceContextMenuRequest}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     onOpenContents={() => openContents("chapters")}
