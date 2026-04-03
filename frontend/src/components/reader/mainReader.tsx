@@ -52,6 +52,7 @@ import {
     type ReaderSelectionRect,
     type ReaderSurfaceHandle,
     type ReaderSurfaceState,
+    type ReaderTapZone,
 } from "./playBooksReaderShared";
 
 const API = axios.create({
@@ -542,9 +543,15 @@ export default function Reader({
     onAskRag,
     onBack,
 }: MainReaderProps) {
+    const shellRef = useRef<HTMLDivElement | null>(null);
     const surfaceRef = useRef<ReaderSurfaceHandle | null>(null);
     const wheelDeltaRef = useRef(0);
-    const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+    const touchGestureRef = useRef<{
+        x: number;
+        y: number;
+        time: number;
+        moved: boolean;
+    } | null>(null);
     const hideChromeTimeoutRef = useRef<number | null>(null);
     const modeHydratedRef = useRef<string | null>(null);
     const suppressContextMenuUntilRef = useRef(0);
@@ -558,6 +565,7 @@ export default function Reader({
     const overflowOpenRef = useRef(false);
     const selectionOpenRef = useRef(false);
     const platformLayoutRef = useRef<ReaderPlatformLayout>("desktop");
+    const suppressTouchTapUntilRef = useRef(0);
     const {
         isBootstrapping,
         manifest,
@@ -1088,6 +1096,7 @@ export default function Reader({
                 return;
             }
             suppressSelectionCloseUntilRef.current = Date.now() + 250;
+            suppressTouchTapUntilRef.current = Date.now() + 350;
             setOverflowOpen(false);
             const nextSelection: SelectionSnapshot = {
                 text: nextText,
@@ -1470,30 +1479,128 @@ export default function Reader({
         wheelDeltaRef.current = 0;
     };
 
+    const handleTapZoneRequest = useCallback(
+        (zone: ReaderTapZone) => {
+            suppressTouchTapUntilRef.current = Date.now() + 350;
+            if (overlay) return;
+            if (selection) {
+                if (Date.now() >= suppressSelectionCloseUntilRef.current) {
+                    closeSelection();
+                }
+                return;
+            }
+            if (overflowOpen) {
+                setOverflowOpen(false);
+                return;
+            }
+            if (zone === "left" && effectivePresentationMode === "paged") {
+                turnPrevPage();
+                return;
+            }
+            if (zone === "right" && effectivePresentationMode === "paged") {
+                turnNextPage();
+                return;
+            }
+            setChromeVisible((prev) => !prev);
+        },
+        [
+            closeSelection,
+            effectivePresentationMode,
+            overflowOpen,
+            overlay,
+            selection,
+            turnNextPage,
+            turnPrevPage,
+        ],
+    );
+
+    const resolveTapZone = useCallback((clientX: number): ReaderTapZone => {
+        const shell = shellRef.current;
+        if (!shell) {
+            return "center";
+        }
+        const rect = shell.getBoundingClientRect();
+        const localX = clientX - rect.left;
+        const edgeWidth = Math.min(120, Math.max(72, rect.width * 0.22));
+        if (localX <= edgeWidth) {
+            return "left";
+        }
+        if (localX >= rect.width - edgeWidth) {
+            return "right";
+        }
+        return "center";
+    }, []);
+
     const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
         const touch = event.touches[0];
         if (!touch) return;
-        touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+        touchGestureRef.current = {
+            x: touch.clientX,
+            y: touch.clientY,
+            time: Date.now(),
+            moved: false,
+        };
+    };
+
+    const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+        const touch = event.touches[0];
+        const current = touchGestureRef.current;
+        if (!touch || !current) return;
+        if (
+            Math.abs(touch.clientX - current.x) > 10 ||
+            Math.abs(touch.clientY - current.y) > 10
+        ) {
+            current.moved = true;
+        }
     };
 
     const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
-        if (!touchStartRef.current || overlay || selection) return;
-        if (effectivePresentationMode !== "paged") {
-            touchStartRef.current = null;
+        const gesture = touchGestureRef.current;
+        touchGestureRef.current = null;
+        if (!gesture) return;
+        const target = event.target as HTMLElement;
+        if (
+            target.closest("[data-reader-chrome='true']") ||
+            target.closest("[data-reader-overlay='true']")
+        ) {
             return;
         }
         const touch = event.changedTouches[0];
         if (!touch) return;
-        const deltaX = touch.clientX - touchStartRef.current.x;
-        const deltaY = touch.clientY - touchStartRef.current.y;
-        if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        if (Date.now() < suppressTouchTapUntilRef.current) {
+            return;
+        }
+        const deltaX = touch.clientX - gesture.x;
+        const deltaY = touch.clientY - gesture.y;
+        const liveSelectionText = getLiveSelectionText();
+        if (liveSelectionText) {
+            suppressTouchTapUntilRef.current = Date.now() + 350;
+            return;
+        }
+        if (
+            !overlay &&
+            !selection &&
+            effectivePresentationMode === "paged" &&
+            Math.abs(deltaX) > 60 &&
+            Math.abs(deltaX) > Math.abs(deltaY)
+        ) {
+            suppressTouchTapUntilRef.current = Date.now() + 350;
             if (deltaX < 0) {
                 turnNextPage();
             } else {
                 turnPrevPage();
             }
+            return;
         }
-        touchStartRef.current = null;
+        const isTap =
+            !gesture.moved &&
+            Math.abs(deltaX) < 10 &&
+            Math.abs(deltaY) < 10 &&
+            Date.now() - gesture.time < 320;
+        if (!isTap || !isMobileLayout) {
+            return;
+        }
+        handleTapZoneRequest(resolveTapZone(touch.clientX));
     };
 
     const renderSurface = () => {
@@ -1511,6 +1618,7 @@ export default function Reader({
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
                     onContextMenuRequest={handleSurfaceContextMenuRequest}
+                    onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     presentationMode={effectivePresentationMode}
@@ -1533,6 +1641,7 @@ export default function Reader({
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
                     onContextMenuRequest={handleSurfaceContextMenuRequest}
+                    onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     onOpenContents={() => openContents("chapters")}
@@ -1582,6 +1691,7 @@ export default function Reader({
                 annotations={annotations}
                 onAnnotationPress={handleAnnotationPress}
                 onVisibleNoteMarkersChange={setVisibleNoteMarkers}
+                onTapZoneRequest={handleTapZoneRequest}
                 searchQuery={activeSearchQuery}
                 showFocusPreview={showDesktopFocusPreview}
                 onOpenContents={() => openContents("chapters")}
@@ -1623,15 +1733,18 @@ export default function Reader({
 
     return (
         <div
+            ref={shellRef}
             className="relative h-full w-full overflow-hidden"
             style={{
                 backgroundColor: readerShellBackground,
                 filter: `brightness(${surfaceTheme.brightness})`,
                 fontFamily:
                     "'Google Sans', 'Roboto', 'Helvetica Neue', Arial, sans-serif",
+                touchAction: "manipulation",
             }}
             onWheel={handleWheel}
             onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onContextMenu={(event) => {
                 const target = event.target as HTMLElement;
@@ -1664,6 +1777,9 @@ export default function Reader({
                 }
             }}
             onClick={(event) => {
+                if (Date.now() < suppressTouchTapUntilRef.current) {
+                    return;
+                }
                 const target = event.target as HTMLElement;
                 if (
                     target.closest("[data-reader-chrome='true']") ||
@@ -1684,13 +1800,7 @@ export default function Reader({
                     setOverflowOpen(false);
                     return;
                 }
-                if (!isMobileLayout) {
-                    return;
-                }
-                if (isMobileLayout) {
-                    setChromeVisible((prev) => !prev);
-                    return;
-                }
+                if (isMobileLayout) return;
             }}
         >
             <div

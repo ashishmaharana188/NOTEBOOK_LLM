@@ -35,6 +35,8 @@ export interface ReaderSelectionPayload {
   annotationId?: string;
 }
 
+export type ReaderTapZone = "left" | "center" | "right";
+
 export interface ReaderNoteMarker {
   annotation: ReaderAnnotation;
   rect: ReaderSelectionRect;
@@ -58,6 +60,7 @@ export interface ReaderSurfaceCommonProps {
   onAnnotationPress?: (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null) => void;
   onVisibleNoteMarkersChange?: (markers: ReaderNoteMarker[]) => void;
   onContextMenuRequest?: () => void;
+  onTapZoneRequest?: (zone: ReaderTapZone) => void;
   showFocusPreview?: boolean;
   searchQuery?: string;
   onOpenContents?: () => void;

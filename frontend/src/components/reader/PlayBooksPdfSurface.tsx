@@ -78,8 +78,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       desktopLayout && pagedMode && settings.spread === "always";
     const desktopFocusPreview =
       desktopLayout && pagedMode && !spreadMode && showFocusPreview;
-    const contentPadding = desktopLayout ? 12 : 16;
-    const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
+    const contentPadding = desktopLayout ? 12 : 8;
+    const activeHeight = Math.max(
+      320,
+      viewport.height - (desktopLayout ? contentPadding * 2 : 28),
+    );
 
     useEffect(() => {
       const node = containerRef.current;
@@ -207,10 +210,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const usePeekLayout =
       desktopFocusPreview ||
       (!desktopLayout && pagedMode && viewport.width >= 1280);
+    const mobilePageWidth = Math.max(240, viewport.width - 24);
     const activeWidth = Math.max(
-      spreadMode ? 260 : desktopFocusPreview ? 420 : 420,
+      spreadMode ? 260 : desktopFocusPreview ? 420 : desktopLayout ? 420 : 240,
       Math.min(
-        spreadMode ? 620 : desktopFocusPreview ? 760 : desktopLayout ? 1180 : 960,
+        spreadMode
+          ? 620
+          : desktopFocusPreview
+            ? 760
+            : desktopLayout
+              ? 1180
+              : mobilePageWidth,
         Math.round(
           spreadMode
             ? (viewport.width - contentPadding * 2 - 28) / 2
@@ -221,7 +231,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                     ? 0.9
                     : usePeekLayout
                       ? 0.66
-                      : 0.82),
+                      : 0.94),
         ),
       ),
     );
@@ -276,7 +286,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         ? focusPreviewCardWidth
         : peekWidth;
       const sizeProps =
-        isActive && desktopLayout && pagedMode && !desktopFocusPreview
+        isActive && !desktopLayout && pagedMode
+          ? { height: Math.max(320, activeHeight - 12) }
+          : isActive && desktopLayout && pagedMode && !desktopFocusPreview
           ? { height: activeHeight }
           : focusPreviewPeek
             ? { width: peekPageWidth }
@@ -313,7 +325,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                 : "0px",
             display: "flex",
             justifyContent: focusPreviewPeek ? "center" : "center",
-            alignItems: focusPreviewPeek ? "center" : "flex-start",
+            alignItems:
+              focusPreviewPeek || !desktopLayout ? "center" : "flex-start",
             filter: pageToneFilter,
             backgroundColor:
               settings.theme === "dark"
@@ -402,7 +415,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           pagedMode
             ? desktopFocusPreview
               ? "items-center overflow-hidden"
-              : "items-start overflow-hidden"
+              : desktopLayout
+                ? "items-start overflow-hidden"
+                : "items-center overflow-hidden px-2 py-2"
             : "items-start overflow-x-hidden overflow-y-auto"
         }`}
         onMouseUp={handleSelection}
@@ -417,6 +432,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           .react-pdf__Page__textContent {
             user-select: text;
             -webkit-user-select: text;
+            touch-action: auto;
+            -webkit-touch-callout: default;
           }
           .react-pdf__Page__textContent ::selection,
           .react-pdf__Page__textContent span::selection {
@@ -460,7 +477,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                   ? desktopFocusPreview
                     ? "relative items-center justify-center overflow-hidden px-4"
                     : "items-start justify-center gap-7"
-                  : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
+                  : "max-w-[1720px] items-center justify-center overflow-hidden"
               }`}
               style={{
                 maxWidth: undefined,

@@ -328,9 +328,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
     const lineHeightPx = Math.max(fontSizePx * settings.lineHeight, fontSizePx + 16);
     const mobilePaged = !desktopLayout;
     const usePeekLayout = desktopFocusPreview || (mobilePaged && viewport.width >= 1100);
+    const mobileViewportWidth = Math.max(280, viewport.width - 20);
     const mobilePagedWidth = Math.max(
-      420,
-      Math.min(980, Math.round(viewport.width * (usePeekLayout ? 0.68 : 0.86))),
+      280,
+      Math.min(
+        Math.min(980, mobileViewportWidth),
+        Math.round(viewport.width * (usePeekLayout ? 0.68 : 0.94)),
+      ),
     );
     const contentColumnWidth = desktopLayout
       ? Math.max(
@@ -346,8 +350,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       : desktopLayout
         ? viewport.width
         : mobilePagedWidth;
-    const innerWidth = Math.max(320, desktopLayout ? (desktopFocusPreview ? planeWidth - 96 : contentColumnWidth) : planeWidth - 88);
-    const innerHeight = Math.max(420, viewport.height - (scrollMode ? 84 : desktopLayout ? (desktopFocusPreview ? 188 : 96) : 160));
+    const innerWidth = Math.max(
+      240,
+      desktopLayout
+        ? desktopFocusPreview
+          ? planeWidth - 96
+          : contentColumnWidth
+        : planeWidth - 40,
+    );
+    const innerHeight = Math.max(
+      360,
+      viewport.height - (scrollMode ? 84 : desktopLayout ? (desktopFocusPreview ? 188 : 96) : 112),
+    );
 
     useEffect(() => {
       const node = containerRef.current;
@@ -916,7 +930,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           className={`relative overflow-hidden ${isActive ? "opacity-100" : "opacity-72"}`}
           style={{
             width: isActive ? `${planeWidth}px` : `${Math.max(desktopFocusPreview ? 132 : 180, planeWidth * (desktopFocusPreview ? 0.22 : 0.28))}px`,
-            minHeight: `${Math.max(520, innerHeight + 92)}px`,
+            minHeight: `${Math.max(desktopLayout ? 520 : 380, innerHeight + (desktopLayout ? 92 : 48))}px`,
             color: inkColor,
             background: paperColor,
             borderRadius: "18px",
@@ -940,7 +954,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           <div
             className="mx-auto h-full w-full"
             style={{
-              padding: isActive ? "48px 48px 88px" : "40px 28px 72px",
+              padding: desktopLayout
+                ? isActive
+                  ? "48px 48px 88px"
+                  : "40px 28px 72px"
+                : isActive
+                  ? "26px 20px 56px"
+                  : "20px 16px 44px",
               background: paperColor,
             }}
           >

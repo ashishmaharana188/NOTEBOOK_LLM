@@ -20,6 +20,7 @@ import {
     type ReaderNoteMarker,
     type ReaderSurfaceCommonProps,
     type ReaderSurfaceHandle,
+    type ReaderTapZone,
 } from "./playBooksReaderShared";
 
 interface PlayBooksEpubSurfaceProps extends ReaderSurfaceCommonProps {
@@ -58,6 +59,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             onAnnotationPress,
             onVisibleNoteMarkersChange,
             onContextMenuRequest,
+            onTapZoneRequest,
             onOpenContents,
             settings,
             presentationMode,
@@ -72,6 +74,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const viewportRef = useRef<HTMLDivElement | null>(null);
         const onSelectionRef = useRef(onSelection);
         const onContextMenuRequestRef = useRef(onContextMenuRequest);
+        const onTapZoneRequestRef = useRef(onTapZoneRequest);
         const onAnnotationPressRef = useRef(onAnnotationPress);
         const onVisibleNoteMarkersChangeRef = useRef(
             onVisibleNoteMarkersChange,
@@ -80,6 +83,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const lastSelectedCfiRef = useRef("");
         const boundContextDocsRef = useRef(new WeakSet<Document>());
         const boundSelectionDocsRef = useRef(new WeakSet<Document>());
+        const boundMobileTapDocsRef = useRef(new WeakSet<Document>());
         const boundScrollTargetsRef = useRef(new WeakSet<EventTarget>());
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
@@ -106,6 +110,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         useEffect(() => {
             onContextMenuRequestRef.current = onContextMenuRequest;
         }, [onContextMenuRequest]);
+
+        useEffect(() => {
+            onTapZoneRequestRef.current = onTapZoneRequest;
+        }, [onTapZoneRequest]);
 
         useEffect(() => {
             onAnnotationPressRef.current = onAnnotationPress;
@@ -209,9 +217,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     : pagedMode
                       ? "hidden"
                       : "visible";
-                const pagedInlineInset = desktopLayout ? 10 : 1;
-                const pagedTopInset = desktopLayout ? 6 : 10;
-                const pagedBottomInset = desktopLayout ? 12 : 18;
+                const pagedInlineInset = desktopLayout ? 10 : 8;
+                const pagedTopInset = desktopLayout ? 6 : 8;
+                const pagedBottomInset = desktopLayout ? 12 : 14;
                 const desktopPagedBodyMaxWidth = "600px";
                 const scrollBodyMaxWidth = desktopLayout ? "760px" : "100%";
                 const scrollBodyPadding = desktopLayout
@@ -240,6 +248,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             scroll-behavior: smooth !important;
             overscroll-behavior: contain !important;
             -webkit-overflow-scrolling: touch !important;
+            touch-action: manipulation !important;
+            -webkit-text-size-adjust: 100% !important;
           }
           html::-webkit-scrollbar,
           body::-webkit-scrollbar,
@@ -279,6 +289,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             hyphens: auto !important;
             writing-mode: horizontal-tb !important;
             white-space: normal !important;
+            -webkit-user-select: text !important;
+            user-select: text !important;
+            -webkit-touch-callout: default !important;
           }
           section, article, main, div, p, blockquote, li, h1, h2, h3, h4, h5, h6 {
             max-width: none !important;
@@ -627,6 +640,113 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         );
                         doc.addEventListener("mouseup", finalizeIframeSelection);
                         doc.addEventListener("touchend", finalizeIframeSelection);
+                    }
+                    if (
+                        !desktopLayout &&
+                        doc &&
+                        !boundMobileTapDocsRef.current.has(doc)
+                    ) {
+                        boundMobileTapDocsRef.current.add(doc);
+                        let touchState:
+                            | {
+                                  x: number;
+                                  y: number;
+                                  time: number;
+                                  moved: boolean;
+                              }
+                            | null = null;
+                        const resolveTapZone = (
+                            clientX: number,
+                        ): ReaderTapZone => {
+                            const frameElement = contents?.window
+                                ?.frameElement as HTMLElement | null;
+                            const frameRect =
+                                frameElement?.getBoundingClientRect();
+                            if (!frameRect) {
+                                return "center";
+                            }
+                            const localX = clientX - frameRect.left;
+                            const edgeWidth = Math.min(
+                                120,
+                                Math.max(72, frameRect.width * 0.22),
+                            );
+                            if (localX <= edgeWidth) {
+                                return "left";
+                            }
+                            if (localX >= frameRect.width - edgeWidth) {
+                                return "right";
+                            }
+                            return "center";
+                        };
+                        const handleTouchStart = (event: TouchEvent) => {
+                            const touch = event.touches[0];
+                            if (!touch) return;
+                            touchState = {
+                                x: touch.clientX,
+                                y: touch.clientY,
+                                time: Date.now(),
+                                moved: false,
+                            };
+                        };
+                        const handleTouchMove = (event: TouchEvent) => {
+                            const touch = event.touches[0];
+                            if (!touchState || !touch) return;
+                            if (
+                                Math.abs(touch.clientX - touchState.x) > 10 ||
+                                Math.abs(touch.clientY - touchState.y) > 10
+                            ) {
+                                touchState.moved = true;
+                            }
+                        };
+                        const handleTouchEnd = (event: TouchEvent) => {
+                            const previousTouch = touchState;
+                            touchState = null;
+                            const touch = event.changedTouches[0];
+                            if (!previousTouch || !touch) return;
+                            const target = event.target as HTMLElement | null;
+                            if (
+                                target?.closest(
+                                    "a, button, input, textarea, select, [contenteditable='true']",
+                                )
+                            ) {
+                                return;
+                            }
+                            const selectedText = String(
+                                doc.getSelection?.()?.toString?.() || "",
+                            ).trim();
+                            if (selectedText) {
+                                return;
+                            }
+                            const deltaX = touch.clientX - previousTouch.x;
+                            const deltaY = touch.clientY - previousTouch.y;
+                            if (
+                                Math.abs(deltaX) > 60 &&
+                                Math.abs(deltaX) > Math.abs(deltaY)
+                            ) {
+                                onTapZoneRequestRef.current?.(
+                                    deltaX < 0 ? "right" : "left",
+                                );
+                                return;
+                            }
+                            const isTap =
+                                !previousTouch.moved &&
+                                Math.abs(deltaX) < 10 &&
+                                Math.abs(deltaY) < 10 &&
+                                Date.now() - previousTouch.time < 320;
+                            if (!isTap) return;
+                            onTapZoneRequestRef.current?.(
+                                resolveTapZone(touch.clientX),
+                            );
+                        };
+                        doc.addEventListener("touchstart", handleTouchStart, {
+                            passive: true,
+                        });
+                        doc.addEventListener("touchmove", handleTouchMove, {
+                            passive: true,
+                        });
+                        doc.addEventListener("touchend", handleTouchEnd, {
+                            passive: true,
+                        });
                     }
                     if (desktopSectionPaging) {
                         const scrollingElement =
@@ -1079,7 +1199,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 ? desktopFocusPreview
                     ? "18px 0 22px"
                     : "0 0 8px"
-                : "20px 20px 34px"
+                : "10px 10px 18px"
             : desktopLayout
               ? "24px 0 96px"
               : "20px 0 84px";
@@ -1294,7 +1414,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 ref={containerRef}
                 className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
                     pagedMode
-                        ? "items-center overflow-hidden"
+                        ? desktopLayout
+                            ? "items-center overflow-hidden"
+                            : "items-center overflow-hidden px-2 py-2"
                         : "items-start overflow-x-hidden overflow-y-auto pb-16 pt-12 sm:pb-24 sm:pt-16"
                 }`}
             >
@@ -1322,7 +1444,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         className={`relative mx-auto w-full ${
                             pagedMode
                                 ? showMobilePagedShell
-                                    ? "h-full min-h-0 max-w-[1040px] overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(15,23,42,0.1)]"
+                                    ? "h-full min-h-0 w-full max-w-[1040px] overflow-hidden rounded-[14px] shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:rounded-[18px] sm:shadow-[0_14px_32px_rgba(15,23,42,0.1)]"
                                     : "h-full min-h-0 overflow-hidden"
                                 : ""
                         }`}
