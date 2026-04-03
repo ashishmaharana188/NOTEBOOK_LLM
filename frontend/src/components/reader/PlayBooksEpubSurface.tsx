@@ -60,7 +60,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const [totalPages, setTotalPages] = useState(1);
         const [chapterLabel, setChapterLabel] = useState(book.title);
         const [currentHref, setCurrentHref] = useState("");
-        const [, setVisibleText] = useState("");
+        const [visibleText, setVisibleText] = useState("");
         const [viewportSize, setViewportSize] = useState({
             width: 0,
             height: 0,
@@ -778,10 +778,25 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             const visibleWidth = 136;
             const cardWidth = 420;
             const hiddenOffset = cardWidth - visibleWidth - 24;
+            const pageInsetStyle =
+                side === "left"
+                    ? {
+                          left: "236px",
+                          right: "28px",
+                      }
+                    : {
+                          left: "28px",
+                          right: "236px",
+                      };
+            const previewSeed = visibleText.trim() || chapterLabel || book.title;
+            const previewText =
+                side === "left"
+                    ? previewSeed.slice(0, 950)
+                    : previewSeed.slice(220, 1240) || previewSeed.slice(0, 950);
 
             return (
                 <div
-                    className="hidden shrink-0 overflow-hidden md:block"
+                    className="hidden overflow-hidden md:block"
                     style={{
                         width: `${visibleWidth}px`,
                         height: "88%",
@@ -827,17 +842,55 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         <div
                             style={{
                                 position: "absolute",
-                                top: "92px",
-                                left: "74px",
-                                right: "72px",
-                                bottom: "84px",
-                                opacity: settings.theme === "dark" ? 0.92 : 0.54,
-                                background:
+                                top: "54px",
+                                ...pageInsetStyle,
+                                bottom: "52px",
+                                overflow: "hidden",
+                                color:
                                     settings.theme === "dark"
-                                        ? "repeating-linear-gradient(180deg, rgba(255,255,255,0.98) 0, rgba(255,255,255,0.98) 3px, transparent 3px, transparent 28px)"
-                                        : "repeating-linear-gradient(180deg, rgba(17,24,39,0.78) 0, rgba(17,24,39,0.78) 2px, transparent 2px, transparent 24px)",
+                                        ? "#f3f4f6"
+                                        : settings.theme === "sepia"
+                                          ? "#3a2f20"
+                                          : "#171717",
+                                opacity: settings.theme === "dark" ? 0.96 : 0.74,
+                                fontFamily: settings.fontFamily,
+                                fontSize: `${Math.max(15, settings.fontSize * 0.17)}px`,
+                                lineHeight: 1.72,
+                                textAlign: settings.alignment === "left" ? "left" : "justify",
+                                wordBreak: "break-word",
+                                overflowWrap: "anywhere",
+                                whiteSpace: "normal",
                             }}
-                        />
+                        >
+                            <div
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "14px",
+                                }}
+                            >
+                                {previewText
+                                    .split(/\s+/)
+                                    .reduce<string[]>((lines, word) => {
+                                        if (!word) return lines;
+                                        const next = lines[lines.length - 1]
+                                            ? `${lines[lines.length - 1]} ${word}`
+                                            : word;
+                                        if (next.length > 22) {
+                                            lines.push(word);
+                                        } else if (lines.length) {
+                                            lines[lines.length - 1] = next;
+                                        } else {
+                                            lines.push(word);
+                                        }
+                                        return lines;
+                                    }, [])
+                                    .slice(0, 34)
+                                    .map((line, index) => (
+                                        <div key={`${side}-${index}`}>{line}</div>
+                                    ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
@@ -943,8 +996,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 }`}
             >
                 {desktopFocusPreview ? (
-                    <div className="flex h-full w-full items-center justify-center gap-8 overflow-hidden px-2 py-10 sm:px-4 sm:py-12">
-                        {renderDesktopPeekShell("left")}
+                    <div className="relative flex h-full w-full items-center justify-center overflow-hidden px-2 py-10 sm:px-4 sm:py-12">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 hidden items-center justify-start md:flex">
+                            {renderDesktopPeekShell("left")}
+                        </div>
                         <div
                             className="relative h-full min-h-0 shrink-0 overflow-hidden rounded-[18px] shadow-[0_18px_46px_rgba(15,23,42,0.12)]"
                             style={{
@@ -955,7 +1010,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         >
                             {epubViewNode}
                         </div>
-                        {renderDesktopPeekShell("right")}
+                        <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center justify-end md:flex">
+                            {renderDesktopPeekShell("right")}
+                        </div>
                     </div>
                 ) : (
                     <div

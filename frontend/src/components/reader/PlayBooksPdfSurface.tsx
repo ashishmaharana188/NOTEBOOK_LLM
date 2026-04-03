@@ -384,7 +384,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               className={`mx-auto flex w-full ${
                 desktopLayout
                   ? desktopFocusPreview
-                    ? "items-center justify-center gap-8 overflow-hidden px-4"
+                    ? "relative items-center justify-center overflow-hidden px-4"
                     : "items-start justify-center gap-7"
                   : "max-w-[1720px] items-center justify-center gap-6 overflow-hidden"
               }`}
@@ -401,17 +401,21 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                 </>
               ) : (
                 <>
-                  {desktopFocusPreview
-                    ? renderDesktopFocusPeekPage(pageNumber - 1, "left")
-                    : usePeekLayout
-                      ? renderPdfPage(pageNumber - 1, "peek")
-                      : null}
+                  {desktopFocusPreview ? (
+                    <div className="pointer-events-none absolute inset-y-0 left-0 hidden items-center justify-start md:flex">
+                      {renderDesktopFocusPeekPage(pageNumber - 1, "left")}
+                    </div>
+                  ) : usePeekLayout
+                    ? renderPdfPage(pageNumber - 1, "peek")
+                    : null}
                   {renderPdfPage(pageNumber, "active")}
-                  {desktopFocusPreview
-                    ? renderDesktopFocusPeekPage(pageNumber + 1, "right")
-                    : usePeekLayout
-                      ? renderPdfPage(pageNumber + 1, "peek")
-                      : null}
+                  {desktopFocusPreview ? (
+                    <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center justify-end md:flex">
+                      {renderDesktopFocusPeekPage(pageNumber + 1, "right")}
+                    </div>
+                  ) : usePeekLayout
+                    ? renderPdfPage(pageNumber + 1, "peek")
+                    : null}
                 </>
               )}
             </div>
