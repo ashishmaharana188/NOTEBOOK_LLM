@@ -25,6 +25,7 @@ import {
     swapVerticalOutline,
     textOutline,
     languageOutline,
+    documentTextOutline,
 } from "ionicons/icons";
 import type {
     MainReaderProps,
@@ -39,10 +40,12 @@ import PlayBooksTextSurface from "./PlayBooksTextSurface";
 import PlayBooksPdfSurface from "./PlayBooksPdfSurface";
 import PlayBooksEpubSurface from "./PlayBooksEpubSurface";
 import {
+    annotationHasAttachedNote,
     clamp,
     getReaderTheme,
     PLAY_BOOKS_FONTS,
     PLAY_BOOKS_THEMES,
+    type ReaderNoteMarker,
     type ReaderPlatformLayout,
     type ReaderPresentationMode,
     type ReaderSelectionPayload,
@@ -85,6 +88,14 @@ type OverlayMode =
 type ContentsTab = "chapters" | "bookmarks" | "notes";
 
 interface SelectionState {
+    text: string;
+    color: string;
+    rect?: ReaderSelectionRect | null;
+    anchor?: Record<string, any>;
+    annotationId?: string;
+}
+
+interface SelectionSnapshot {
     text: string;
     color: string;
     rect?: ReaderSelectionRect | null;
@@ -538,6 +549,10 @@ export default function Reader({
     const modeHydratedRef = useRef<string | null>(null);
     const suppressContextMenuUntilRef = useRef(0);
     const suppressSelectionCloseUntilRef = useRef(0);
+    const pendingHighlightKeyRef = useRef("");
+    const pendingHighlightPromiseRef = useRef<
+        Promise<ReaderAnnotation | null> | null
+    >(null);
     const {
         isBootstrapping,
         manifest,
@@ -551,6 +566,7 @@ export default function Reader({
         refreshBootstrap,
         setCurrentTextSection,
         createBookmark,
+        createAnnotation,
         updateAnnotation,
         deleteAnnotation,
         jumpToAnnotation,
@@ -597,6 +613,9 @@ export default function Reader({
     );
     const [noteDraft, setNoteDraft] = useState("");
     const [activeNote, setActiveNote] = useState<ReaderAnnotation | null>(null);
+    const [visibleNoteMarkers, setVisibleNoteMarkers] = useState<
+        ReaderNoteMarker[]
+    >([]);
     const [ragPrompt, setRagPrompt] = useState("");
     const getLiveSelectionText = useCallback(() => {
         try {
@@ -740,7 +759,7 @@ export default function Reader({
         : "desktop";
     const effectivePresentationMode: ReaderPresentationMode = "paged";
     const noteAnnotations = annotations.filter(
-        (annotation) => annotation.kind === "note",
+        (annotation) => annotation.kind !== "bookmark",
     );
     const bookmarkAnnotations = annotations.filter(
         (annotation) => annotation.kind === "bookmark",
@@ -825,14 +844,29 @@ export default function Reader({
         updateSetting("flow", "paginated");
     }, [updateSetting]);
 
-    const closeSelection = () => {
+    const closeSelection = useCallback(() => {
         setSelection(null);
         surfaceRef.current?.clearSelection?.();
         window.getSelection()?.removeAllRanges();
-    };
+    }, []);
+
+    const closeNoteOverlay = useCallback(() => {
+        setOverlay(null);
+        setActiveNote(null);
+        setNoteDraft("");
+        closeSelection();
+    }, [closeSelection]);
 
     const suppressContextMenu = useCallback((durationMs = 450) => {
         suppressContextMenuUntilRef.current = Date.now() + durationMs;
+    }, []);
+
+    const getSelectionKey = useCallback((value: SelectionSnapshot | null) => {
+        if (!value?.text?.trim()) return "";
+        return JSON.stringify({
+            text: value.text.trim(),
+            anchor: value.anchor || {},
+        });
     }, []);
 
     const prepareSelectionOverlay = useCallback(() => {
@@ -850,26 +884,31 @@ export default function Reader({
         closeSelection();
     };
 
-    const handleSurfaceSelection = (payload: ReaderSelectionPayload) => {
-        const nextText = String(payload?.text || "").trim();
-        if (!nextText) {
-            setSelection(null);
-            return;
-        }
-        suppressSelectionCloseUntilRef.current = Date.now() + 250;
-        setOverflowOpen(false);
-        setSelection((prev) => ({
-            text: nextText,
-            color: prev?.color || "amber",
-            rect: payload?.rect || null,
-            anchor: payload?.anchor || null,
-            annotationId: payload?.annotationId || undefined,
-        }));
-    };
+    const openExistingNote = useCallback(
+        (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null = null) => {
+            jumpToAnnotation(annotation);
+            setActiveNote(annotation);
+            setNoteDraft(annotation.note || "");
+            setSelection({
+                text: annotation.quote_text || "",
+                color: annotation.color || "amber",
+                rect,
+                anchor: annotation.anchor || {},
+                annotationId: annotation.annotation_id,
+            });
+            setOverflowOpen(false);
+            setOverlay("note");
+        },
+        [jumpToAnnotation],
+    );
 
     const handleAnnotationPress = useCallback(
         (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null) => {
             suppressSelectionCloseUntilRef.current = Date.now() + 250;
+            if (annotationHasAttachedNote(annotation)) {
+                openExistingNote(annotation, rect);
+                return;
+            }
             setSelection({
                 text: annotation.quote_text || "",
                 color: annotation.color || "amber",
@@ -878,39 +917,40 @@ export default function Reader({
                 annotationId: annotation.annotation_id,
             });
         },
-        [],
+        [openExistingNote],
     );
 
     const createHighlightAnnotation = useCallback(
-        async (color: string) => {
-            if (!book?.filename || !selection?.text?.trim()) return null;
+        async (
+            color: string,
+            targetSelection?: SelectionSnapshot | null,
+        ) => {
+            const source = targetSelection || selection;
+            if (!source?.text?.trim()) return null;
             const anchor = {
                 location: currentLocationPayload.location,
                 location_type: currentLocationPayload.locationType || "",
                 view_state: currentLocationPayload.viewState || {},
                 progress_percent: currentLocationPayload.progressPercent || 0,
-                ...(selection.anchor || {}),
+                ...(source.anchor || {}),
             };
-            const response = await API.post(
-                `/reader/books/${encodeURIComponent(book.filename)}/annotations`,
-                {
-                    lid: book.lid || "",
-                    format: book.extension || "",
-                    anchor,
-                    quote_text: selection.text.trim(),
-                    title: surfaceState.chapterLabel || surfaceState.pageLabel || book.title,
-                    note: "",
-                    color,
-                    kind: "highlight",
-                    page_label: surfaceState.pageLabel || "",
-                    chapter_label: surfaceState.chapterLabel || "",
-                },
-            );
-            const created = response.data?.data as ReaderAnnotation | undefined;
+            const created = await createAnnotation({
+                anchor,
+                quote_text: source.text.trim(),
+                title:
+                    surfaceState.chapterLabel ||
+                    surfaceState.pageLabel ||
+                    book.title,
+                note: "",
+                color,
+                kind: "highlight",
+                page_label: surfaceState.pageLabel || "",
+                chapter_label: surfaceState.chapterLabel || "",
+            });
             if (created) {
-                await refreshBootstrap();
+                const sourceKey = getSelectionKey(source);
                 setSelection((prev) =>
-                    prev
+                    prev && getSelectionKey(prev) === sourceKey
                         ? {
                               ...prev,
                               color: created.color || color,
@@ -920,23 +960,122 @@ export default function Reader({
                         : prev,
                 );
             }
-            return created || null;
+            return created;
         },
         [
-            book?.extension,
-            book?.filename,
-            book?.lid,
             book?.title,
+            createAnnotation,
             currentLocationPayload.location,
             currentLocationPayload.locationType,
             currentLocationPayload.progressPercent,
             currentLocationPayload.viewState,
-            refreshBootstrap,
+            getSelectionKey,
             selection,
             surfaceState.chapterLabel,
             surfaceState.pageLabel,
         ],
     );
+
+    const ensureSelectionHighlight = useCallback(
+        async (
+            targetSelection: SelectionSnapshot | null,
+            preferredColor?: string,
+        ) => {
+            if (!targetSelection?.text?.trim()) return null;
+            if (targetSelection.annotationId) {
+                if (
+                    preferredColor &&
+                    preferredColor !== targetSelection.color
+                ) {
+                    await updateAnnotation(targetSelection.annotationId, {
+                        color: preferredColor,
+                    });
+                    setSelection((prev) =>
+                        prev &&
+                        prev.annotationId === targetSelection.annotationId
+                            ? { ...prev, color: preferredColor }
+                            : prev,
+                    );
+                }
+                return (
+                    annotations.find(
+                        (annotation) =>
+                            annotation.annotation_id ===
+                            targetSelection.annotationId,
+                    ) || null
+                );
+            }
+
+            const selectionKey = getSelectionKey(targetSelection);
+            if (!selectionKey) return null;
+
+            if (
+                pendingHighlightPromiseRef.current &&
+                pendingHighlightKeyRef.current === selectionKey
+            ) {
+                const created = await pendingHighlightPromiseRef.current;
+                if (
+                    created?.annotation_id &&
+                    preferredColor &&
+                    preferredColor !== created.color
+                ) {
+                    await updateAnnotation(created.annotation_id, {
+                        color: preferredColor,
+                    });
+                    setSelection((prev) =>
+                        prev && getSelectionKey(prev) === selectionKey
+                            ? { ...prev, color: preferredColor }
+                            : prev,
+                    );
+                }
+                return created;
+            }
+
+            pendingHighlightKeyRef.current = selectionKey;
+            const request = createHighlightAnnotation(
+                preferredColor || targetSelection.color || "amber",
+                targetSelection,
+            );
+            pendingHighlightPromiseRef.current = request;
+            try {
+                return await request;
+            } finally {
+                if (pendingHighlightKeyRef.current === selectionKey) {
+                    pendingHighlightKeyRef.current = "";
+                    pendingHighlightPromiseRef.current = null;
+                }
+            }
+        },
+        [
+            annotations,
+            createHighlightAnnotation,
+            getSelectionKey,
+            updateAnnotation,
+        ],
+    );
+
+    const handleSurfaceSelection = (payload: ReaderSelectionPayload) => {
+        const nextText = String(payload?.text || "").trim();
+        if (!nextText) {
+            setSelection(null);
+            return;
+        }
+        suppressSelectionCloseUntilRef.current = Date.now() + 250;
+        setOverflowOpen(false);
+        const nextSelection: SelectionSnapshot = {
+            text: nextText,
+            color: selection?.color || "amber",
+            rect: payload?.rect || null,
+            ...(payload?.anchor ? { anchor: payload.anchor } : {}),
+            ...(payload?.annotationId
+                ? { annotationId: payload.annotationId }
+                : {}),
+        };
+        setSelection(nextSelection);
+        if (!payload?.annotationId) {
+            void ensureSelectionHighlight(nextSelection);
+        }
+    };
 
     const handleSelectionColor = useCallback(
         async (color: string) => {
@@ -950,14 +1089,14 @@ export default function Reader({
                 return;
             }
             try {
-                await createHighlightAnnotation(color);
+                await ensureSelectionHighlight(selection, color);
                 surfaceRef.current?.clearSelection?.();
                 window.getSelection()?.removeAllRanges();
             } catch (error) {
                 console.error("Reader highlight save failed", error);
             }
         },
-        [createHighlightAnnotation, selection, updateAnnotation],
+        [ensureSelectionHighlight, selection, updateAnnotation],
     );
 
     const deleteSelectedHighlight = useCallback(async () => {
@@ -1112,6 +1251,7 @@ export default function Reader({
         const noteTitle =
             surfaceState.chapterLabel || quoteText.slice(0, 64) || book.title;
         const baseAnchor = {
+            ...(selection?.anchor || {}),
             location: currentLocationPayload.location,
             location_type: currentLocationPayload.locationType || "",
             view_state: currentLocationPayload.viewState || {},
@@ -1121,19 +1261,31 @@ export default function Reader({
         };
 
         try {
-            const selectedAnnotation =
+            let selectedAnnotation =
                 activeNote ||
                 annotations.find(
                     (annotation) =>
                         annotation.annotation_id === selection?.annotationId,
                 ) ||
                 null;
+            if (!selectedAnnotation && selection?.text?.trim()) {
+                selectedAnnotation = await ensureSelectionHighlight(
+                    selection,
+                    selection.color || "amber",
+                );
+            }
+
+            if (!selectedAnnotation) {
+                return;
+            }
+
+            const shouldAttachNote = Boolean(noteDraft.trim());
             let linkedNoteId =
                 typeof selectedAnnotation?.anchor?.linked_note_id === "string"
                     ? selectedAnnotation.anchor.linked_note_id
                     : "";
 
-            if (linkedNoteId) {
+            if (shouldAttachNote && linkedNoteId) {
                 await API.put("/notes/item/update", {
                     note_id: linkedNoteId,
                     title: noteTitle,
@@ -1141,7 +1293,7 @@ export default function Reader({
                     tags: "reader",
                     group_id: null,
                 });
-            } else {
+            } else if (shouldAttachNote) {
                 const noteResponse = await API.post("/notes/item/create", {
                     group_id: null,
                     title: noteTitle,
@@ -1152,46 +1304,21 @@ export default function Reader({
                 linkedNoteId = String(noteResponse.data?.note_id || "");
             }
 
-            if (selectedAnnotation) {
-                await API.put(
-                    `/reader/annotations/${selectedAnnotation.annotation_id}`,
-                    {
-                        anchor: {
-                            ...(selectedAnnotation.anchor || {}),
-                            ...baseAnchor,
-                            linked_note_id: linkedNoteId,
-                        },
-                        quote_text: quoteText,
-                        title: noteTitle,
-                        note: noteDraft,
-                        color:
-                            selection?.color ||
-                            selectedAnnotation.color ||
-                            "amber",
-                        kind: "note",
-                        page_label: surfaceState.pageLabel,
-                        chapter_label: surfaceState.chapterLabel,
-                    },
-                );
-            } else {
-                await API.post(
-                    `/reader/books/${encodeURIComponent(book.filename)}/annotations`,
-                    {
-                        lid: book.lid || "",
-                        format: book.extension || "",
-                        anchor: { ...baseAnchor, linked_note_id: linkedNoteId },
-                        quote_text: quoteText,
-                        title: noteTitle,
-                        note: noteDraft,
-                        color: selection?.color || "amber",
-                        kind: "note",
-                        page_label: surfaceState.pageLabel,
-                        chapter_label: surfaceState.chapterLabel,
-                    },
-                );
-            }
-
-            await refreshBootstrap();
+            await updateAnnotation(selectedAnnotation.annotation_id, {
+                anchor: {
+                    ...(selectedAnnotation.anchor || {}),
+                    ...baseAnchor,
+                    ...(linkedNoteId ? { linked_note_id: linkedNoteId } : {}),
+                },
+                quote_text: quoteText,
+                title: noteTitle,
+                note: shouldAttachNote ? noteDraft : "",
+                color:
+                    selection?.color || selectedAnnotation.color || "amber",
+                kind: shouldAttachNote ? "note" : "highlight",
+                page_label: surfaceState.pageLabel,
+                chapter_label: surfaceState.chapterLabel,
+            });
             setOverlay(null);
             setActiveNote(null);
             setNoteDraft("");
@@ -1210,8 +1337,7 @@ export default function Reader({
             if (linkedNoteId) {
                 await API.delete(`/notes/item/${linkedNoteId}`);
             }
-            await API.delete(`/reader/annotations/${activeNote.annotation_id}`);
-            await refreshBootstrap();
+            await deleteAnnotation(activeNote.annotation_id);
             setOverlay(null);
             setActiveNote(null);
             setNoteDraft("");
@@ -1221,30 +1347,21 @@ export default function Reader({
         }
     };
 
-    const openNewNote = () => {
+    const openNewNote = async () => {
         if (!selection?.text) return;
+        const ensuredAnnotation = await ensureSelectionHighlight(
+            selection,
+            selection.color || "amber",
+        );
         prepareSelectionOverlay();
         const existing =
+            ensuredAnnotation ||
             annotations.find(
                 (annotation) =>
                     annotation.annotation_id === selection.annotationId,
             ) || null;
         setActiveNote(existing);
         setNoteDraft(existing?.note || "");
-        setOverlay("note");
-    };
-
-    const openExistingNote = (annotation: ReaderAnnotation) => {
-        jumpToAnnotation(annotation);
-        setActiveNote(annotation);
-        setNoteDraft(annotation.note || "");
-        setSelection({
-            text: annotation.quote_text || "",
-            color: annotation.color || "amber",
-            anchor: annotation.anchor || {},
-            annotationId: annotation.annotation_id,
-        });
-        setOverflowOpen(false);
         setOverlay("note");
     };
 
@@ -1359,6 +1476,7 @@ export default function Reader({
                     onSelection={handleSurfaceSelection}
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
+                    onVisibleNoteMarkersChange={setVisibleNoteMarkers}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     presentationMode={effectivePresentationMode}
@@ -1379,6 +1497,7 @@ export default function Reader({
                     onSelection={handleSurfaceSelection}
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
+                    onVisibleNoteMarkersChange={setVisibleNoteMarkers}
                     onContextMenuRequest={() => {
                         if (
                             Date.now() < suppressContextMenuUntilRef.current
@@ -1445,6 +1564,7 @@ export default function Reader({
                 onSelection={handleSurfaceSelection}
                 annotations={annotations}
                 onAnnotationPress={handleAnnotationPress}
+                onVisibleNoteMarkersChange={setVisibleNoteMarkers}
                 searchQuery={activeSearchQuery}
                 showFocusPreview={showDesktopFocusPreview}
                 onOpenContents={() => openContents("chapters")}
@@ -1479,6 +1599,10 @@ export default function Reader({
         1,
         Math.max(surfaceState.totalPages, 1),
     );
+    const viewportWidth =
+        typeof window === "undefined" ? 1440 : window.innerWidth;
+    const viewportHeight =
+        typeof window === "undefined" ? 900 : window.innerHeight;
 
     return (
         <div
@@ -1652,6 +1776,74 @@ export default function Reader({
             </div>
 
             <div className="relative z-[5] h-full">{renderSurface()}</div>
+
+            {visibleNoteMarkers.length ? (
+                <div className="pointer-events-none fixed inset-0 z-[18]">
+                    {visibleNoteMarkers.map(({ annotation, rect }) => {
+                        const markerSize = 28;
+                        const prefersLeft = rect.left >= 48;
+                        const left = prefersLeft
+                            ? Math.max(8, rect.left - 36)
+                            : Math.min(
+                                  viewportWidth - markerSize - 8,
+                                  rect.right + 8,
+                              );
+                        const top = Math.max(
+                            8,
+                            Math.min(
+                                viewportHeight - markerSize - 8,
+                                rect.top + rect.height / 2 - markerSize / 2,
+                            ),
+                        );
+
+                        return (
+                            <button
+                                key={annotation.annotation_id}
+                                type="button"
+                                data-reader-chrome="true"
+                                className="pointer-events-auto fixed inline-flex items-center justify-center rounded-[9px] border shadow-[0_8px_18px_rgba(15,23,42,0.14)]"
+                                style={{
+                                    left: `${left}px`,
+                                    top: `${top}px`,
+                                    width: `${markerSize}px`,
+                                    height: `${markerSize}px`,
+                                    borderColor:
+                                        settings.theme === "dark"
+                                            ? "rgba(255,255,255,0.12)"
+                                            : "rgba(166,140,42,0.28)",
+                                    background:
+                                        settings.theme === "dark"
+                                            ? "rgba(23,26,32,0.94)"
+                                            : "rgba(255,255,255,0.96)",
+                                    color:
+                                        annotation.color === "orange"
+                                            ? "#df6b41"
+                                            : annotation.color === "green"
+                                              ? "#6f9f38"
+                                              : annotation.color === "blue"
+                                                ? "#2f9fb4"
+                                                : "#c99812",
+                                }}
+                                onPointerDown={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                }}
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    openExistingNote(annotation, rect);
+                                }}
+                                aria-label={`Open note for ${annotation.title || "highlight"}`}
+                            >
+                                <IonIcon
+                                    icon={documentTextOutline}
+                                    className="text-[1rem]"
+                                />
+                            </button>
+                        );
+                    })}
+                </div>
+            ) : null}
 
             <div
                 data-reader-chrome="true"
@@ -2384,6 +2576,10 @@ export default function Reader({
                 <div
                     data-reader-overlay="true"
                     className="absolute inset-0 z-[80] flex items-end justify-center bg-black/10 px-3 pb-3 pt-20 sm:px-6 sm:pb-8"
+                    onClick={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        closeNoteOverlay();
+                    }}
                     onContextMenu={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -2462,8 +2658,7 @@ export default function Reader({
                                         if (activeNote) {
                                             void deleteNoteRecord();
                                         } else {
-                                            setOverlay(null);
-                                            closeSelection();
+                                            closeNoteOverlay();
                                         }
                                     }}
                                     className="rounded-full border border-[#6d7382] bg-white px-6 py-2.5 text-[0.96rem] text-[#5670b5]"

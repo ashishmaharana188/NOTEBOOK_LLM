@@ -388,6 +388,50 @@ export function useReaderSession(book: ReaderBook | null) {
         }
     }, [annotations?.length, book?.extension, book?.filename, book?.lid]);
 
+    const createAnnotation = useCallback(
+        async (
+            payload: Pick<
+                ReaderAnnotation,
+                | "anchor"
+                | "quote_text"
+                | "title"
+                | "note"
+                | "color"
+                | "kind"
+                | "page_label"
+                | "chapter_label"
+            >,
+        ) => {
+            if (!book?.filename) return null;
+            try {
+                const response = await API.post(
+                    `/reader/books/${encodeURIComponent(book.filename)}/annotations`,
+                    {
+                        lid: book.lid || "",
+                        format: book.extension || "",
+                        anchor: payload.anchor || {},
+                        quote_text: payload.quote_text || "",
+                        title: payload.title || "",
+                        note: payload.note || "",
+                        color: payload.color || "amber",
+                        kind: payload.kind || "highlight",
+                        page_label: payload.page_label || "",
+                        chapter_label: payload.chapter_label || "",
+                    },
+                );
+                const created = response.data?.data as ReaderAnnotation;
+                if (created) {
+                    setAnnotations((prev) => [...prev, created]);
+                    return created;
+                }
+            } catch (error) {
+                console.error("Create annotation failed", error);
+            }
+            return null;
+        },
+        [book?.extension, book?.filename, book?.lid],
+    );
+
     const updateAnnotation = useCallback(
         async (
             annotationId: string,
@@ -686,6 +730,7 @@ export function useReaderSession(book: ReaderBook | null) {
         setCurrentTextSection,
         loadTextSections,
         createBookmark,
+        createAnnotation,
         updateAnnotation,
         deleteAnnotation,
         jumpToAnnotation,

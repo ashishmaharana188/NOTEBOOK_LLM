@@ -15,8 +15,10 @@ import type {
   ReaderSearchResult,
 } from "../../types/readerBackendTypes";
 import {
+  annotationHasAttachedNote,
   clamp,
   normalizeAlignment,
+  type ReaderNoteMarker,
   type ReaderSelectionPayload,
   type ReaderSurfaceCommonProps,
   type ReaderSurfaceHandle,
@@ -298,6 +300,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       onSelection,
       annotations = [],
       onAnnotationPress,
+      onVisibleNoteMarkersChange,
       searchQuery = "",
       showFocusPreview = false,
       onOpenContents,
@@ -390,6 +393,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           return Number(annotation.anchor?.section_index) === currentSectionIndex;
         }),
       [annotations, currentSectionIndex],
+    );
+    const sectionNoteAnnotations = useMemo(
+      () =>
+        sectionAnnotations.filter((annotation) =>
+          annotationHasAttachedNote(annotation),
+        ),
+      [sectionAnnotations],
     );
 
     const safePageIndex = clamp(activePageIndex, 0, Math.max(pages.length - 1, 0));
@@ -565,6 +575,77 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       activePageIndex,
       content,
       getPageText,
+    ]);
+
+    useEffect(() => {
+      if (!onVisibleNoteMarkersChange) return;
+
+      const emitVisibleNoteMarkers = () => {
+        const container = containerRef.current;
+        if (!container || !sectionNoteAnnotations.length) {
+          onVisibleNoteMarkersChange([]);
+          return;
+        }
+
+        const containerRect = container.getBoundingClientRect();
+        const nextMarkers: ReaderNoteMarker[] = [];
+        const seen = new Set<string>();
+        const nodes = Array.from(
+          container.querySelectorAll("[data-reader-annotation-id]"),
+        ) as HTMLElement[];
+
+        nodes.forEach((node) => {
+          const annotationId = String(node.dataset.readerAnnotationId || "");
+          if (!annotationId || seen.has(annotationId)) return;
+          const annotation = sectionNoteAnnotations.find(
+            (item) => item.annotation_id === annotationId,
+          );
+          if (!annotation) return;
+          const rect = node.getBoundingClientRect();
+          const isVisible =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom >= containerRect.top &&
+            rect.top <= containerRect.bottom;
+          if (!isVisible) return;
+          seen.add(annotationId);
+          nextMarkers.push({
+            annotation,
+            rect: {
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom,
+              width: rect.width,
+              height: rect.height,
+            },
+          });
+        });
+
+        onVisibleNoteMarkersChange(nextMarkers);
+      };
+
+      const frame = window.requestAnimationFrame(emitVisibleNoteMarkers);
+      const handleSync = () => {
+        window.requestAnimationFrame(emitVisibleNoteMarkers);
+      };
+      const container = containerRef.current;
+      container?.addEventListener("scroll", handleSync, { passive: true });
+      window.addEventListener("resize", handleSync);
+
+      return () => {
+        window.cancelAnimationFrame(frame);
+        container?.removeEventListener("scroll", handleSync);
+        window.removeEventListener("resize", handleSync);
+        onVisibleNoteMarkersChange([]);
+      };
+    }, [
+      activePageIndex,
+      content,
+      currentSectionIndex,
+      onVisibleNoteMarkersChange,
+      scrollMode,
+      sectionNoteAnnotations,
     ]);
 
     const selectText = () => {
@@ -796,6 +877,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
     );
 
     const renderPageText = (page: PageMeta | null) => {
+      if (!page) {
+        return <div className="text-lg text-slate-400">No content available.</div>;
+      }
       const pageText = getPageText(page);
       if (!pageText) {
         return <div className="text-lg text-slate-400">No content available.</div>;

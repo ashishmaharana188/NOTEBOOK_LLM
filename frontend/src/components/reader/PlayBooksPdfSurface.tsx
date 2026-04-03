@@ -15,7 +15,9 @@ import type {
   ReaderSearchResult,
 } from "../../types/readerBackendTypes";
 import {
+  annotationHasAttachedNote,
   clamp,
+  type ReaderNoteMarker,
   type ReaderSelectionPayload,
   type ReaderSurfaceCommonProps,
   type ReaderSurfaceHandle,
@@ -106,6 +108,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onSelection,
       annotations = [],
       onAnnotationPress,
+      onVisibleNoteMarkersChange,
       searchQuery = "",
       presentationMode,
       platformLayout,
@@ -131,6 +134,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       desktopLayout && pagedMode && !spreadMode && showFocusPreview;
     const contentPadding = desktopLayout ? 12 : 16;
     const activeHeight = Math.max(320, viewport.height - contentPadding * 2);
+    const noteAnnotations = useMemo(
+      () => annotations.filter((annotation) => annotationHasAttachedNote(annotation)),
+      [annotations],
+    );
 
     useEffect(() => {
       const node = containerRef.current;
@@ -280,6 +287,78 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       node.addEventListener("click", handleClick, true);
       return () => node.removeEventListener("click", handleClick, true);
     }, [annotations, onAnnotationPress]);
+
+    useEffect(() => {
+      if (!onVisibleNoteMarkersChange) return;
+
+      const emitVisibleNoteMarkers = () => {
+        const container = containerRef.current;
+        if (!container || !noteAnnotations.length) {
+          onVisibleNoteMarkersChange([]);
+          return;
+        }
+
+        const containerRect = container.getBoundingClientRect();
+        const nextMarkers: ReaderNoteMarker[] = [];
+        const seen = new Set<string>();
+        const nodes = Array.from(
+          container.querySelectorAll("[data-reader-annotation-id]"),
+        ) as HTMLElement[];
+
+        nodes.forEach((node) => {
+          const annotationId = String(node.dataset.readerAnnotationId || "");
+          if (!annotationId || seen.has(annotationId)) return;
+          const annotation = noteAnnotations.find(
+            (item) => item.annotation_id === annotationId,
+          );
+          if (!annotation) return;
+          const rect = node.getBoundingClientRect();
+          const isVisible =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom >= containerRect.top &&
+            rect.top <= containerRect.bottom;
+          if (!isVisible) return;
+          seen.add(annotationId);
+          nextMarkers.push({
+            annotation,
+            rect: {
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom,
+              width: rect.width,
+              height: rect.height,
+            },
+          });
+        });
+
+        onVisibleNoteMarkersChange(nextMarkers);
+      };
+
+      const frame = window.requestAnimationFrame(emitVisibleNoteMarkers);
+      const handleSync = () => {
+        window.requestAnimationFrame(emitVisibleNoteMarkers);
+      };
+      const container = containerRef.current;
+      container?.addEventListener("scroll", handleSync, { passive: true });
+      window.addEventListener("resize", handleSync);
+
+      return () => {
+        window.cancelAnimationFrame(frame);
+        container?.removeEventListener("scroll", handleSync);
+        window.removeEventListener("resize", handleSync);
+        onVisibleNoteMarkersChange([]);
+      };
+    }, [
+      noteAnnotations,
+      onVisibleNoteMarkersChange,
+      pageNumber,
+      pageTexts,
+      presentationMode,
+      viewport.height,
+      viewport.width,
+    ]);
 
     const capturePageText = (
       pageIndex: number,

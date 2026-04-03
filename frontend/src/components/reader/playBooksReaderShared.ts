@@ -35,6 +35,11 @@ export interface ReaderSelectionPayload {
   annotationId?: string;
 }
 
+export interface ReaderNoteMarker {
+  annotation: ReaderAnnotation;
+  rect: ReaderSelectionRect;
+}
+
 export interface ReaderSurfaceHandle {
   prev: () => void;
   next: () => void;
@@ -51,6 +56,7 @@ export interface ReaderSurfaceCommonProps {
   onSelection?: (payload: ReaderSelectionPayload) => void;
   annotations?: ReaderAnnotation[];
   onAnnotationPress?: (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null) => void;
+  onVisibleNoteMarkersChange?: (markers: ReaderNoteMarker[]) => void;
   onContextMenuRequest?: () => void;
   showFocusPreview?: boolean;
   searchQuery?: string;
@@ -99,4 +105,12 @@ export function normalizeAlignment(
   alignment: ReaderSettings["alignment"],
 ): "left" | "justify" {
   return alignment === "left" ? "left" : "justify";
+}
+
+export function annotationHasAttachedNote(annotation: ReaderAnnotation) {
+  return (
+    annotation.kind === "note" ||
+    Boolean(String(annotation.note || "").trim()) ||
+    Boolean(String(annotation.anchor?.linked_note_id || "").trim())
+  );
 }

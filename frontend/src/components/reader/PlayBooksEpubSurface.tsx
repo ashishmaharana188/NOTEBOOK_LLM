@@ -16,6 +16,8 @@ import type {
     TocItem,
 } from "../../types/readerBackendTypes";
 import {
+    annotationHasAttachedNote,
+    type ReaderNoteMarker,
     type ReaderSurfaceCommonProps,
     type ReaderSurfaceHandle,
 } from "./playBooksReaderShared";
@@ -54,6 +56,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             onSelection,
             annotations = [],
             onAnnotationPress,
+            onVisibleNoteMarkersChange,
             onContextMenuRequest,
             onOpenContents,
             settings,
@@ -70,6 +73,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const onSelectionRef = useRef(onSelection);
         const onContextMenuRequestRef = useRef(onContextMenuRequest);
         const onAnnotationPressRef = useRef(onAnnotationPress);
+        const onVisibleNoteMarkersChangeRef = useRef(
+            onVisibleNoteMarkersChange,
+        );
         const appliedHighlightCfisRef = useRef<string[]>([]);
         const lastSelectedCfiRef = useRef("");
         const [location, setLocation] = useState<string | number | null>(
@@ -101,6 +107,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         useEffect(() => {
             onAnnotationPressRef.current = onAnnotationPress;
         }, [onAnnotationPress]);
+
+        useEffect(() => {
+            onVisibleNoteMarkersChangeRef.current = onVisibleNoteMarkersChange;
+        }, [onVisibleNoteMarkersChange]);
 
         const getActiveContents = useCallback(() => {
             const contents = renditionRef.current?.getContents?.() || [];
@@ -582,15 +592,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                           height: resolvedRect.height,
                                       }
                                     : null,
-                            anchor: lastSelectedCfiRef.current
+                            ...(lastSelectedCfiRef.current
                                 ? {
-                                      cfi_range: lastSelectedCfiRef.current,
-                                      href: String(
-                                          renditionRef.current?.currentLocation?.()?.start
-                                              ?.href || "",
-                                      ),
+                                      anchor: {
+                                          cfi_range: lastSelectedCfiRef.current,
+                                          href: String(
+                                              renditionRef.current?.currentLocation?.()?.start
+                                                  ?.href || "",
+                                          ),
+                                      },
                                   }
-                                : undefined,
+                                : {}),
                         });
                     };
                     if (platformLayout === "desktop" && doc) {
@@ -831,6 +843,98 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 String(annotation.anchor?.cfi_range || ""),
             );
         }, [annotations, currentHref]);
+
+        useEffect(() => {
+            const emitVisibleNoteMarkers = () => {
+                const onChange = onVisibleNoteMarkersChangeRef.current;
+                const rendition = renditionRef.current;
+                const activeContents = rendition?.getContents?.()?.[0];
+                const frameElement = activeContents?.window?.frameElement as
+                    | HTMLElement
+                    | null;
+                const iframeRect = frameElement?.getBoundingClientRect();
+
+                if (!onChange || !rendition || !iframeRect) {
+                    onChange?.([]);
+                    return;
+                }
+
+                const nextMarkers: ReaderNoteMarker[] = [];
+                const seen = new Set<string>();
+                const baseCurrentHref = String(currentHref || "").replace(
+                    /#.*$/,
+                    "",
+                );
+
+                annotations.forEach((annotation) => {
+                    if (
+                        seen.has(annotation.annotation_id) ||
+                        !annotationHasAttachedNote(annotation)
+                    ) {
+                        return;
+                    }
+                    const cfiRange = String(annotation.anchor?.cfi_range || "");
+                    if (!cfiRange) return;
+                    const anchorHref = String(annotation.anchor?.href || "").replace(
+                        /#.*$/,
+                        "",
+                    );
+                    if (
+                        anchorHref &&
+                        baseCurrentHref &&
+                        anchorHref !== baseCurrentHref
+                    ) {
+                        return;
+                    }
+                    const range = rendition.getRange?.(cfiRange);
+                    const localRect =
+                        range?.getBoundingClientRect?.() ||
+                        range?.getClientRects?.()?.item?.(0) ||
+                        null;
+                    if (
+                        !localRect ||
+                        (localRect.width <= 0 && localRect.height <= 0)
+                    ) {
+                        return;
+                    }
+                    seen.add(annotation.annotation_id);
+                    nextMarkers.push({
+                        annotation,
+                        rect: {
+                            left: iframeRect.left + localRect.left,
+                            top: iframeRect.top + localRect.top,
+                            right: iframeRect.left + localRect.right,
+                            bottom: iframeRect.top + localRect.bottom,
+                            width: localRect.width,
+                            height: localRect.height,
+                        },
+                    });
+                });
+
+                onChange(nextMarkers);
+            };
+
+            const frame = window.requestAnimationFrame(emitVisibleNoteMarkers);
+            const activeContents = renditionRef.current?.getContents?.()?.[0];
+            const doc = activeContents?.document;
+            const scrollingElement =
+                doc?.scrollingElement || doc?.documentElement || doc?.body || null;
+            const handleSync = () => {
+                window.requestAnimationFrame(emitVisibleNoteMarkers);
+            };
+
+            scrollingElement?.addEventListener("scroll", handleSync, {
+                passive: true,
+            });
+            window.addEventListener("resize", handleSync);
+
+            return () => {
+                window.cancelAnimationFrame(frame);
+                scrollingElement?.removeEventListener("scroll", handleSync);
+                window.removeEventListener("resize", handleSync);
+                onVisibleNoteMarkersChangeRef.current?.([]);
+            };
+        }, [annotations, currentHref, currentPage, totalPages, viewportSize]);
 
         const currentTocIndex = toc.findIndex(
             (item) =>
