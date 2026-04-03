@@ -224,7 +224,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 const scrollBodyMaxWidth = desktopLayout ? "760px" : "100%";
                 const scrollBodyPadding = desktopLayout
                     ? "28px 0 112px"
-                    : "24px 0 96px";
+                    : "18px 16px 72px";
 
                 let styleTag = doc.getElementById("reader-play-books-style");
                 if (!styleTag) {
@@ -1202,7 +1202,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 : "10px 10px 18px"
             : desktopLayout
               ? "24px 0 96px"
-              : "20px 0 84px";
+              : "18px 12px 84px";
         const viewportMaxWidth = pagedMode
             ? showMobilePagedShell
                 ? undefined

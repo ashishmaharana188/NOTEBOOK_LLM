@@ -328,9 +328,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
     const lineHeightPx = Math.max(fontSizePx * settings.lineHeight, fontSizePx + 16);
     const mobilePaged = !desktopLayout;
     const usePeekLayout = desktopFocusPreview || (mobilePaged && viewport.width >= 1100);
-    const mobileViewportWidth = Math.max(280, viewport.width - 20);
+    const mobileViewportWidth = Math.max(180, viewport.width - 20);
     const mobilePagedWidth = Math.max(
-      280,
+      180,
       Math.min(
         Math.min(980, mobileViewportWidth),
         Math.round(viewport.width * (usePeekLayout ? 0.68 : 0.94)),
@@ -344,19 +344,21 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
             viewport.width - (scrollMode ? 420 : 360),
           ),
         )
-      : Math.max(460, Math.min(900, viewport.width - 88));
+      : scrollMode
+        ? Math.max(168, Math.min(680, viewport.width - 48))
+        : Math.max(460, Math.min(900, viewport.width - 88));
     const planeWidth = desktopFocusPreview
       ? Math.max(560, Math.min(760, Math.round(viewport.width * 0.46)))
       : desktopLayout
         ? viewport.width
         : mobilePagedWidth;
     const innerWidth = Math.max(
-      240,
+      desktopLayout ? 240 : scrollMode ? 156 : 180,
       desktopLayout
         ? desktopFocusPreview
           ? planeWidth - 96
           : contentColumnWidth
-        : planeWidth - 40,
+        : planeWidth - (scrollMode ? 24 : 40),
     );
     const innerHeight = Math.max(
       360,
@@ -369,8 +371,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       const update = () => {
         const rect = node.getBoundingClientRect();
         setViewport({
-          width: Math.max(320, Math.floor(rect.width)),
-          height: Math.max(420, Math.floor(rect.height)),
+          width: Math.max(180, Math.floor(rect.width)),
+          height: Math.max(320, Math.floor(rect.height)),
         });
       };
       update();
@@ -1015,9 +1017,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           ) : (
             <div className="min-h-full w-full">
               <div
-                className="mx-auto w-full px-6 pb-20 pt-8 sm:px-10 sm:pb-28 sm:pt-10"
+                className={`mx-auto w-full ${desktopLayout ? "px-6 pb-20 pt-8 sm:px-10 sm:pb-28 sm:pt-10" : "px-5 pb-16 pt-6"}`}
                 style={{
-                  maxWidth: `${contentColumnWidth + 80}px`,
+                  maxWidth: `${contentColumnWidth + (desktopLayout ? 80 : 40)}px`,
                   color: inkColor,
                 }}
               >

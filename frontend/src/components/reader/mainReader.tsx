@@ -138,12 +138,14 @@ function IconButton({
     onClick,
     active = false,
     theme = "light",
+    compact = false,
 }: {
     icon: string;
     label: string;
     onClick: () => void;
     active?: boolean;
     theme?: "light" | "dark" | "sepia";
+    compact?: boolean;
 }) {
     const isDark = theme === "dark";
     return (
@@ -152,7 +154,9 @@ function IconButton({
             onClick={onClick}
             title={label}
             aria-label={label}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-[14px] text-[24px] transition ${
+            className={`inline-flex items-center justify-center rounded-[14px] transition ${
+                compact ? "h-9 w-9 text-[22px]" : "h-10 w-10 text-[24px]"
+            } ${
                 active
                     ? isDark
                         ? "bg-white/12 text-white shadow-[0_6px_16px_rgba(0,0,0,0.24)] backdrop-blur-sm"
@@ -398,11 +402,12 @@ function ReaderSelectionMenu({
             const panelHeight = node?.offsetHeight || 360;
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
+            const effectivePanelWidth = Math.min(panelWidth, viewportWidth - 24);
             const desiredLeft =
-                anchorRect.left + anchorRect.width / 2 - panelWidth / 2;
+                anchorRect.left + anchorRect.width / 2 - effectivePanelWidth / 2;
             const left = Math.min(
                 Math.max(12, desiredLeft),
-                Math.max(12, viewportWidth - panelWidth - 12),
+                Math.max(12, viewportWidth - effectivePanelWidth - 12),
             );
             let top = anchorRect.bottom + 14;
             if (top + panelHeight > viewportHeight - 12) {
@@ -425,10 +430,11 @@ function ReaderSelectionMenu({
         <div
             ref={panelRef}
             data-reader-overlay="true"
-            className="fixed z-[75] w-[216px] overflow-hidden rounded-[18px] shadow-[0_14px_28px_rgba(15,23,42,0.14)]"
+            className="fixed z-[75] overflow-hidden rounded-[18px] shadow-[0_14px_28px_rgba(15,23,42,0.14)]"
             style={{
                 left: `${position.left}px`,
                 top: `${position.top}px`,
+                width: `min(${panelWidth}px, calc(100vw - 24px))`,
                 border: isDark
                     ? "1px solid rgba(255,255,255,0.12)"
                     : "1px solid rgba(168,174,190,0.46)",
@@ -647,6 +653,12 @@ export default function Reader({
         localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(recentQueries));
     }, [recentQueries]);
 
+    const bookExtension = String(book?.extension || "")
+        .toLowerCase()
+        .replace(/^\./, "");
+    const mobilePreferredPresentationMode: ReaderPresentationMode =
+        bookExtension === "pdf" ? "paged" : "scroll";
+
     useEffect(() => {
         if (typeof window === "undefined") return undefined;
         const mediaQuery = window.matchMedia(
@@ -667,6 +679,10 @@ export default function Reader({
     useEffect(() => {
         if (!book?.filename) return;
         modeHydratedRef.current = null;
+        if (isMobileLayout) {
+            setPresentationMode(mobilePreferredPresentationMode);
+            return;
+        }
         try {
             const raw = localStorage.getItem(
                 `${PRESENTATION_STORAGE_KEY}:${book.filename}`,
@@ -679,12 +695,17 @@ export default function Reader({
             // Ignore local preference failures.
         }
         setPresentationMode("paged");
-    }, [book?.filename]);
+    }, [book?.filename, isMobileLayout, mobilePreferredPresentationMode]);
 
     useEffect(() => {
         if (!book?.filename || modeHydratedRef.current === book.filename)
             return;
         const persistedMode = session?.view_state?.presentationMode;
+        if (isMobileLayout) {
+            setPresentationMode(mobilePreferredPresentationMode);
+            modeHydratedRef.current = book.filename;
+            return;
+        }
         if (persistedMode === "paged" || persistedMode === "scroll") {
             setPresentationMode(persistedMode);
             modeHydratedRef.current = book.filename;
@@ -693,13 +714,16 @@ export default function Reader({
         if (session) {
             modeHydratedRef.current = book.filename;
         }
-    }, [book?.filename, session]);
+    }, [book?.filename, isMobileLayout, mobilePreferredPresentationMode, session]);
 
     useEffect(() => {
-        if (isMobileLayout && presentationMode !== "paged") {
-            setPresentationMode("paged");
+        if (
+            isMobileLayout &&
+            presentationMode !== mobilePreferredPresentationMode
+        ) {
+            setPresentationMode(mobilePreferredPresentationMode);
         }
-    }, [isMobileLayout, presentationMode]);
+    }, [isMobileLayout, mobilePreferredPresentationMode, presentationMode]);
 
     useEffect(() => {
         if (!book?.filename || isMobileLayout) return;
@@ -783,15 +807,17 @@ export default function Reader({
     }
 
     const activeTextSection = loadedTextSections[currentTextSection] || null;
-    const ext = String(book.extension || "")
-        .toLowerCase()
-        .replace(/^\./, "");
+    const ext = bookExtension;
     const supportsDesktopScroll = false;
     const platformLayout: ReaderPlatformLayout = isMobileLayout
         ? "mobile"
         : "desktop";
     platformLayoutRef.current = platformLayout;
-    const effectivePresentationMode: ReaderPresentationMode = "paged";
+    const effectivePresentationMode: ReaderPresentationMode = isMobileLayout
+        ? mobilePreferredPresentationMode === "scroll"
+            ? presentationMode
+            : "paged"
+        : "paged";
     const noteAnnotations = annotations.filter(
         (annotation) => annotation.kind !== "bookmark",
     );
@@ -1823,13 +1849,14 @@ export default function Reader({
                             label="Back"
                             onClick={() => onBack?.()}
                             theme={settings.theme}
+                            compact={isMobileLayout}
                         />
                         {showTopBarTitle ? (
                             <div
                                 className="min-w-0"
                                 style={{ color: chromePrimary }}
                             >
-                                <div className="truncate text-[1.45rem] font-normal tracking-[-0.045em] sm:text-[1.65rem]">
+                                <div className="truncate text-[1.12rem] font-normal tracking-[-0.045em] sm:text-[1.65rem]">
                                     {book.title}
                                 </div>
                             </div>
@@ -1841,12 +1868,14 @@ export default function Reader({
                             label="Search"
                             onClick={() => void openSearch()}
                             theme={settings.theme}
+                            compact={isMobileLayout}
                         />
                         <IconButton
                             icon={textOutline}
                             label="Text settings"
                             active={overlay === "settings"}
                             theme={settings.theme}
+                            compact={isMobileLayout}
                             onClick={() => {
                                 setOverflowOpen(false);
                                 setSettingsTab("text");
@@ -1860,14 +1889,18 @@ export default function Reader({
                             label="More"
                             active={overflowOpen}
                             theme={settings.theme}
+                            compact={isMobileLayout}
                             onClick={() => setOverflowOpen((prev) => !prev)}
                         />
                     </div>
                 </div>
                 {overflowOpen ? (
                     <div
-                        className="ml-auto mt-3 w-[210px] overflow-hidden rounded-[12px] shadow-[0_10px_20px_rgba(15,23,42,0.10)]"
+                        className="ml-auto mt-3 overflow-hidden rounded-[12px] shadow-[0_10px_20px_rgba(15,23,42,0.10)]"
                         style={{
+                            width: isMobileLayout
+                                ? "min(210px, calc(100vw - 24px))"
+                                : "210px",
                             border: `1px solid ${chromePanelBorder}`,
                             background: chromePanelBackground,
                         }}
@@ -1981,7 +2014,7 @@ export default function Reader({
                 }`}
             >
                 <div
-                    className="mx-auto flex max-w-[1080px] mb-[-20px] flex-col items-center gap-4"
+                    className="mx-auto mb-[-20px] flex max-w-[1080px] flex-col items-center gap-3 sm:gap-4"
                     style={{ color: chromePrimary }}
                 >
                     <div
@@ -1990,17 +2023,18 @@ export default function Reader({
                     >
                         {pagesLeftText}
                     </div>
-                    <div className="flex w-full items-center gap-4">
+                    <div className="flex w-full min-w-0 items-center gap-2 sm:gap-4">
                         <IconButton
                             icon={menuOutline}
                             label="Contents"
                             onClick={() => openContents("chapters")}
+                            compact={isMobileLayout}
                         />
                         <button
                             type="button"
                             data-reader-chrome="true"
                             aria-label="Previous page"
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] text-[24px] md:hidden"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-[22px] md:hidden sm:h-10 sm:w-10 sm:text-[24px]"
                             style={{
                                 color: chromePrimary,
                                 background:
@@ -2030,13 +2064,13 @@ export default function Reader({
                                     Number(event.target.value),
                                 );
                             }}
-                            className="h-1 w-full cursor-pointer appearance-none rounded-full bg-[#bfc8ec] accent-[#5670b5]"
+                            className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-[#bfc8ec] accent-[#5670b5]"
                         />
                         <button
                             type="button"
                             data-reader-chrome="true"
                             aria-label="Next page"
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] text-[24px] md:hidden"
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-[22px] md:hidden sm:h-10 sm:w-10 sm:text-[24px]"
                             style={{
                                 color: chromePrimary,
                                 background:
@@ -2060,7 +2094,7 @@ export default function Reader({
                             />
                         </button>
                         <div
-                            className="min-w-[64px] text-right text-[1rem] tracking-[-0.03em] sm:min-w-[88px] sm:text-[1.1rem]"
+                            className="min-w-[46px] shrink-0 text-right text-[0.88rem] tracking-[-0.03em] sm:min-w-[88px] sm:text-[1.1rem]"
                             style={{ color: chromePrimary }}
                         >
                             {surfaceState.currentPage} /{" "}

@@ -90,8 +90,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const update = () => {
         const rect = node.getBoundingClientRect();
         setViewport({
-          width: Math.max(320, Math.floor(rect.width)),
-          height: Math.max(420, Math.floor(rect.height)),
+          width: Math.max(180, Math.floor(rect.width)),
+          height: Math.max(320, Math.floor(rect.height)),
         });
       };
       update();
@@ -210,9 +210,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const usePeekLayout =
       desktopFocusPreview ||
       (!desktopLayout && pagedMode && viewport.width >= 1280);
-    const mobilePageWidth = Math.max(240, viewport.width - 24);
+    const mobilePageWidth = Math.max(170, viewport.width - 20);
     const activeWidth = Math.max(
-      spreadMode ? 260 : desktopFocusPreview ? 420 : desktopLayout ? 420 : 240,
+      spreadMode ? 260 : desktopFocusPreview ? 420 : desktopLayout ? 420 : 170,
       Math.min(
         spreadMode
           ? 620
