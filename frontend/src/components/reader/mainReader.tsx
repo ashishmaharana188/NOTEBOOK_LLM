@@ -722,24 +722,39 @@ export default function Reader({
     }, [chromeVisible, isMobileLayout, overlay, overflowOpen]);
 
     useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (overlay || selection) return;
-            if (event.key === "ArrowRight") {
-                surfaceRef.current?.next();
-            }
-            if (event.key === "ArrowLeft") {
-                surfaceRef.current?.prev();
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [overlay, selection]);
-
-    useEffect(() => {
         if (overlay || selection) {
             setOverflowOpen(false);
         }
     }, [overlay, selection]);
+
+    const triggerPageTurn = useCallback(
+        (_direction: "prev" | "next", action: () => void) => {
+            action();
+        },
+        [],
+    );
+
+    const turnPrevPage = useCallback(() => {
+        triggerPageTurn("prev", () => surfaceRef.current?.prev());
+    }, [triggerPageTurn]);
+
+    const turnNextPage = useCallback(() => {
+        triggerPageTurn("next", () => surfaceRef.current?.next());
+    }, [triggerPageTurn]);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (overlay || selection) return;
+            if (event.key === "ArrowRight") {
+                turnNextPage();
+            }
+            if (event.key === "ArrowLeft") {
+                turnPrevPage();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [overlay, selection, turnNextPage, turnPrevPage]);
 
     if (!book) {
         return (
@@ -1424,13 +1439,6 @@ export default function Reader({
         wheelDeltaRef.current = 0;
     };
 
-    const triggerPageTurn = useCallback(
-        (_direction: "prev" | "next", action: () => void) => {
-            action();
-        },
-        [],
-    );
-
     const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
         const touch = event.touches[0];
         if (!touch) return;
@@ -1449,9 +1457,9 @@ export default function Reader({
         const deltaY = touch.clientY - touchStartRef.current.y;
         if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY)) {
             if (deltaX < 0) {
-                triggerPageTurn("next", () => surfaceRef.current?.next());
+                turnNextPage();
             } else {
-                triggerPageTurn("prev", () => surfaceRef.current?.prev());
+                turnPrevPage();
             }
         }
         touchStartRef.current = null;
@@ -1881,6 +1889,30 @@ export default function Reader({
                             label="Contents"
                             onClick={() => openContents("chapters")}
                         />
+                        <button
+                            type="button"
+                            data-reader-chrome="true"
+                            aria-label="Previous page"
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] text-[24px] md:hidden"
+                            style={{
+                                color: chromePrimary,
+                                background:
+                                    settings.theme === "dark"
+                                        ? "rgba(255,255,255,0.08)"
+                                        : "rgba(255,255,255,0.72)",
+                                boxShadow:
+                                    settings.theme === "dark"
+                                        ? "0 6px 16px rgba(0,0,0,0.18)"
+                                        : "0 6px 16px rgba(15,23,42,0.08)",
+                            }}
+                            onPointerDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                turnPrevPage();
+                            }}
+                        >
+                            <IonIcon icon={arrowBackOutline} />
+                        </button>
                         <input
                             type="range"
                             min={1}
@@ -1893,8 +1925,35 @@ export default function Reader({
                             }}
                             className="h-1 w-full cursor-pointer appearance-none rounded-full bg-[#bfc8ec] accent-[#5670b5]"
                         />
+                        <button
+                            type="button"
+                            data-reader-chrome="true"
+                            aria-label="Next page"
+                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] text-[24px] md:hidden"
+                            style={{
+                                color: chromePrimary,
+                                background:
+                                    settings.theme === "dark"
+                                        ? "rgba(255,255,255,0.08)"
+                                        : "rgba(255,255,255,0.72)",
+                                boxShadow:
+                                    settings.theme === "dark"
+                                        ? "0 6px 16px rgba(0,0,0,0.18)"
+                                        : "0 6px 16px rgba(15,23,42,0.08)",
+                            }}
+                            onPointerDown={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                turnNextPage();
+                            }}
+                        >
+                            <IonIcon
+                                icon={arrowBackOutline}
+                                className="rotate-180"
+                            />
+                        </button>
                         <div
-                            className="min-w-[88px] text-right text-[1.1rem] tracking-[-0.03em]"
+                            className="min-w-[64px] text-right text-[1rem] tracking-[-0.03em] sm:min-w-[88px] sm:text-[1.1rem]"
                             style={{ color: chromePrimary }}
                         >
                             {surfaceState.currentPage} /{" "}
@@ -1913,7 +1972,7 @@ export default function Reader({
                     if (event.button !== 0) return;
                     event.preventDefault();
                     event.stopPropagation();
-                    triggerPageTurn("prev", () => surfaceRef.current?.prev());
+                    turnPrevPage();
                 }}
             />
             <button
@@ -1925,7 +1984,7 @@ export default function Reader({
                     if (event.button !== 0) return;
                     event.preventDefault();
                     event.stopPropagation();
-                    triggerPageTurn("next", () => surfaceRef.current?.next());
+                    turnNextPage();
                 }}
             />
             <TakeoverScreen
