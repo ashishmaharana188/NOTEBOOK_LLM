@@ -1386,32 +1386,26 @@ export default function Reader({
         }
 
         try {
-            await API.post(
-                `/reader/books/${encodeURIComponent(book.filename)}/annotations`,
-                {
-                    lid: book.lid || "",
-                    format: book.extension || "",
-                    anchor: {
-                        location: currentLocationPayload.location,
-                        location_type:
-                            currentLocationPayload.locationType || "",
-                        view_state: currentLocationPayload.viewState || {},
-                        progress_percent:
-                            currentLocationPayload.progressPercent || 0,
-                    },
-                    quote_text: selection.text.trim(),
-                    title:
-                        surfaceState.chapterLabel ||
-                        surfaceState.pageLabel ||
-                        book.title,
-                    note: "",
-                    color: selection.color || "amber",
-                    kind: "bookmark",
-                    page_label: surfaceState.pageLabel || "",
-                    chapter_label: surfaceState.chapterLabel || "",
+            await createAnnotation({
+                anchor: {
+                    location: currentLocationPayload.location,
+                    location_type:
+                        currentLocationPayload.locationType || "",
+                    view_state: currentLocationPayload.viewState || {},
+                    progress_percent:
+                        currentLocationPayload.progressPercent || 0,
                 },
-            );
-            await refreshBootstrap();
+                quote_text: selection.text.trim(),
+                title:
+                    surfaceState.chapterLabel ||
+                    surfaceState.pageLabel ||
+                    book.title,
+                note: "",
+                color: selection.color || "amber",
+                kind: "bookmark",
+                page_label: surfaceState.pageLabel || "",
+                chapter_label: surfaceState.chapterLabel || "",
+            });
             closeSelection();
         } catch (error) {
             console.error("Reader bookmark save failed", error);

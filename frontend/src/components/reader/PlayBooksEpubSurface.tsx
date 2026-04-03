@@ -78,6 +78,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         );
         const appliedHighlightCfisRef = useRef<string[]>([]);
         const lastSelectedCfiRef = useRef("");
+        const boundContextDocsRef = useRef(new WeakSet<Document>());
+        const boundSelectionDocsRef = useRef(new WeakSet<Document>());
+        const boundScrollTargetsRef = useRef(new WeakSet<EventTarget>());
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
         );
@@ -357,7 +360,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 settings.fontSize,
                 settings.lineHeight,
                 settings.theme,
-                viewportSize.width,
             ],
         );
 
@@ -605,14 +607,20 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                 : {}),
                         });
                     };
-                    if (platformLayout === "desktop" && doc) {
+                    if (
+                        platformLayout === "desktop" &&
+                        doc &&
+                        !boundContextDocsRef.current.has(doc)
+                    ) {
                         const handleContextMenu = (event: MouseEvent) => {
                             event.preventDefault();
                             onContextMenuRequestRef.current?.();
                         };
+                        boundContextDocsRef.current.add(doc);
                         doc.addEventListener("contextmenu", handleContextMenu);
                     }
-                    if (doc) {
+                    if (doc && !boundSelectionDocsRef.current.has(doc)) {
+                        boundSelectionDocsRef.current.add(doc);
                         doc.addEventListener(
                             "selectionchange",
                             clearIframeSelection,
@@ -627,7 +635,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             doc?.body ||
                             null;
                         const win = contents?.window;
-                        if (scrollingElement && win?.requestAnimationFrame) {
+                        if (
+                            scrollingElement &&
+                            win?.requestAnimationFrame &&
+                            !boundScrollTargetsRef.current.has(scrollingElement)
+                        ) {
                             let ticking = false;
                             const handleScroll = () => {
                                 if (ticking) return;
@@ -656,6 +668,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     );
                                 });
                             };
+                            boundScrollTargetsRef.current.add(scrollingElement);
                             scrollingElement.addEventListener(
                                 "scroll",
                                 handleScroll,
@@ -1210,7 +1223,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         }}
                     >
                         <EpubView
-                            key={`${book.filename}:${presentationMode}:${platformLayout}:${settings.fontFamily}:${settings.fontSize}:${settings.lineHeight}:${settings.alignment}:${settings.theme}`}
+                            key={`${book.filename}:${presentationMode}:${platformLayout}`}
                             ref={readerRef}
                             url={book.url}
                             location={location}

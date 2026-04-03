@@ -33,6 +33,36 @@ interface PlayBooksPdfSurfaceProps extends ReaderSurfaceCommonProps {
   initialLocation: string | number | null;
 }
 
+interface PdfTextItemMeta {
+  text: string;
+  start: number;
+  end: number;
+}
+
+interface PdfAnnotationRange {
+  annotation: ReaderAnnotation;
+  start: number;
+  end: number;
+}
+
+function arePdfTextItemsEqual(
+  left: PdfTextItemMeta[] | undefined,
+  right: PdfTextItemMeta[],
+) {
+  if (!left) return false;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (
+      left[index]?.text !== right[index]?.text ||
+      left[index]?.start !== right[index]?.start ||
+      left[index]?.end !== right[index]?.end
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function getDomRectPayload(
   rect: DOMRect | null | undefined,
 ): NonNullable<ReaderSelectionPayload["rect"]> | null {
@@ -63,39 +93,165 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-function renderPdfTextWithHighlights(
-  value: string,
+function wrapPdfSearch(text: string, searchQuery: string) {
+  if (!searchQuery.trim()) return escapeHtml(text);
+  const matcher = new RegExp(
+    `(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+    "ig",
+  );
+  return text
+    .split(matcher)
+    .map((part, index) =>
+      index % 2 === 1
+        ? `<mark style="background:rgba(243,221,115,0.32);padding:0 0.02em;">${escapeHtml(part)}</mark>`
+        : escapeHtml(part),
+    )
+    .join("");
+}
+
+function buildPdfAnnotationRanges(
+  pageTextItems: PdfTextItemMeta[],
   annotations: ReaderAnnotation[],
+) {
+  const pageText = pageTextItems.map((item) => item.text).join("");
+  let fallbackCursor = 0;
+
+  return annotations
+    .map((annotation) => {
+      const anchoredStart = Number(annotation.anchor?.page_local_start);
+      const anchoredEnd = Number(annotation.anchor?.page_local_end);
+      if (Number.isFinite(anchoredStart) && Number.isFinite(anchoredEnd)) {
+        return {
+          annotation,
+          start: Math.max(0, Math.min(anchoredStart, anchoredEnd)),
+          end: Math.max(anchoredStart, anchoredEnd),
+        };
+      }
+
+      const quote = String(annotation.quote_text || "");
+      if (!quote) return null;
+      const matchIndex = pageText.indexOf(quote, fallbackCursor);
+      if (matchIndex < 0) {
+        const firstIndex = pageText.indexOf(quote);
+        if (firstIndex < 0) return null;
+        fallbackCursor = firstIndex + quote.length;
+        return {
+          annotation,
+          start: firstIndex,
+          end: firstIndex + quote.length,
+        };
+      }
+      fallbackCursor = matchIndex + quote.length;
+      return {
+        annotation,
+        start: matchIndex,
+        end: matchIndex + quote.length,
+      };
+    })
+    .filter(Boolean) as PdfAnnotationRange[];
+}
+
+function renderPdfTextWithHighlights(
+  itemText: string,
+  itemIndex: number,
+  pageTextItems: PdfTextItemMeta[],
+  annotationRanges: PdfAnnotationRange[],
   searchQuery: string,
 ) {
-  const rawValue = String(value || "");
-  let output = escapeHtml(rawValue);
-  annotations.forEach((annotation) => {
-    const quote = String(annotation.quote_text || "").trim();
-    if (!quote) return;
-    const normalizedValue = rawValue.trim();
-    if (
-      normalizedValue &&
-      normalizedValue.length >= 3 &&
-      quote.includes(normalizedValue)
-    ) {
-      output = `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(rawValue)}</mark>`;
-      return;
+  const itemMeta = pageTextItems[itemIndex];
+  const rawValue = String(itemText || "");
+  const innerContent = (() => {
+    if (!itemMeta) {
+      return wrapPdfSearch(rawValue, searchQuery);
     }
-    const escapedQuote = quote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    output = output.replace(
-      new RegExp(escapedQuote, "g"),
-      `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(quote)}</mark>`,
-    );
-  });
-  if (searchQuery.trim()) {
-    const escapedSearch = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    output = output.replace(
-      new RegExp(`(${escapedSearch})`, "ig"),
-      '<mark style="background:rgba(243,221,115,0.32);padding:0 0.02em;">$1</mark>',
-    );
+
+    const overlaps = annotationRanges
+      .map((range) => {
+        const start = Math.max(0, range.start - itemMeta.start);
+        const end = Math.min(rawValue.length, range.end - itemMeta.start);
+        if (end <= 0 || start >= rawValue.length || end <= start) return null;
+        return {
+          annotation: range.annotation,
+          start,
+          end,
+        };
+      })
+      .filter(Boolean) as Array<{
+      annotation: ReaderAnnotation;
+      start: number;
+      end: number;
+    }>;
+
+    if (!overlaps.length) {
+      return wrapPdfSearch(rawValue, searchQuery);
+    }
+
+    overlaps.sort((left, right) => left.start - right.start);
+    let cursor = 0;
+    const output: string[] = [];
+
+    overlaps.forEach(({ annotation, start, end }) => {
+      if (start > cursor) {
+        output.push(wrapPdfSearch(rawValue.slice(cursor, start), searchQuery));
+      }
+      output.push(
+        `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(rawValue.slice(start, end))}</mark>`,
+      );
+      cursor = Math.max(cursor, end);
+    });
+
+    if (cursor < rawValue.length) {
+      output.push(wrapPdfSearch(rawValue.slice(cursor), searchQuery));
+    }
+
+    return output.join("");
+  })();
+
+  return `<span data-pdf-item-index="${itemIndex}">${innerContent}</span>`;
+}
+
+function getPdfItemRoot(node: Node | null): HTMLElement | null {
+  let current: Node | null = node;
+  while (current) {
+    if (
+      current instanceof HTMLElement &&
+      current.dataset.pdfItemIndex !== undefined
+    ) {
+      return current;
+    }
+    current = current.parentNode;
   }
-  return output;
+  return null;
+}
+
+function getTextOffsetWithin(root: HTMLElement, targetNode: Node, targetOffset: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let total = 0;
+  let current = walker.nextNode();
+  while (current) {
+    const textLength = current.textContent?.length || 0;
+    if (current === targetNode) {
+      return total + Math.min(targetOffset, textLength);
+    }
+    total += textLength;
+    current = walker.nextNode();
+  }
+  return total;
+}
+
+function getPdfPageNumber(node: Node | null) {
+  let current: Node | null = node;
+  while (current) {
+    if (
+      current instanceof HTMLElement &&
+      current.dataset.readerPdfPage !== undefined
+    ) {
+      const page = Number(current.dataset.readerPdfPage);
+      return Number.isFinite(page) && page > 0 ? page : null;
+    }
+    current = current.parentNode;
+  }
+  return null;
 }
 
 export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
@@ -126,6 +282,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const [numPages, setNumPages] = useState<number>(1);
     const [viewport, setViewport] = useState({ width: 0, height: 0 });
     const [pageTexts, setPageTexts] = useState<Record<number, string>>({});
+    const [pageTextItems, setPageTextItems] = useState<Record<number, PdfTextItemMeta[]>>({});
     const [loadError, setLoadError] = useState("");
     const desktopLayout = platformLayout === "desktop";
     const pagedMode = presentationMode === "paged";
@@ -233,15 +390,40 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         onSelection({ text: "", rect: null });
         return;
       }
+      const startRoot = getPdfItemRoot(range.startContainer);
+      const endRoot = getPdfItemRoot(range.endContainer);
+      const targetPage =
+        getPdfPageNumber(startRoot) ||
+        getPdfPageNumber(endRoot) ||
+        pageNumber;
+      const startIndex = Number(startRoot?.dataset.pdfItemIndex ?? -1);
+      const endIndex = Number(endRoot?.dataset.pdfItemIndex ?? -1);
+      const items = pageTextItems[targetPage] || [];
+      const startMeta =
+        Number.isFinite(startIndex) && startIndex >= 0 ? items[startIndex] : null;
+      const endMeta =
+        Number.isFinite(endIndex) && endIndex >= 0 ? items[endIndex] : null;
       const boundingRect = range.getBoundingClientRect();
       const fallbackRect = range.getClientRects().item(0);
       const resolvedRect =
         boundingRect.width > 0 || boundingRect.height > 0 ? boundingRect : fallbackRect;
+      const localStart =
+        startMeta && startRoot
+          ? startMeta.start +
+            getTextOffsetWithin(startRoot, range.startContainer, range.startOffset)
+          : 0;
+      const localEnd =
+        endMeta && endRoot
+          ? endMeta.start +
+            getTextOffsetWithin(endRoot, range.endContainer, range.endOffset)
+          : localStart + text.length;
       onSelection({
         text,
         rect: getDomRectPayload(resolvedRect),
         anchor: {
-          page: pageNumber,
+          page: targetPage,
+          page_local_start: Math.max(0, Math.min(localStart, localEnd)),
+          page_local_end: Math.max(localStart, localEnd),
         },
       });
     };
@@ -365,14 +547,26 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       value: { items?: Array<unknown> } | undefined,
     ) => {
       const items: Array<unknown> = Array.isArray(value?.items) ? value.items : [];
-      const joined = items
-        .map((item) =>
-          item && typeof item === "object" && "str" in item
-            ? String((item as { str?: string }).str || "").trim()
-            : "",
-        )
-        .filter(Boolean)
-        .join(" ");
+      let cursor = 0;
+      const normalizedItems = items.map((item) => {
+        const row =
+          item && typeof item === "object" ? (item as { str?: string; hasEOL?: boolean }) : {};
+        const text = String(row.str || "");
+        const suffix = row.hasEOL ? "\n" : "";
+        const start = cursor;
+        cursor += text.length + suffix.length;
+        return {
+          text: text + suffix,
+          start,
+          end: cursor,
+        };
+      });
+      const joined = normalizedItems.map((item) => item.text).join("");
+      setPageTextItems((prev) =>
+        arePdfTextItemsEqual(prev[pageIndex], normalizedItems)
+          ? prev
+          : { ...prev, [pageIndex]: normalizedItems },
+      );
       setPageTexts((prev) => (prev[pageIndex] === joined ? prev : { ...prev, [pageIndex]: joined }));
     };
 
@@ -382,16 +576,32 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       }
 
       const pageProps: {
-        customTextRenderer?: ({ str }: { str: string }) => string;
+        customTextRenderer?: ({ str, itemIndex }: { str: string; itemIndex: number }) => string;
       } = {};
       const pageAnnotations = annotations.filter(
         (annotation) =>
           annotation.kind !== "bookmark" &&
           Number(annotation.anchor?.page) === targetPage,
       );
-      if (mode === "active" && (searchQuery.trim() || pageAnnotations.length > 0)) {
-        pageProps.customTextRenderer = ({ str }: { str: string }) =>
-          renderPdfTextWithHighlights(str, pageAnnotations, searchQuery);
+      const pageRanges = buildPdfAnnotationRanges(
+        pageTextItems[targetPage] || [],
+        pageAnnotations,
+      );
+      if (mode === "active") {
+        pageProps.customTextRenderer = ({
+          str,
+          itemIndex,
+        }: {
+          str: string;
+          itemIndex: number;
+        }) =>
+          renderPdfTextWithHighlights(
+            str,
+            itemIndex,
+            pageTextItems[targetPage] || [],
+            pageRanges,
+            searchQuery,
+          );
       }
 
       const isActive = mode === "active";
@@ -417,6 +627,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
       return (
         <div
+          data-reader-pdf-page={targetPage}
           className={`pdf-page-shell overflow-hidden ${
             pagedMode && (desktopFocusPreview || !desktopLayout)
               ? isActive

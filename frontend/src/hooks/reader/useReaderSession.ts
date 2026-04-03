@@ -36,6 +36,15 @@ function getCacheKey(filename: string) {
     return `${LOCAL_CACHE_PREFIX}${filename}`;
 }
 
+function getBootstrapIdentity(book: ReaderBook | null) {
+    if (!book?.filename) return "";
+    return [
+        book.filename,
+        book.lid || "",
+        book.file_fingerprint || "",
+    ].join("::");
+}
+
 function stableStringify(value: unknown) {
     try {
         return JSON.stringify(value ?? {});
@@ -112,6 +121,9 @@ export function useReaderSession(book: ReaderBook | null) {
     const hasHydratedSectionRef = useRef(false);
     const sessionDirtyRef = useRef(false);
     const sessionRef = useRef<ReaderSession | null>(null);
+    const bootstrapIdentityRef = useRef("");
+    const bootstrapRequestRef = useRef<Promise<ReaderBootstrapPayload | null> | null>(null);
+    const latestBootstrapRef = useRef("");
 
     const normalizedExtension = useMemo(() => {
         return String(book?.extension || "")
@@ -122,6 +134,10 @@ export function useReaderSession(book: ReaderBook | null) {
         return normalizedExtension === "txt" || normalizedExtension === "md";
     }, [normalizedExtension]);
     const usesSectionReader = isTextFormat;
+    const bootstrapIdentity = useMemo(
+        () => getBootstrapIdentity(book),
+        [book?.filename, book?.lid, book?.file_fingerprint],
+    );
 
     useEffect(() => {
         sessionRef.current = session;
@@ -157,61 +173,85 @@ export function useReaderSession(book: ReaderBook | null) {
 
     const refreshBootstrap = useCallback(async () => {
         if (!book?.filename) return null;
-        setIsBootstrapping(true);
-        try {
-            const response = await API.get(
-                `/reader/books/${encodeURIComponent(book.filename)}/bootstrap`,
-                {
-                    params: book.lid ? { lid: book.lid } : {},
-                },
-            );
-            const payload = response.data?.data as ReaderBootstrapPayload;
-            if (!payload) return null;
-
-            setManifest(payload.manifest || null);
-            setSession(payload.session || null);
-            setAnnotations(
-                Array.isArray(payload.annotations) ? payload.annotations : [],
-            );
-
-            const lastLocation = toLocationValue(
-                payload.session?.last_location,
-            );
-            if (!hasHydratedLocationRef.current) {
-                setReaderLocation(lastLocation);
-                hasHydratedLocationRef.current = true;
-                currentLocationRef.current =
-                    lastLocation !== null
-                        ? {
-                              location: lastLocation,
-                              locationType:
-                                  payload.session?.last_location_type || "",
-                              progressPercent:
-                                  payload.session?.progress_percent || 0,
-                              pageLabel: payload.session?.last_page_label || "",
-                              viewState: payload.session?.view_state || {},
-                          }
-                        : null;
-            }
-
-            if (usesSectionReader && !hasHydratedSectionRef.current) {
-                setCurrentTextSection(resolveInitialSectionIndex(payload.session));
-                hasHydratedSectionRef.current = true;
-            }
-
-            persistLocalCache(payload);
-            return payload;
-        } catch (error) {
-            console.error("Reader bootstrap failed", error);
-            notify({
-                title: "Reader Sync Failed",
-                message: "Could not load the latest reading state.",
-                tone: "error",
-            });
-            return null;
-        } finally {
-            setIsBootstrapping(false);
+        if (bootstrapRequestRef.current) {
+            return bootstrapRequestRef.current;
         }
+        const request = (async () => {
+            setIsBootstrapping(true);
+            try {
+                const response = await API.get(
+                    `/reader/books/${encodeURIComponent(book.filename)}/bootstrap`,
+                    {
+                        params: book.lid ? { lid: book.lid } : {},
+                    },
+                );
+                const payload = response.data?.data as ReaderBootstrapPayload;
+                if (!payload) return null;
+
+                const payloadSignature = stableStringify({
+                    manifest: payload.manifest || null,
+                    session: payload.session || null,
+                    annotations: Array.isArray(payload.annotations)
+                        ? payload.annotations
+                        : [],
+                });
+
+                if (payloadSignature !== latestBootstrapRef.current) {
+                    latestBootstrapRef.current = payloadSignature;
+                    setManifest(payload.manifest || null);
+                    setSession(payload.session || null);
+                    setAnnotations(
+                        Array.isArray(payload.annotations)
+                            ? payload.annotations
+                            : [],
+                    );
+                }
+
+                const lastLocation = toLocationValue(
+                    payload.session?.last_location,
+                );
+                if (!hasHydratedLocationRef.current) {
+                    setReaderLocation(lastLocation);
+                    hasHydratedLocationRef.current = true;
+                    currentLocationRef.current =
+                        lastLocation !== null
+                            ? {
+                                  location: lastLocation,
+                                  locationType:
+                                      payload.session?.last_location_type || "",
+                                  progressPercent:
+                                      payload.session?.progress_percent || 0,
+                                  pageLabel:
+                                      payload.session?.last_page_label || "",
+                                  viewState: payload.session?.view_state || {},
+                              }
+                            : null;
+                }
+
+                if (usesSectionReader && !hasHydratedSectionRef.current) {
+                    setCurrentTextSection(
+                        resolveInitialSectionIndex(payload.session),
+                    );
+                    hasHydratedSectionRef.current = true;
+                }
+
+                persistLocalCache(payload);
+                return payload;
+            } catch (error) {
+                console.error("Reader bootstrap failed", error);
+                notify({
+                    title: "Reader Sync Failed",
+                    message: "Could not load the latest reading state.",
+                    tone: "error",
+                });
+                return null;
+            } finally {
+                bootstrapRequestRef.current = null;
+                setIsBootstrapping(false);
+            }
+        })();
+        bootstrapRequestRef.current = request;
+        return request;
     }, [book?.filename, book?.lid, persistLocalCache, usesSectionReader]);
 
     const flushSession = useCallback(async () => {
@@ -518,6 +558,12 @@ export function useReaderSession(book: ReaderBook | null) {
     );
 
     useEffect(() => {
+        if (bootstrapIdentityRef.current === bootstrapIdentity) {
+            return;
+        }
+        bootstrapIdentityRef.current = bootstrapIdentity;
+        latestBootstrapRef.current = "";
+        bootstrapRequestRef.current = null;
         clearPendingFlush();
         sessionDirtyRef.current = false;
         currentLocationRef.current = null;
@@ -595,6 +641,7 @@ export function useReaderSession(book: ReaderBook | null) {
 
         void refreshBootstrap();
     }, [
+        bootstrapIdentity,
         book?.filename,
         book?.initialReaderBootstrap,
         clearPendingFlush,
