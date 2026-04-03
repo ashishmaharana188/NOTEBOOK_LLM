@@ -1519,11 +1519,11 @@ export default function Reader({
                 setOverflowOpen(false);
                 return;
             }
-            if (zone === "left" && effectivePresentationMode === "paged") {
+            if (zone === "left" && (isMobileLayout || effectivePresentationMode === "paged")) {
                 turnPrevPage();
                 return;
             }
-            if (zone === "right" && effectivePresentationMode === "paged") {
+            if (zone === "right" && (isMobileLayout || effectivePresentationMode === "paged")) {
                 turnNextPage();
                 return;
             }
@@ -1531,6 +1531,7 @@ export default function Reader({
         },
         [
             closeSelection,
+            isMobileLayout,
             effectivePresentationMode,
             overflowOpen,
             overlay,
@@ -2073,7 +2074,7 @@ export default function Reader({
                                         ? "0 6px 16px rgba(0,0,0,0.18)"
                                         : "0 6px 16px rgba(15,23,42,0.08)",
                             }}
-                            onPointerDown={(event) => {
+                            onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 turnPrevPage();
@@ -2109,7 +2110,7 @@ export default function Reader({
                                         ? "0 6px 16px rgba(0,0,0,0.18)"
                                         : "0 6px 16px rgba(15,23,42,0.08)",
                             }}
-                            onPointerDown={(event) => {
+                            onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 turnNextPage();
