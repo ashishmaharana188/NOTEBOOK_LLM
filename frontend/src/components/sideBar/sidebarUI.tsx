@@ -214,7 +214,10 @@ export default function Sidebar({
                     ? "bg-surface border-slate-300 shadow-sm text-primary"
                     : "border-transparent text-slate-600 hover:bg-slate-100/50 hover:text-primary"
                 }`}
-                onClick={() => onReadLibrary(filename)}
+                onClick={() => {
+                  if (isActive && view === "READER") return;
+                  onReadLibrary(filename);
+                }}
               >
                 <button className="flex-1 text-left truncate flex items-center gap-3 outline-none">
                   <span

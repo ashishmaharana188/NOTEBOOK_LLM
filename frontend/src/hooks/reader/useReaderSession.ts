@@ -16,6 +16,15 @@ const API = axios.create({
     baseURL: API_BASE_URL,
 });
 const LOCAL_CACHE_PREFIX = "reader_bootstrap_v4:";
+const BOOTSTRAP_DEDUPE_WINDOW_MS = 15000;
+const bootstrapMemoryCache = new Map<
+    string,
+    {
+        payload: ReaderBootstrapPayload | null;
+        signature: string;
+        fetchedAt: number;
+    }
+>();
 
 function toLocationValue(raw: unknown): string | number | null {
     if (raw === undefined || raw === null || raw === "") return null;
@@ -176,10 +185,86 @@ export function useReaderSession(book: ReaderBook | null) {
         }
     }, []);
 
-    const refreshBootstrap = useCallback(async () => {
-        if (!book?.filename) return null;
+    const hydrateFromBootstrap = useCallback(
+        (
+            payload: ReaderBootstrapPayload,
+            options?: { hydrateLocation?: boolean; hydrateSection?: boolean },
+        ) => {
+            const hydrateLocation = options?.hydrateLocation ?? false;
+            const hydrateSection = options?.hydrateSection ?? false;
+
+            const payloadSignature = stableStringify({
+                manifest: payload.manifest || null,
+                session: payload.session || null,
+                annotations: Array.isArray(payload.annotations)
+                    ? payload.annotations
+                    : [],
+            });
+
+            latestBootstrapRef.current = payloadSignature;
+            bootstrapMemoryCache.set(bootstrapIdentity, {
+                payload,
+                signature: payloadSignature,
+                fetchedAt: Date.now(),
+            });
+
+            setManifest(payload.manifest || null);
+            setSession(payload.session || null);
+            setAnnotations(
+                Array.isArray(payload.annotations) ? payload.annotations : [],
+            );
+
+            const lastLocation = toLocationValue(payload.session?.last_location);
+            if (hydrateLocation && !hasHydratedLocationRef.current) {
+                setReaderLocation(lastLocation);
+                hasHydratedLocationRef.current = true;
+                currentLocationRef.current =
+                    lastLocation !== null
+                        ? {
+                              location: lastLocation,
+                              locationType:
+                                  payload.session?.last_location_type || "",
+                              progressPercent:
+                                  payload.session?.progress_percent || 0,
+                              pageLabel:
+                                  payload.session?.last_page_label || "",
+                              viewState: payload.session?.view_state || {},
+                          }
+                        : null;
+            }
+
+            if (
+                usesSectionReader &&
+                hydrateSection &&
+                !hasHydratedSectionRef.current
+            ) {
+                setCurrentTextSection(resolveInitialSectionIndex(payload.session));
+                hasHydratedSectionRef.current = true;
+            }
+
+            persistLocalCache(payload);
+        },
+        [bootstrapIdentity, persistLocalCache, usesSectionReader],
+    );
+
+    const refreshBootstrap = useCallback(async (options?: { force?: boolean }) => {
+        if (!book?.filename || !bootstrapIdentity) return null;
         if (bootstrapRequestRef.current) {
             return bootstrapRequestRef.current;
+        }
+        const cached = bootstrapMemoryCache.get(bootstrapIdentity);
+        if (
+            !options?.force &&
+            cached?.payload &&
+            Date.now() - cached.fetchedAt < BOOTSTRAP_DEDUPE_WINDOW_MS
+        ) {
+            if (cached.signature !== latestBootstrapRef.current) {
+                hydrateFromBootstrap(cached.payload, {
+                    hydrateLocation: !hasHydratedLocationRef.current,
+                    hydrateSection: !hasHydratedSectionRef.current,
+                });
+            }
+            return cached.payload;
         }
         const request = (async () => {
             setIsBootstrapping(true);
@@ -201,46 +286,17 @@ export function useReaderSession(book: ReaderBook | null) {
                         : [],
                 });
 
+                bootstrapMemoryCache.set(bootstrapIdentity, {
+                    payload,
+                    signature: payloadSignature,
+                    fetchedAt: Date.now(),
+                });
                 if (payloadSignature !== latestBootstrapRef.current) {
-                    latestBootstrapRef.current = payloadSignature;
-                    setManifest(payload.manifest || null);
-                    setSession(payload.session || null);
-                    setAnnotations(
-                        Array.isArray(payload.annotations)
-                            ? payload.annotations
-                            : [],
-                    );
+                    hydrateFromBootstrap(payload, {
+                        hydrateLocation: !hasHydratedLocationRef.current,
+                        hydrateSection: !hasHydratedSectionRef.current,
+                    });
                 }
-
-                const lastLocation = toLocationValue(
-                    payload.session?.last_location,
-                );
-                if (!hasHydratedLocationRef.current) {
-                    setReaderLocation(lastLocation);
-                    hasHydratedLocationRef.current = true;
-                    currentLocationRef.current =
-                        lastLocation !== null
-                            ? {
-                                  location: lastLocation,
-                                  locationType:
-                                      payload.session?.last_location_type || "",
-                                  progressPercent:
-                                      payload.session?.progress_percent || 0,
-                                  pageLabel:
-                                      payload.session?.last_page_label || "",
-                                  viewState: payload.session?.view_state || {},
-                              }
-                            : null;
-                }
-
-                if (usesSectionReader && !hasHydratedSectionRef.current) {
-                    setCurrentTextSection(
-                        resolveInitialSectionIndex(payload.session),
-                    );
-                    hasHydratedSectionRef.current = true;
-                }
-
-                persistLocalCache(payload);
                 return payload;
             } catch (error) {
                 console.error("Reader bootstrap failed", error);
@@ -257,7 +313,12 @@ export function useReaderSession(book: ReaderBook | null) {
         })();
         bootstrapRequestRef.current = request;
         return request;
-    }, [book?.filename, book?.lid, persistLocalCache, usesSectionReader]);
+    }, [
+        book?.filename,
+        book?.lid,
+        bootstrapIdentity,
+        hydrateFromBootstrap,
+    ]);
 
     const flushSession = useCallback(async () => {
         if (
@@ -622,38 +683,10 @@ export function useReaderSession(book: ReaderBook | null) {
         const initialBootstrap = book.initialReaderBootstrap;
         if (initialBootstrap) {
             const bootstrap = initialBootstrap;
-            setManifest(bootstrap.manifest || null);
-            setSession(bootstrap.session || null);
-            setAnnotations(
-                Array.isArray(bootstrap.annotations)
-                    ? bootstrap.annotations
-                    : [],
-            );
-            const initialLocation = toLocationValue(
-                bootstrap.session?.last_location,
-            );
-            if (initialLocation !== null) {
-                setReaderLocation(initialLocation);
-                currentLocationRef.current = {
-                    location: initialLocation,
-                    locationType: bootstrap.session?.last_location_type || "",
-                    progressPercent: bootstrap.session?.progress_percent || 0,
-                    pageLabel: bootstrap.session?.last_page_label || "",
-                    viewState: bootstrap.session?.view_state || {},
-                };
-            }
-            if (usesSectionReader) {
-                setCurrentTextSection(resolveInitialSectionIndex(bootstrap.session));
-                hasHydratedSectionRef.current = true;
-            }
-            latestBootstrapRef.current = stableStringify({
-                manifest: bootstrap.manifest || null,
-                session: bootstrap.session || null,
-                annotations: Array.isArray(bootstrap.annotations)
-                    ? bootstrap.annotations
-                    : [],
+            hydrateFromBootstrap(bootstrap, {
+                hydrateLocation: true,
+                hydrateSection: true,
             });
-            persistLocalCache(bootstrap);
         }
 
         const shouldBootstrapFromNetwork =
@@ -685,7 +718,7 @@ export function useReaderSession(book: ReaderBook | null) {
         if (bootstrapPollRef.current)
             window.clearInterval(bootstrapPollRef.current);
         bootstrapPollRef.current = window.setInterval(() => {
-            void refreshBootstrap();
+            void refreshBootstrap({ force: true });
         }, 1500);
         return () => {
             if (bootstrapPollRef.current) {
@@ -732,7 +765,7 @@ export function useReaderSession(book: ReaderBook | null) {
                         waitingForBuild &&
                         payloadLid === activeLid
                     ) {
-                        void refreshBootstrap();
+                        void refreshBootstrap({ force: true });
                     }
                 }
                 if (

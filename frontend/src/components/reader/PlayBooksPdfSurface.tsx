@@ -1,5 +1,6 @@
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -300,6 +301,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const [pageTextItems, setPageTextItems] = useState<Record<number, PdfTextItemMeta[]>>({});
     const [pageOverlays, setPageOverlays] = useState<Record<number, PdfPageOverlayState>>({});
     const [loadError, setLoadError] = useState("");
+    const effectiveDevicePixelRatio = useMemo(() => {
+      if (typeof window === "undefined") return 1.25;
+      return Math.min(window.devicePixelRatio || 1, 1.35);
+    }, []);
     const desktopLayout = platformLayout === "desktop";
     const pagedMode = presentationMode === "paged";
     const spreadMode = desktopLayout && pagedMode && settings.spread === "always";
@@ -527,7 +532,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       [numPages, pageNumber, spreadMode],
     );
 
-    const handleSelection = () => {
+    const handleSelection = useCallback(() => {
       if (!onSelection || !containerRef.current) return;
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
@@ -580,7 +585,20 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           page_local_end: Math.max(localStart, localEnd),
         },
       });
-    };
+    }, [onSelection, pageNumber, pageTextItems]);
+
+    useEffect(() => {
+      if (!onSelection || !containerRef.current) return;
+      const scheduleSelectionCapture = () => {
+        window.requestAnimationFrame(handleSelection);
+      };
+      document.addEventListener("mouseup", scheduleSelectionCapture, true);
+      document.addEventListener("touchend", scheduleSelectionCapture, true);
+      return () => {
+        document.removeEventListener("mouseup", scheduleSelectionCapture, true);
+        document.removeEventListener("touchend", scheduleSelectionCapture, true);
+      };
+    }, [onSelection, handleSelection]);
 
     useEffect(() => {
       const container = containerRef.current;
@@ -840,8 +858,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           <Page
             pageNumber={targetPage}
             {...sizeProps}
+            devicePixelRatio={effectiveDevicePixelRatio}
             renderTextLayer
-            renderAnnotationLayer
+            renderAnnotationLayer={false}
             onGetTextSuccess={(value) => capturePageText(targetPage, value)}
             onRenderTextLayerSuccess={() => {
               window.requestAnimationFrame(() =>
@@ -934,6 +953,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
               <Page
                 pageNumber={targetPage}
                 width={peekCardWidth}
+                devicePixelRatio={1}
                 renderTextLayer={false}
                 renderAnnotationLayer={false}
               />

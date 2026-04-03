@@ -14,6 +14,15 @@ const API = axios.create({
     baseURL: API_BASE_URL,
 });
 
+const READER_BOOK_CACHE_TTL_MS = 5 * 60 * 1000;
+const readerBookCache = new Map<
+    string,
+    {
+        book: ReaderBook;
+        cachedAt: number;
+    }
+>();
+
 const EMPTY_INGEST_QUEUE: IngestQueueState = {
     current: null,
     queued: [],
@@ -54,7 +63,12 @@ export default function useCognition() {
     const [selectedText, setSelectedText] = useState("");
 
     const socketRef = useRef<WebSocket | null>(null);
+    const currentBookRef = useRef<ReaderBook | null>(null);
     const ingesting = ingestQueue.current?.filename || null;
+
+    useEffect(() => {
+        currentBookRef.current = currentBook;
+    }, [currentBook]);
 
     const applyIngestQueuePayload = useCallback((payload: any) => {
         if (!payload) return;
@@ -160,6 +174,27 @@ export default function useCognition() {
                       filenameOrBook.id ||
                       "";
 
+            const cacheKey = `${filename}::${libraryId || ""}`;
+            const activeBook = currentBookRef.current;
+            if (
+                activeBook?.filename === filename &&
+                String(activeBook?.lid || "") === String(libraryId || "")
+            ) {
+                setView("READER");
+                return;
+            }
+
+            const cachedEntry = readerBookCache.get(cacheKey);
+            if (
+                cachedEntry?.book &&
+                Date.now() - cachedEntry.cachedAt < READER_BOOK_CACHE_TTL_MS
+            ) {
+                setCurrentBook(cachedEntry.book);
+                setBookContent("");
+                setView("READER");
+                return;
+            }
+
             console.log("📖 Loading Book:", filename, "LID:", libraryId);
             const res = await API.get(
                 `/reader/books/${encodeURIComponent(filename)}/bootstrap`,
@@ -197,6 +232,10 @@ export default function useCognition() {
                 initialReaderBootstrap: payload,
             };
 
+            readerBookCache.set(`${resolvedFilename}::${resolvedLid || ""}`, {
+                book: bookObj,
+                cachedAt: Date.now(),
+            });
             setCurrentBook(bookObj);
             setBookContent("");
             setView("READER");
