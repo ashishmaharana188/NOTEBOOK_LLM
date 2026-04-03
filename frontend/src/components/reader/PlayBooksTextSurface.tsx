@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { layoutWithLines, prepareWithSegments } from "@chenglou/pretext";
 import type {
+  ReaderAnnotation,
   ReaderLocationPayload,
   ReaderManifestSection,
   ReaderSearchResult,
@@ -49,6 +50,12 @@ const SEGMENTATION_FONT_FAMILY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
 const SEGMENTATION_FONT_SIZE_PX = 30;
 const SEGMENTATION_LINE_HEIGHT_PX = 48;
+const HIGHLIGHT_SWATCHES: Record<string, string> = {
+  amber: "rgba(247, 201, 72, 0.38)",
+  orange: "rgba(255, 116, 72, 0.28)",
+  green: "rgba(138, 198, 80, 0.28)",
+  blue: "rgba(55, 197, 221, 0.28)",
+};
 
 function renderHighlightedLine(line: string, query: string) {
   if (!query) return line;
@@ -155,6 +162,125 @@ function getDomRectPayload(
   };
 }
 
+function findCharBaseElement(node: Node | null): HTMLElement | null {
+  let current: Node | null = node;
+  while (current) {
+    if (
+      current instanceof HTMLElement &&
+      current.dataset.charBase !== undefined
+    ) {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
+function getTextOffsetWithin(
+  root: HTMLElement,
+  targetNode: Node,
+  targetOffset: number,
+) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let total = 0;
+  let current = walker.nextNode();
+  while (current) {
+    const textLength = current.textContent?.length || 0;
+    if (current === targetNode) {
+      return total + Math.min(targetOffset, textLength);
+    }
+    total += textLength;
+    current = walker.nextNode();
+  }
+  return total;
+}
+
+function buildTextFragments(
+  text: string,
+  baseOffset: number,
+  annotations: ReaderAnnotation[],
+  searchQuery: string,
+  onAnnotationPress?: (
+    annotation: ReaderAnnotation,
+    rect: NonNullable<ReaderSelectionPayload["rect"]> | null,
+  ) => void,
+) {
+  const overlapping = annotations
+    .map((annotation) => {
+      const start = Number(annotation.anchor?.section_local_start);
+      const end = Number(annotation.anchor?.section_local_end);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      const relativeStart = Math.max(0, start - baseOffset);
+      const relativeEnd = Math.min(text.length, end - baseOffset);
+      if (relativeEnd <= 0 || relativeStart >= text.length || relativeEnd <= relativeStart) {
+        return null;
+      }
+      return {
+        annotation,
+        start: relativeStart,
+        end: relativeEnd,
+      };
+    })
+    .filter(Boolean) as Array<{
+    annotation: ReaderAnnotation;
+    start: number;
+    end: number;
+  }>;
+
+  if (!overlapping.length) {
+    return renderHighlightedLine(text, searchQuery);
+  }
+
+  overlapping.sort((left, right) => left.start - right.start);
+  const fragments: React.ReactNode[] = [];
+  let cursor = 0;
+
+  overlapping.forEach(({ annotation, start, end }, index) => {
+    if (start > cursor) {
+      fragments.push(
+        <React.Fragment key={`plain-${baseOffset}-${cursor}-${index}`}>
+          {renderHighlightedLine(text.slice(cursor, start), searchQuery)}
+        </React.Fragment>,
+      );
+    }
+
+    const segment = text.slice(start, end);
+    fragments.push(
+      <mark
+        key={annotation.annotation_id}
+        data-reader-annotation-id={annotation.annotation_id}
+        className="rounded-[0.22em] px-[0.04em] py-[0.01em] cursor-pointer"
+        style={{
+          backgroundColor:
+            HIGHLIGHT_SWATCHES[annotation.color] || HIGHLIGHT_SWATCHES.amber,
+          color: "inherit",
+        }}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onAnnotationPress?.(
+            annotation,
+            getDomRectPayload(event.currentTarget.getBoundingClientRect()),
+          );
+        }}
+      >
+        {segment}
+      </mark>,
+    );
+    cursor = Math.max(cursor, end);
+  });
+
+  if (cursor < text.length) {
+    fragments.push(
+      <React.Fragment key={`tail-${baseOffset}-${cursor}`}>
+        {renderHighlightedLine(text.slice(cursor), searchQuery)}
+      </React.Fragment>,
+    );
+  }
+
+  return fragments;
+}
+
 export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
   function PlayBooksTextSurface(
     {
@@ -170,6 +296,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       onSaveLocation,
       onStateChange,
       onSelection,
+      annotations = [],
+      onAnnotationPress,
       searchQuery = "",
       showFocusPreview = false,
       onOpenContents,
@@ -255,6 +383,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       [content, innerHeight, innerWidth],
     );
     const paragraphs = useMemo(() => buildParagraphs(content), [content]);
+    const sectionAnnotations = useMemo(
+      () =>
+        annotations.filter((annotation) => {
+          if (annotation.kind === "bookmark") return false;
+          return Number(annotation.anchor?.section_index) === currentSectionIndex;
+        }),
+      [annotations, currentSectionIndex],
+    );
 
     const safePageIndex = clamp(activePageIndex, 0, Math.max(pages.length - 1, 0));
     const currentPage: PageMeta | null = pages[safePageIndex] || null;
@@ -448,6 +584,21 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
         onSelection({ text: "", rect: null });
         return;
       }
+      const startBaseElement = findCharBaseElement(range.startContainer);
+      const endBaseElement = findCharBaseElement(range.endContainer);
+      const sectionStartOffset = getSectionStartOffset(sections[currentSectionIndex]);
+      const startBase = Number(startBaseElement?.dataset.charBase || 0);
+      const endBase = Number(endBaseElement?.dataset.charBase || 0);
+      const localStart =
+        startBase +
+        (startBaseElement
+          ? getTextOffsetWithin(startBaseElement, range.startContainer, range.startOffset)
+          : 0);
+      const localEnd =
+        endBase +
+        (endBaseElement
+          ? getTextOffsetWithin(endBaseElement, range.endContainer, range.endOffset)
+          : text.length);
       const boundingRect = range.getBoundingClientRect();
       const fallbackRect = range.getClientRects().item(0);
       const resolvedRect =
@@ -455,6 +606,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       onSelection({
         text,
         rect: getDomRectPayload(resolvedRect),
+        anchor: {
+          section_index: currentSectionIndex,
+          section_local_start: Math.max(0, Math.min(localStart, localEnd)),
+          section_local_end: Math.max(localStart, localEnd),
+          start_offset: sectionStartOffset + Math.max(0, Math.min(localStart, localEnd)),
+          end_offset: sectionStartOffset + Math.max(localStart, localEnd),
+        },
       });
     };
 
@@ -517,6 +675,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       () => ({
         prev: goPrev,
         next: goNext,
+        clearSelection: () => {
+          window.getSelection()?.removeAllRanges();
+        },
         goToPage: (page) => {
           const targetIndex = clamp(page - 1, 0, Math.max(pages.length - 1, 0));
           if (scrollMode) {
@@ -611,6 +772,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
         ref={(node) => {
           paragraphRefs.current[paragraphIndex] = node;
         }}
+        data-char-base={paragraph.charStart}
         className="select-text whitespace-pre-wrap"
         style={{
           margin: paragraphIndex === 0 ? "0" : `${lineHeightPx * 0.9}px 0 0`,
@@ -623,7 +785,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           wordBreak: "break-word",
         }}
       >
-        {renderHighlightedLine(paragraph.text, searchQuery)}
+        {buildTextFragments(
+          paragraph.text,
+          paragraph.charStart,
+          sectionAnnotations,
+          searchQuery,
+          onAnnotationPress,
+        )}
       </p>
     );
 
@@ -634,6 +802,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       }
       return (
         <div
+          data-char-base={page.charStart}
           className="select-text whitespace-pre-wrap"
           style={{
             fontFamily: settings.fontFamily,
@@ -645,7 +814,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
             wordBreak: "break-word",
           }}
         >
-          {renderHighlightedLine(pageText, searchQuery)}
+          {buildTextFragments(
+            pageText,
+            page.charStart,
+            sectionAnnotations,
+            searchQuery,
+            onAnnotationPress,
+          )}
         </div>
       );
     };

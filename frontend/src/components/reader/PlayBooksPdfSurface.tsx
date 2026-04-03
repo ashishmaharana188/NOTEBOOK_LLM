@@ -9,7 +9,11 @@ import React, {
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import type { ReaderBook, ReaderSearchResult } from "../../types/readerBackendTypes";
+import type {
+  ReaderAnnotation,
+  ReaderBook,
+  ReaderSearchResult,
+} from "../../types/readerBackendTypes";
 import {
   clamp,
   type ReaderSelectionPayload,
@@ -41,6 +45,57 @@ function getDomRectPayload(
   };
 }
 
+const PDF_HIGHLIGHT_SWATCHES: Record<string, string> = {
+  amber: "rgba(247, 201, 72, 0.38)",
+  orange: "rgba(255, 116, 72, 0.28)",
+  green: "rgba(138, 198, 80, 0.28)",
+  blue: "rgba(55, 197, 221, 0.28)",
+};
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderPdfTextWithHighlights(
+  value: string,
+  annotations: ReaderAnnotation[],
+  searchQuery: string,
+) {
+  const rawValue = String(value || "");
+  let output = escapeHtml(rawValue);
+  annotations.forEach((annotation) => {
+    const quote = String(annotation.quote_text || "").trim();
+    if (!quote) return;
+    const normalizedValue = rawValue.trim();
+    if (
+      normalizedValue &&
+      normalizedValue.length >= 3 &&
+      quote.includes(normalizedValue)
+    ) {
+      output = `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(rawValue)}</mark>`;
+      return;
+    }
+    const escapedQuote = quote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    output = output.replace(
+      new RegExp(escapedQuote, "g"),
+      `<mark data-reader-annotation-id="${annotation.annotation_id}" style="background:${PDF_HIGHLIGHT_SWATCHES[annotation.color] || PDF_HIGHLIGHT_SWATCHES.amber};color:inherit;border-radius:0.22em;padding:0 0.04em;">${escapeHtml(quote)}</mark>`,
+    );
+  });
+  if (searchQuery.trim()) {
+    const escapedSearch = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    output = output.replace(
+      new RegExp(`(${escapedSearch})`, "ig"),
+      '<mark style="background:rgba(243,221,115,0.32);padding:0 0.02em;">$1</mark>',
+    );
+  }
+  return output;
+}
+
 export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
   function PlayBooksPdfSurface(
     {
@@ -49,6 +104,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onSaveLocation,
       onStateChange,
       onSelection,
+      annotations = [],
+      onAnnotationPress,
       searchQuery = "",
       presentationMode,
       platformLayout,
@@ -134,6 +191,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       () => ({
         prev: () => goToPage(pageNumber - (spreadMode ? 2 : 1)),
         next: () => goToPage(pageNumber + (spreadMode ? 2 : 1)),
+        clearSelection: () => {
+          window.getSelection()?.removeAllRanges();
+        },
         goToPage,
         goToSearchResult: (result: ReaderSearchResult) => {
           if (typeof result.page === "number") {
@@ -173,6 +233,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onSelection({
         text,
         rect: getDomRectPayload(resolvedRect),
+        anchor: {
+          page: pageNumber,
+        },
       });
     };
 
@@ -198,15 +261,25 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
           ? "sepia(0.42) saturate(0.82) brightness(0.98)"
           : "none";
 
-    const highlightRenderer = useMemo(() => {
-      if (!searchQuery.trim()) return undefined;
-      const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const matcher = new RegExp(`(${escaped})`, "ig");
-      return ({ str }: { str: string }) => {
-        if (!str) return str;
-        return str.replace(matcher, '<mark style="background:#f3dd73;padding:0 0.02em;">$1</mark>');
+    useEffect(() => {
+      const node = containerRef.current;
+      if (!node || !onAnnotationPress) return;
+      const handleClick = (event: MouseEvent) => {
+        const target = event.target as HTMLElement | null;
+        const hit = target?.closest?.("[data-reader-annotation-id]") as HTMLElement | null;
+        if (!hit) return;
+        const annotationId = String(hit.dataset.readerAnnotationId || "");
+        const annotation = annotations.find(
+          (item) => item.annotation_id === annotationId,
+        );
+        if (!annotation) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onAnnotationPress(annotation, getDomRectPayload(hit.getBoundingClientRect()));
       };
-    }, [searchQuery]);
+      node.addEventListener("click", handleClick, true);
+      return () => node.removeEventListener("click", handleClick, true);
+    }, [annotations, onAnnotationPress]);
 
     const capturePageText = (
       pageIndex: number,
@@ -232,8 +305,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       const pageProps: {
         customTextRenderer?: ({ str }: { str: string }) => string;
       } = {};
-      if (mode === "active" && highlightRenderer) {
-        pageProps.customTextRenderer = highlightRenderer;
+      const pageAnnotations = annotations.filter(
+        (annotation) =>
+          annotation.kind !== "bookmark" &&
+          Number(annotation.anchor?.page) === targetPage,
+      );
+      if (mode === "active" && (searchQuery.trim() || pageAnnotations.length > 0)) {
+        pageProps.customTextRenderer = ({ str }: { str: string }) =>
+          renderPdfTextWithHighlights(str, pageAnnotations, searchQuery);
       }
 
       const isActive = mode === "active";
@@ -382,8 +461,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             user-select: text;
             -webkit-user-select: text;
           }
-          .react-pdf__Page__textContent ::selection {
-            background: #f3dd73;
+          .react-pdf__Page__textContent ::selection,
+          .react-pdf__Page__textContent span::selection {
+            background: rgba(243, 221, 115, 0.38);
+            color: inherit;
           }
           .react-pdf__Page__canvas {
             max-width: 100%;

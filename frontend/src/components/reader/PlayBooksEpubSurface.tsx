@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { EpubView } from "react-reader";
 import type {
+    ReaderAnnotation,
     ReaderBook,
     ReaderSearchResult,
     TocItem,
@@ -31,6 +32,18 @@ function normalizeToc(tocData: any[]): TocItem[] {
     }));
 }
 
+function getDomRectPayload(rect: DOMRect | null | undefined) {
+    if (!rect) return null;
+    return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+    };
+}
+
 export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
     function PlayBooksEpubSurface(
         {
@@ -39,6 +52,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             onSaveLocation,
             onStateChange,
             onSelection,
+            annotations = [],
+            onAnnotationPress,
             onContextMenuRequest,
             onOpenContents,
             settings,
@@ -52,6 +67,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const renditionRef = useRef<any>(null);
         const containerRef = useRef<HTMLDivElement | null>(null);
         const viewportRef = useRef<HTMLDivElement | null>(null);
+        const onSelectionRef = useRef(onSelection);
+        const onContextMenuRequestRef = useRef(onContextMenuRequest);
+        const onAnnotationPressRef = useRef(onAnnotationPress);
+        const appliedHighlightCfisRef = useRef<string[]>([]);
+        const lastSelectedCfiRef = useRef("");
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
         );
@@ -69,6 +89,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const desktopLayout = platformLayout === "desktop";
         const desktopSectionPaging = pagedMode && desktopLayout;
         const desktopFocusPreview = pagedMode && desktopLayout && showFocusPreview;
+
+        useEffect(() => {
+            onSelectionRef.current = onSelection;
+        }, [onSelection]);
+
+        useEffect(() => {
+            onContextMenuRequestRef.current = onContextMenuRequest;
+        }, [onContextMenuRequest]);
+
+        useEffect(() => {
+            onAnnotationPressRef.current = onAnnotationPress;
+        }, [onAnnotationPress]);
 
         const getActiveContents = useCallback(() => {
             const contents = renditionRef.current?.getContents?.() || [];
@@ -506,23 +538,24 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     applyThemeToContents(contents);
                     const doc = contents?.document;
                     const clearIframeSelection = () => {
-                        if (!onSelection || !doc) return;
+                        if (!onSelectionRef.current || !doc) return;
                         const selection = doc.getSelection?.();
                         const text = String(
                             selection?.toString?.() || "",
                         ).trim();
                         if (!text || !selection || selection.rangeCount === 0) {
-                            onSelection({ text: "", rect: null });
+                            lastSelectedCfiRef.current = "";
+                            onSelectionRef.current({ text: "", rect: null });
                         }
                     };
                     const finalizeIframeSelection = () => {
-                        if (!onSelection || !doc) return;
+                        if (!onSelectionRef.current || !doc) return;
                         const selection = doc.getSelection?.();
                         const text = String(
                             selection?.toString?.() || "",
                         ).trim();
                         if (!text || !selection || selection.rangeCount === 0) {
-                            onSelection({ text: "", rect: null });
+                            onSelectionRef.current({ text: "", rect: null });
                             return;
                         }
                         const range = selection.getRangeAt(0);
@@ -536,7 +569,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             | HTMLElement
                             | null;
                         const iframeRect = frameElement?.getBoundingClientRect();
-                        onSelection({
+                        onSelectionRef.current({
                             text,
                             rect:
                                 resolvedRect && iframeRect
@@ -549,12 +582,21 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                           height: resolvedRect.height,
                                       }
                                     : null,
+                            anchor: lastSelectedCfiRef.current
+                                ? {
+                                      cfi_range: lastSelectedCfiRef.current,
+                                      href: String(
+                                          renditionRef.current?.currentLocation?.()?.start
+                                              ?.href || "",
+                                      ),
+                                  }
+                                : undefined,
                         });
                     };
                     if (platformLayout === "desktop" && doc) {
                         const handleContextMenu = (event: MouseEvent) => {
                             event.preventDefault();
-                            onContextMenuRequest?.();
+                            onContextMenuRequestRef.current?.();
                         };
                         doc.addEventListener("contextmenu", handleContextMenu);
                     }
@@ -613,7 +655,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 rendition.on("selected", (cfiRange: string) => {
                     const range = rendition.getRange?.(cfiRange);
                     const text = String(range?.toString?.() || "").trim();
-                    if (onSelection) {
+                    if (onSelectionRef.current) {
                         const localRect = range?.getBoundingClientRect?.();
                         const fallbackRect = range?.getClientRects?.()?.item?.(0);
                         const resolvedRect =
@@ -625,7 +667,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             | HTMLElement
                             | null;
                         const iframeRect = frameElement?.getBoundingClientRect();
-                        onSelection({
+                        onSelectionRef.current({
                             text,
                             rect:
                                 text && resolvedRect && iframeRect
@@ -638,7 +680,15 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                           height: resolvedRect.height,
                                       }
                                     : null,
+                            anchor: {
+                                cfi_range: cfiRange,
+                                href: String(
+                                    rendition.currentLocation?.()?.start?.href ||
+                                        "",
+                                ),
+                            },
                         });
+                        lastSelectedCfiRef.current = cfiRange;
                     }
                 });
                 rendition.on("relocated", syncRelocation);
@@ -717,6 +767,70 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 .getContents()
                 .forEach((contents: any) => applyThemeToContents(contents));
         }, [applyThemeToContents]);
+
+        useEffect(() => {
+            const rendition = renditionRef.current;
+            if (!rendition?.annotations) return;
+            const activeHighlights = annotations.filter(
+                (annotation) =>
+                    annotation.kind !== "bookmark" &&
+                    typeof annotation.anchor?.cfi_range === "string" &&
+                    annotation.anchor.cfi_range,
+            );
+            appliedHighlightCfisRef.current.forEach((cfiRange) => {
+                if (
+                    !activeHighlights.some(
+                        (annotation) =>
+                            String(annotation.anchor?.cfi_range || "") === cfiRange,
+                    )
+                ) {
+                    try {
+                        rendition.annotations.remove(cfiRange, "highlight");
+                    } catch {
+                        // Ignore missing highlight removal.
+                    }
+                }
+            });
+
+            activeHighlights.forEach((annotation) => {
+                const cfiRange = String(annotation.anchor?.cfi_range || "");
+                try {
+                    rendition.annotations.remove(cfiRange, "highlight");
+                } catch {
+                    // Ignore missing highlight removal.
+                }
+                rendition.annotations.highlight(
+                    cfiRange,
+                    { annotationId: annotation.annotation_id },
+                    (event: MouseEvent) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onAnnotationPressRef.current?.(
+                            annotation,
+                            getDomRectPayload(
+                                (event.target as HTMLElement | null)?.getBoundingClientRect?.(),
+                            ),
+                        );
+                    },
+                    "reader-epub-highlight",
+                    {
+                        fill:
+                            annotation.color === "orange"
+                                ? "rgba(255,116,72,0.28)"
+                                : annotation.color === "green"
+                                  ? "rgba(138,198,80,0.28)"
+                                  : annotation.color === "blue"
+                                    ? "rgba(55,197,221,0.28)"
+                                    : "rgba(247,201,72,0.38)",
+                        "fill-opacity": "1",
+                        "mix-blend-mode": "multiply",
+                    },
+                );
+            });
+            appliedHighlightCfisRef.current = activeHighlights.map((annotation) =>
+                String(annotation.anchor?.cfi_range || ""),
+            );
+        }, [annotations, currentHref]);
 
         const currentTocIndex = toc.findIndex(
             (item) =>
@@ -799,6 +913,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (target.href && renditionRef.current) {
                         await renditionRef.current.display(target.href);
                     }
+                },
+                clearSelection: () => {
+                    window.getSelection()?.removeAllRanges();
+                    const contents = renditionRef.current?.getContents?.() || [];
+                    contents.forEach((content: any) => {
+                        content?.document?.getSelection?.()?.removeAllRanges?.();
+                    });
                 },
             }),
             [

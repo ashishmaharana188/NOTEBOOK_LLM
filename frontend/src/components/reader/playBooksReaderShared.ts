@@ -1,4 +1,9 @@
-import type { ReaderLocationPayload, ReaderSearchResult, ReaderSettings } from "../../types/readerBackendTypes";
+import type {
+  ReaderAnnotation,
+  ReaderLocationPayload,
+  ReaderSearchResult,
+  ReaderSettings,
+} from "../../types/readerBackendTypes";
 
 export type ReaderPresentationMode = "paged" | "scroll";
 export type ReaderPlatformLayout = "desktop" | "mobile";
@@ -26,6 +31,8 @@ export interface ReaderSelectionRect {
 export interface ReaderSelectionPayload {
   text: string;
   rect?: ReaderSelectionRect | null;
+  anchor?: Record<string, any>;
+  annotationId?: string;
 }
 
 export interface ReaderSurfaceHandle {
@@ -34,6 +41,7 @@ export interface ReaderSurfaceHandle {
   goToPage: (page: number) => void;
   goToSearchResult: (result: ReaderSearchResult) => void;
   goToTocTarget?: (target: { href?: string; page?: number; sectionIndex?: number }) => void;
+  clearSelection?: () => void;
 }
 
 export interface ReaderSurfaceCommonProps {
@@ -41,6 +49,8 @@ export interface ReaderSurfaceCommonProps {
   onSaveLocation: (payload: ReaderLocationPayload) => void;
   onStateChange: (state: ReaderSurfaceState) => void;
   onSelection?: (payload: ReaderSelectionPayload) => void;
+  annotations?: ReaderAnnotation[];
+  onAnnotationPress?: (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null) => void;
   onContextMenuRequest?: () => void;
   showFocusPreview?: boolean;
   searchQuery?: string;

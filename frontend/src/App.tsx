@@ -105,16 +105,24 @@ function App() {
   return (
     <div className="flex h-[100dvh] w-full overflow-hidden bg-surface text-primary font-sans relative">
       {libraryOpen && !isMobile ? (
-        <Sidebar
-          view={view}
-          setView={setView}
-          libraryFiles={libraryFiles}
-          downloadingBooks={downloadingBooks}
-          currentBook={currentBook}
-          onReadLibrary={loadBook}
-          onDeleteLibrary={deleteLibraryFile}
-          onClose={() => setLibraryOpen(false)}
-        />
+        <div className="fixed inset-0 z-[120] hidden sm:block">
+          <div
+            className="absolute inset-0 bg-slate-900/20"
+            onClick={() => setLibraryOpen(false)}
+          />
+          <div className="absolute inset-y-0 left-0 w-72 max-w-full">
+            <Sidebar
+              view={view}
+              setView={setView}
+              libraryFiles={libraryFiles}
+              downloadingBooks={downloadingBooks}
+              currentBook={currentBook}
+              onReadLibrary={loadBook}
+              onDeleteLibrary={deleteLibraryFile}
+              onClose={() => setLibraryOpen(false)}
+            />
+          </div>
+        </div>
       ) : null}
 
       {libraryOpen && isMobile ? (

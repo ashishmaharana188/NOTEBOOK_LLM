@@ -88,6 +88,8 @@ interface SelectionState {
     text: string;
     color: string;
     rect?: ReaderSelectionRect | null;
+    anchor?: Record<string, any>;
+    annotationId?: string;
 }
 
 interface DefineResult {
@@ -352,6 +354,8 @@ function ReaderSelectionMenu({
     onSearch,
     onFindEchoes,
     onAskRag,
+    onDeleteHighlight,
+    hasSavedHighlight,
     theme = "light",
 }: {
     open: boolean;
@@ -365,44 +369,23 @@ function ReaderSelectionMenu({
     onSearch: () => void;
     onFindEchoes: () => void;
     onAskRag: () => void;
+    onDeleteHighlight: () => void;
+    hasSavedHighlight: boolean;
     theme?: "light" | "dark" | "sepia";
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
-    const [mounted, setMounted] = useState(open);
-    const [visible, setVisible] = useState(open);
     const [position, setPosition] = useState({ left: 20, top: 20 });
     const isDark = theme === "dark";
-    const panelWidth = 252;
+    const panelWidth = 216;
 
     useEffect(() => {
-        if (open) {
-            setMounted(true);
-            window.requestAnimationFrame(() => setVisible(true));
-            return;
-        }
-        setVisible(false);
-        const timeout = window.setTimeout(() => {
-            setMounted(false);
-        }, 180);
-        return () => window.clearTimeout(timeout);
-    }, [open]);
-
-    useEffect(() => {
-        if (!mounted) return;
+        if (!open) return;
         const updatePosition = () => {
+            if (!anchorRect) return;
             const node = panelRef.current;
             const panelHeight = node?.offsetHeight || 360;
             const viewportWidth = window.innerWidth;
             const viewportHeight = window.innerHeight;
-            const fallbackLeft = Math.min(
-                24,
-                Math.max(12, viewportWidth - panelWidth - 12),
-            );
-            const fallbackTop = Math.max(24, viewportHeight - panelHeight - 28);
-            if (!anchorRect) {
-                setPosition({ left: fallbackLeft, top: fallbackTop });
-                return;
-            }
             const desiredLeft =
                 anchorRect.left + anchorRect.width / 2 - panelWidth / 2;
             const left = Math.min(
@@ -423,14 +406,14 @@ function ReaderSelectionMenu({
             window.removeEventListener("resize", updatePosition);
             window.removeEventListener("scroll", updatePosition, true);
         };
-    }, [anchorRect, mounted, open, panelWidth]);
+    }, [anchorRect, open, panelWidth]);
 
-    if (!mounted) return null;
+    if (!open || !anchorRect) return null;
     return (
         <div
             ref={panelRef}
             data-reader-overlay="true"
-            className="fixed z-[75] w-[252px] overflow-hidden rounded-[18px] shadow-[0_14px_28px_rgba(15,23,42,0.14)] transition-[opacity,transform] duration-180 ease-out"
+            className="fixed z-[75] w-[216px] overflow-hidden rounded-[18px] shadow-[0_14px_28px_rgba(15,23,42,0.14)]"
             style={{
                 left: `${position.left}px`,
                 top: `${position.top}px`,
@@ -439,11 +422,6 @@ function ReaderSelectionMenu({
                     : "1px solid rgba(168,174,190,0.46)",
                 background: isDark ? "#171a20" : "#eef0fa",
                 color: isDark ? "#f3f4f6" : "#202124",
-                opacity: visible ? 1 : 0,
-                transform: visible
-                    ? "translateY(0) scale(1)"
-                    : "translateY(10px) scale(0.98)",
-                transformOrigin: "top center",
                 fontFamily:
                     "'Google Sans', 'Roboto', 'Helvetica Neue', Arial, sans-serif",
             }}
@@ -452,33 +430,33 @@ function ReaderSelectionMenu({
                 event.stopPropagation();
             }}
         >
-            <div
-                className="flex items-center gap-7 px-8 py-5"
-                style={{
-                    borderBottom: isDark
-                        ? "1px solid rgba(255,255,255,0.10)"
-                        : "1px solid rgba(168,174,190,0.38)",
-                }}
-            >
-                {HIGHLIGHT_COLORS.map((chip) => (
-                    <button
-                        key={chip.key}
-                        type="button"
-                        onClick={() => onColor(chip.key)}
-                        className={`h-8 w-8 rounded-full border-[3px] transition ${
-                            color === chip.key
-                                ? "border-white ring-2 ring-current"
-                                : "border-transparent"
-                        }`}
-                        style={{
-                            backgroundColor: chip.swatch,
-                            color: chip.swatch,
+        <div
+            className="flex items-center justify-start gap-4 px-5 py-3.5"
+            style={{
+                borderBottom: isDark
+                    ? "1px solid rgba(255,255,255,0.10)"
+                    : "1px solid rgba(168,174,190,0.38)",
+            }}
+        >
+            {HIGHLIGHT_COLORS.map((chip) => (
+                <button
+                    key={chip.key}
+                    type="button"
+                    onClick={() => onColor(chip.key)}
+                    className={`h-6 w-6 rounded-full border-2 transition ${
+                        color === chip.key
+                            ? "border-white ring-2 ring-current"
+                            : "border-transparent"
+                    }`}
+                    style={{
+                        backgroundColor: chip.swatch,
+                        color: chip.swatch,
                         }}
                         aria-label={`Highlight ${chip.key}`}
                     />
                 ))}
             </div>
-            <div className="flex flex-col py-2">
+            <div className="flex flex-col py-1.5">
                 {[
                     {
                         icon: createOutline,
@@ -503,17 +481,34 @@ function ReaderSelectionMenu({
                         label: "Ask RAG",
                         action: onAskRag,
                     },
+                    ...(hasSavedHighlight
+                        ? [
+                              {
+                                  icon: removeOutline,
+                                  label: "Delete highlight",
+                                  action: onDeleteHighlight,
+                              },
+                          ]
+                        : []),
                 ].map((item) => (
                     <button
                         key={item.label}
                         type="button"
-                        onClick={item.action}
-                        className="flex items-center gap-4 px-8 py-[15px] text-left text-[0.98rem] hover:bg-black/[0.03]"
+                        onMouseDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            item.action();
+                        }}
+                        className="flex items-center gap-3 px-6 py-3 text-left text-[0.94rem] hover:bg-black/[0.03]"
                         style={{ color: isDark ? "#f3f4f6" : "#202124" }}
                     >
                         <IonIcon
                             icon={item.icon}
-                            className="text-[1.7rem]"
+                            className="text-[1.45rem]"
                             style={{ color: isDark ? "#f3f4f6" : "#49515e" }}
                         />
                         <span className="tracking-[-0.02em]">{item.label}</span>
@@ -541,6 +536,8 @@ export default function Reader({
     const touchStartRef = useRef<{ x: number; y: number } | null>(null);
     const hideChromeTimeoutRef = useRef<number | null>(null);
     const modeHydratedRef = useRef<string | null>(null);
+    const suppressContextMenuUntilRef = useRef(0);
+    const suppressSelectionCloseUntilRef = useRef(0);
     const {
         isBootstrapping,
         manifest,
@@ -554,6 +551,8 @@ export default function Reader({
         refreshBootstrap,
         setCurrentTextSection,
         createBookmark,
+        updateAnnotation,
+        deleteAnnotation,
         jumpToAnnotation,
     } = useReaderSession(book);
     const { settings, updateSetting } = useReaderSetting();
@@ -795,7 +794,12 @@ export default function Reader({
         savedSectionIndex === currentTextSection
             ? Math.max(0, Number(session?.view_state?.pageIndex || 0))
             : 0;
-    const showReaderChrome = chromeVisible || !!overlay || overflowOpen;
+    const overlayKeepsChromeVisible =
+        overlay === "contents" ||
+        overlay === "search" ||
+        overlay === "settings";
+    const showReaderChrome =
+        chromeVisible || overlayKeepsChromeVisible || overflowOpen;
     const showDesktopPagedEdges =
         platformLayout === "desktop" && effectivePresentationMode === "paged";
     const showDesktopFocusPreview =
@@ -823,22 +827,20 @@ export default function Reader({
 
     const closeSelection = () => {
         setSelection(null);
+        surfaceRef.current?.clearSelection?.();
         window.getSelection()?.removeAllRanges();
     };
 
-    useEffect(() => {
-        const syncSelectionState = () => {
-            if (overlay !== null) return;
-            const liveText = getLiveSelectionText();
-            if (!liveText) {
-                setSelection(null);
-            }
-        };
+    const suppressContextMenu = useCallback((durationMs = 450) => {
+        suppressContextMenuUntilRef.current = Date.now() + durationMs;
+    }, []);
 
-        document.addEventListener("selectionchange", syncSelectionState);
-        return () =>
-            document.removeEventListener("selectionchange", syncSelectionState);
-    }, [getLiveSelectionText, overlay]);
+    const prepareSelectionOverlay = useCallback(() => {
+        suppressContextMenu();
+        surfaceRef.current?.clearSelection?.();
+        window.getSelection()?.removeAllRanges();
+        setOverflowOpen(false);
+    }, [suppressContextMenu]);
 
     const openContents = (tab: ContentsTab) => {
         setContentsTab(tab);
@@ -854,13 +856,129 @@ export default function Reader({
             setSelection(null);
             return;
         }
+        suppressSelectionCloseUntilRef.current = Date.now() + 250;
         setOverflowOpen(false);
         setSelection((prev) => ({
             text: nextText,
             color: prev?.color || "amber",
             rect: payload?.rect || null,
+            anchor: payload?.anchor || null,
+            annotationId: payload?.annotationId || undefined,
         }));
     };
+
+    const handleAnnotationPress = useCallback(
+        (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null) => {
+            suppressSelectionCloseUntilRef.current = Date.now() + 250;
+            setSelection({
+                text: annotation.quote_text || "",
+                color: annotation.color || "amber",
+                rect,
+                anchor: annotation.anchor || {},
+                annotationId: annotation.annotation_id,
+            });
+        },
+        [],
+    );
+
+    const createHighlightAnnotation = useCallback(
+        async (color: string) => {
+            if (!book?.filename || !selection?.text?.trim()) return null;
+            const anchor = {
+                location: currentLocationPayload.location,
+                location_type: currentLocationPayload.locationType || "",
+                view_state: currentLocationPayload.viewState || {},
+                progress_percent: currentLocationPayload.progressPercent || 0,
+                ...(selection.anchor || {}),
+            };
+            const response = await API.post(
+                `/reader/books/${encodeURIComponent(book.filename)}/annotations`,
+                {
+                    lid: book.lid || "",
+                    format: book.extension || "",
+                    anchor,
+                    quote_text: selection.text.trim(),
+                    title: surfaceState.chapterLabel || surfaceState.pageLabel || book.title,
+                    note: "",
+                    color,
+                    kind: "highlight",
+                    page_label: surfaceState.pageLabel || "",
+                    chapter_label: surfaceState.chapterLabel || "",
+                },
+            );
+            const created = response.data?.data as ReaderAnnotation | undefined;
+            if (created) {
+                await refreshBootstrap();
+                setSelection((prev) =>
+                    prev
+                        ? {
+                              ...prev,
+                              color: created.color || color,
+                              annotationId: created.annotation_id,
+                              anchor: created.anchor || anchor,
+                          }
+                        : prev,
+                );
+            }
+            return created || null;
+        },
+        [
+            book?.extension,
+            book?.filename,
+            book?.lid,
+            book?.title,
+            currentLocationPayload.location,
+            currentLocationPayload.locationType,
+            currentLocationPayload.progressPercent,
+            currentLocationPayload.viewState,
+            refreshBootstrap,
+            selection,
+            surfaceState.chapterLabel,
+            surfaceState.pageLabel,
+        ],
+    );
+
+    const handleSelectionColor = useCallback(
+        async (color: string) => {
+            if (!selection?.text?.trim()) return;
+            suppressSelectionCloseUntilRef.current = Date.now() + 250;
+            if (selection.annotationId) {
+                await updateAnnotation(selection.annotationId, { color });
+                setSelection((prev) => (prev ? { ...prev, color } : prev));
+                surfaceRef.current?.clearSelection?.();
+                window.getSelection()?.removeAllRanges();
+                return;
+            }
+            try {
+                await createHighlightAnnotation(color);
+                surfaceRef.current?.clearSelection?.();
+                window.getSelection()?.removeAllRanges();
+            } catch (error) {
+                console.error("Reader highlight save failed", error);
+            }
+        },
+        [createHighlightAnnotation, selection, updateAnnotation],
+    );
+
+    const deleteSelectedHighlight = useCallback(async () => {
+        if (!selection?.annotationId) return;
+        const existing = annotations.find(
+            (annotation) => annotation.annotation_id === selection.annotationId,
+        );
+        try {
+            const linkedNoteId = String(existing?.anchor?.linked_note_id || "");
+            if (linkedNoteId) {
+                await API.delete(`/notes/item/${linkedNoteId}`);
+            }
+            await deleteAnnotation(selection.annotationId);
+            closeSelection();
+            setOverlay(null);
+            setActiveNote(null);
+            setNoteDraft("");
+        } catch (error) {
+            console.error("Reader highlight delete failed", error);
+        }
+    }, [annotations, deleteAnnotation, selection]);
 
     const runSearch = async (queryArg?: string) => {
         const query = String(queryArg ?? searchQuery).trim();
@@ -892,6 +1010,10 @@ export default function Reader({
 
     const openSearch = async (prefill?: string) => {
         const query = String(prefill || searchQuery || "").trim();
+        suppressContextMenu();
+        if (prefill) {
+            prepareSelectionOverlay();
+        }
         setSearchQuery(query);
         setOverlay("search");
         setOverflowOpen(false);
@@ -903,8 +1025,8 @@ export default function Reader({
 
     const openDefine = async () => {
         if (!selection?.text) return;
+        prepareSelectionOverlay();
         setOverlay("define");
-        setOverflowOpen(false);
         setDefineLoading(true);
         try {
             const response = await API.post("/reader/define", {
@@ -953,10 +1075,15 @@ export default function Reader({
                 ? selection?.text || ""
                 : surfaceState.visibleText || "";
         if (!text.trim()) return;
+        suppressContextMenu();
+        if (mode === "selection") {
+            prepareSelectionOverlay();
+        } else {
+            setOverflowOpen(false);
+        }
         setTranslateMode(mode);
         setTranslateInputText(text);
         setOverlay("translate");
-        setOverflowOpen(false);
         await runTranslate(
             text,
             translateSourceLanguage,
@@ -994,9 +1121,16 @@ export default function Reader({
         };
 
         try {
+            const selectedAnnotation =
+                activeNote ||
+                annotations.find(
+                    (annotation) =>
+                        annotation.annotation_id === selection?.annotationId,
+                ) ||
+                null;
             let linkedNoteId =
-                typeof activeNote?.anchor?.linked_note_id === "string"
-                    ? activeNote.anchor.linked_note_id
+                typeof selectedAnnotation?.anchor?.linked_note_id === "string"
+                    ? selectedAnnotation.anchor.linked_note_id
                     : "";
 
             if (linkedNoteId) {
@@ -1018,19 +1152,22 @@ export default function Reader({
                 linkedNoteId = String(noteResponse.data?.note_id || "");
             }
 
-            if (activeNote) {
+            if (selectedAnnotation) {
                 await API.put(
-                    `/reader/annotations/${activeNote.annotation_id}`,
+                    `/reader/annotations/${selectedAnnotation.annotation_id}`,
                     {
                         anchor: {
-                            ...(activeNote.anchor || {}),
+                            ...(selectedAnnotation.anchor || {}),
                             ...baseAnchor,
                             linked_note_id: linkedNoteId,
                         },
                         quote_text: quoteText,
                         title: noteTitle,
                         note: noteDraft,
-                        color: selection?.color || activeNote.color || "amber",
+                        color:
+                            selection?.color ||
+                            selectedAnnotation.color ||
+                            "amber",
                         kind: "note",
                         page_label: surfaceState.pageLabel,
                         chapter_label: surfaceState.chapterLabel,
@@ -1086,9 +1223,14 @@ export default function Reader({
 
     const openNewNote = () => {
         if (!selection?.text) return;
-        setActiveNote(null);
-        setNoteDraft("");
-        setOverflowOpen(false);
+        prepareSelectionOverlay();
+        const existing =
+            annotations.find(
+                (annotation) =>
+                    annotation.annotation_id === selection.annotationId,
+            ) || null;
+        setActiveNote(existing);
+        setNoteDraft(existing?.note || "");
         setOverlay("note");
     };
 
@@ -1099,6 +1241,8 @@ export default function Reader({
         setSelection({
             text: annotation.quote_text || "",
             color: annotation.color || "amber",
+            anchor: annotation.anchor || {},
+            annotationId: annotation.annotation_id,
         });
         setOverflowOpen(false);
         setOverlay("note");
@@ -1112,8 +1256,8 @@ export default function Reader({
 
     const handleAskRag = () => {
         if (!selection?.text) return;
+        prepareSelectionOverlay();
         setRagPrompt("");
-        setOverflowOpen(false);
         setOverlay("ask-rag");
     };
 
@@ -1213,6 +1357,8 @@ export default function Reader({
                     onSaveLocation={handleSaveLocation}
                     onStateChange={setSurfaceState}
                     onSelection={handleSurfaceSelection}
+                    annotations={annotations}
+                    onAnnotationPress={handleAnnotationPress}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     presentationMode={effectivePresentationMode}
@@ -1231,7 +1377,14 @@ export default function Reader({
                     onSaveLocation={handleSaveLocation}
                     onStateChange={setSurfaceState}
                     onSelection={handleSurfaceSelection}
+                    annotations={annotations}
+                    onAnnotationPress={handleAnnotationPress}
                     onContextMenuRequest={() => {
+                        if (
+                            Date.now() < suppressContextMenuUntilRef.current
+                        ) {
+                            return;
+                        }
                         if (
                             overlay ||
                             overflowOpen ||
@@ -1290,6 +1443,8 @@ export default function Reader({
                 onSaveLocation={handleSaveLocation}
                 onStateChange={setSurfaceState}
                 onSelection={handleSurfaceSelection}
+                annotations={annotations}
+                onAnnotationPress={handleAnnotationPress}
                 searchQuery={activeSearchQuery}
                 showFocusPreview={showDesktopFocusPreview}
                 onOpenContents={() => openContents("chapters")}
@@ -1339,6 +1494,11 @@ export default function Reader({
             onTouchEnd={handleTouchEnd}
             onContextMenu={(event) => {
                 const target = event.target as HTMLElement;
+                if (Date.now() < suppressContextMenuUntilRef.current) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
                 if (overlay || overflowOpen) {
                     event.preventDefault();
                     event.stopPropagation();
@@ -1371,6 +1531,11 @@ export default function Reader({
                     return;
                 }
                 if (selection) {
+                    if (
+                        Date.now() < suppressSelectionCloseUntilRef.current
+                    ) {
+                        return;
+                    }
                     closeSelection();
                     return;
                 }
@@ -2219,6 +2384,10 @@ export default function Reader({
                 <div
                     data-reader-overlay="true"
                     className="absolute inset-0 z-[80] flex items-end justify-center bg-black/10 px-3 pb-3 pt-20 sm:px-6 sm:pb-8"
+                    onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }}
                 >
                     <div
                         className="w-full max-w-[388px] overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)]"
@@ -2232,6 +2401,10 @@ export default function Reader({
                                     ? "#171a20"
                                     : "#eef0fa",
                         }}
+                        onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }}
                     >
                         <div className="px-4 pt-5">
                             <textarea
@@ -2241,6 +2414,10 @@ export default function Reader({
                                 }
                                 placeholder="Add note"
                                 className="min-h-[250px] w-full resize-none bg-transparent px-0 py-0 text-[1rem] leading-7 text-[#202124] outline-none placeholder:text-[#9aa0a6]"
+                                onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                }}
                             />
                         </div>
                         <div className="px-4 pb-5 pt-2">
@@ -2341,9 +2518,7 @@ export default function Reader({
                 color={selection?.color || "amber"}
                 anchorRect={selection?.rect || null}
                 theme={settings.theme}
-                onColor={(color) =>
-                    setSelection((prev) => (prev ? { ...prev, color } : prev))
-                }
+                onColor={(color) => void handleSelectionColor(color)}
                 onAddNote={openNewNote}
                 onDefine={() => void openDefine()}
                 onTranslate={() => void openTranslate("selection")}
@@ -2351,6 +2526,8 @@ export default function Reader({
                 onSearch={() => void openSearch(selection?.text || "")}
                 onFindEchoes={handleFindEchoes}
                 onAskRag={handleAskRag}
+                onDeleteHighlight={() => void deleteSelectedHighlight()}
+                hasSavedHighlight={Boolean(selection?.annotationId)}
             />
         </div>
     );
