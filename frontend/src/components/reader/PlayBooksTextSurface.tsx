@@ -668,17 +668,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
       if (!onSelection || !containerRef.current) return;
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
-        onSelection({ text: "", rect: null });
+        onSelection({ text: "", rect: null, phase: "final", source: "mouse" });
         return;
       }
       const text = selection.toString().trim();
       if (!text) {
-        onSelection({ text: "", rect: null });
+        onSelection({ text: "", rect: null, phase: "final", source: "mouse" });
         return;
       }
       const range = selection.getRangeAt(0);
       if (!containerRef.current.contains(range.commonAncestorContainer)) {
-        onSelection({ text: "", rect: null });
+        onSelection({ text: "", rect: null, phase: "final", source: "mouse" });
         return;
       }
       const startBaseElement = findCharBaseElement(range.startContainer);
@@ -710,6 +710,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksTextSurfaceProps>(
           start_offset: sectionStartOffset + Math.max(0, Math.min(localStart, localEnd)),
           end_offset: sectionStartOffset + Math.max(localStart, localEnd),
         },
+        phase: "final",
+        source: "mouse",
       });
     };
 

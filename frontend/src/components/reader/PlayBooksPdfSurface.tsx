@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -56,6 +57,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onVisibleNoteMarkersChange,
       onInteractionStateChange,
       onContextMenuRequest,
+      onTapZoneRequest,
       presentationMode,
       platformLayout,
       settings,
@@ -68,6 +70,16 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const zoomWrapperRef = useRef<any>(null);
     const previousPageRef = useRef<number | null>(null);
     const previousViewportRef = useRef({ width: 0, height: 0 });
+    const selectionFinalizeTimeoutRef = useRef<number | null>(null);
+    const selectionInProgressRef = useRef(false);
+    const touchSelectionActiveRef = useRef(false);
+    const touchGestureRef = useRef<{
+      x: number;
+      y: number;
+      time: number;
+      moved: boolean;
+      multiTouch: boolean;
+    } | null>(null);
     const [pageNumber, setPageNumber] = useState(() => {
       const numeric =
         typeof initialLocation === "string"
@@ -90,6 +102,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const [mobileScale, setMobileScale] = useState(() =>
       clamp(Number(initialScale) || 1, 1, 3),
     );
+    const [selectionInProgress, setSelectionInProgress] = useState(false);
     const activeHeight = Math.max(
       320,
       viewport.height - (desktopLayout ? contentPadding * 2 : 28),
@@ -103,6 +116,48 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         zoomWrapperRef.current.setTransform(0, 0, clampedScale, duration, "easeOutCubic");
       }
     };
+
+    useEffect(() => {
+      selectionInProgressRef.current = selectionInProgress;
+    }, [selectionInProgress]);
+
+    useEffect(() => {
+      return () => {
+        if (selectionFinalizeTimeoutRef.current) {
+          window.clearTimeout(selectionFinalizeTimeoutRef.current);
+        }
+      };
+    }, []);
+
+    const clearPendingSelectionFinalize = useCallback(() => {
+      if (!selectionFinalizeTimeoutRef.current) return;
+      window.clearTimeout(selectionFinalizeTimeoutRef.current);
+      selectionFinalizeTimeoutRef.current = null;
+    }, []);
+
+    const emitSelection = useCallback(
+      (
+        payload: Omit<ReaderSelectionPayload, "phase" | "source"> | null,
+        phase: ReaderSelectionPayload["phase"],
+        source: ReaderSelectionPayload["source"],
+      ) => {
+        onSelection?.(
+          payload
+            ? {
+                ...payload,
+                phase,
+                source,
+              }
+            : {
+                text: "",
+                rect: null,
+                phase,
+                source,
+              },
+        );
+      },
+      [onSelection],
+    );
 
     useEffect(() => {
       const node = containerRef.current;
@@ -129,12 +184,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onInteractionStateChange?.({
         lockNavigation: navigationLocked,
         scale: mobileZoomEnabled ? mobileScale : 1,
+        selectionInProgress,
       });
     }, [
       mobileScale,
       mobileZoomEnabled,
       navigationLocked,
       onInteractionStateChange,
+      selectionInProgress,
     ]);
 
     useEffect(() => {
@@ -247,22 +304,22 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       [numPages, pageNumber, spreadMode],
     );
 
-    const handleSelection = () => {
-      if (!onSelection || !containerRef.current) return;
+    const getSelectionPayload = useCallback((): Omit<
+      ReaderSelectionPayload,
+      "phase" | "source"
+    > | null => {
+      if (!containerRef.current) return null;
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
-        onSelection({ text: "", rect: null });
-        return;
+        return null;
       }
       const text = selection.toString().trim();
       if (!text) {
-        onSelection({ text: "", rect: null });
-        return;
+        return null;
       }
       const range = selection.getRangeAt(0);
       if (!containerRef.current.contains(range.commonAncestorContainer)) {
-        onSelection({ text: "", rect: null });
-        return;
+        return null;
       }
       const boundingRect = range.getBoundingClientRect();
       const fallbackRect = range.getClientRects().item(0);
@@ -270,14 +327,73 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         boundingRect.width > 0 || boundingRect.height > 0
           ? boundingRect
           : fallbackRect;
-      onSelection({
+      return {
         text,
         rect: getDomRectPayload(resolvedRect),
         anchor: {
           page: pageNumber,
         },
-      });
+      };
+    }, [pageNumber]);
+
+    const handleMouseSelection = () => {
+      setSelectionInProgress(false);
+      emitSelection(getSelectionPayload(), "final", "mouse");
     };
+
+    const finalizeTouchSelection = () => {
+      clearPendingSelectionFinalize();
+      selectionFinalizeTimeoutRef.current = window.setTimeout(() => {
+        const payload = getSelectionPayload();
+        const hasValidRect = Boolean(
+          payload?.rect &&
+            ((payload.rect.width || 0) > 0 || (payload.rect.height || 0) > 0),
+        );
+        const hasMinText = String(payload?.text || "").trim().length >= 2;
+        setSelectionInProgress(false);
+        selectionFinalizeTimeoutRef.current = null;
+        emitSelection(
+          payload && hasValidRect && hasMinText ? payload : null,
+          "final",
+          "touch",
+        );
+      }, 180);
+    };
+
+    useEffect(() => {
+      if (desktopLayout || typeof document === "undefined") {
+        return;
+      }
+      const handleSelectionChange = () => {
+        if (
+          !touchSelectionActiveRef.current &&
+          !selectionInProgressRef.current
+        ) {
+          return;
+        }
+        clearPendingSelectionFinalize();
+        const payload = getSelectionPayload();
+        if (!payload) {
+          setSelectionInProgress(false);
+          emitSelection(null, "draft", "touch");
+          return;
+        }
+        setSelectionInProgress(true);
+        emitSelection(payload, "draft", "touch");
+      };
+      document.addEventListener("selectionchange", handleSelectionChange);
+      return () => {
+        document.removeEventListener(
+          "selectionchange",
+          handleSelectionChange,
+        );
+      };
+    }, [
+      clearPendingSelectionFinalize,
+      desktopLayout,
+      emitSelection,
+      getSelectionPayload,
+    ]);
 
     const usePeekLayout =
       desktopFocusPreview ||
@@ -486,6 +602,105 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       );
     };
 
+    const resolveTapZone = (clientX: number, bounds: DOMRect) => {
+      const localX = clientX - bounds.left;
+      const edgeWidth = Math.min(120, Math.max(72, bounds.width * 0.22));
+      if (localX <= edgeWidth) {
+        return "left" as const;
+      }
+      if (localX >= bounds.width - edgeWidth) {
+        return "right" as const;
+      }
+      return "center" as const;
+    };
+
+    const handleMobileTouchStart = (
+      event: React.TouchEvent<HTMLDivElement>,
+    ) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      touchSelectionActiveRef.current = event.touches.length === 1;
+      clearPendingSelectionFinalize();
+      touchGestureRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+        moved: false,
+        multiTouch: event.touches.length > 1,
+      };
+    };
+
+    const handleMobileTouchMove = (
+      event: React.TouchEvent<HTMLDivElement>,
+    ) => {
+      const touch = event.touches[0];
+      const gesture = touchGestureRef.current;
+      if (!touch || !gesture) return;
+      if (event.touches.length > 1) {
+        gesture.multiTouch = true;
+      }
+      if (
+        Math.abs(touch.clientX - gesture.x) > 10 ||
+        Math.abs(touch.clientY - gesture.y) > 10
+      ) {
+        gesture.moved = true;
+      }
+    };
+
+    const handleMobileTouchEnd = (
+      event: React.TouchEvent<HTMLDivElement>,
+    ) => {
+      touchSelectionActiveRef.current = false;
+      finalizeTouchSelection();
+      const gesture = touchGestureRef.current;
+      touchGestureRef.current = null;
+      if (!gesture || !onTapZoneRequest) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "a, button, input, textarea, select, [contenteditable='true']",
+        )
+      ) {
+        return;
+      }
+      const touch = event.changedTouches[0];
+      if (!touch || gesture.multiTouch) {
+        return;
+      }
+      if (
+        selectionInProgressRef.current ||
+        String(window.getSelection?.()?.toString?.() || "").trim()
+      ) {
+        return;
+      }
+      const deltaX = touch.clientX - gesture.x;
+      const deltaY = touch.clientY - gesture.y;
+      const navigationEnabled = mobileScale <= 1.01;
+      if (
+        navigationEnabled &&
+        pagedMode &&
+        Math.abs(deltaX) > 60 &&
+        Math.abs(deltaX) > Math.abs(deltaY)
+      ) {
+        onTapZoneRequest(deltaX < 0 ? "right" : "left");
+        return;
+      }
+      const isTap =
+        !gesture.moved &&
+        Math.abs(deltaX) < 10 &&
+        Math.abs(deltaY) < 10 &&
+        Date.now() - gesture.time < 320;
+      if (!isTap) return;
+      const currentTarget = event.currentTarget;
+      const zone = resolveTapZone(
+        touch.clientX,
+        currentTarget.getBoundingClientRect(),
+      );
+      onTapZoneRequest(
+        !navigationEnabled && zone !== "center" ? "center" : zone,
+      );
+    };
+
     return (
       <div
         ref={containerRef}
@@ -498,8 +713,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                 : "items-center overflow-hidden px-2 py-2"
             : "items-start overflow-x-hidden overflow-y-auto"
         }`}
-        onMouseUp={handleSelection}
-        onTouchEnd={handleSelection}
+        onMouseUp={handleMouseSelection}
+        onTouchStart={() => {
+          if (!desktopLayout && !pagedMode) {
+            touchSelectionActiveRef.current = true;
+            clearPendingSelectionFinalize();
+          }
+        }}
+        onTouchEnd={() => {
+          if (!desktopLayout && !pagedMode) {
+            finalizeTouchSelection();
+          }
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -588,6 +813,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                       style={{
                         minHeight: `${Math.max(320, activeHeight)}px`,
                       }}
+                      onTouchStart={handleMobileTouchStart}
+                      onTouchMove={handleMobileTouchMove}
+                      onTouchEnd={handleMobileTouchEnd}
                     >
                       <TransformWrapper
                         initialScale={clamp(Number(initialScale) || 1, 1, 3)}

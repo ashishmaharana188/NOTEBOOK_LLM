@@ -33,6 +33,8 @@ export interface ReaderSelectionPayload {
   rect?: ReaderSelectionRect | null;
   anchor?: Record<string, any>;
   annotationId?: string;
+  phase: "draft" | "final";
+  source: "touch" | "mouse";
 }
 
 export type ReaderTapZone = "left" | "center" | "right";
@@ -45,6 +47,7 @@ export interface ReaderNoteMarker {
 export interface ReaderSurfaceInteractionState {
   lockNavigation?: boolean;
   scale?: number;
+  selectionInProgress?: boolean;
 }
 
 export interface ReaderSurfaceHandle {

@@ -96,6 +96,8 @@ interface SelectionState {
     rect?: ReaderSelectionRect | null;
     anchor?: Record<string, any>;
     annotationId?: string;
+    phase: "draft" | "final";
+    source: "touch" | "mouse";
 }
 
 interface SelectionSnapshot {
@@ -104,6 +106,8 @@ interface SelectionSnapshot {
     rect?: ReaderSelectionRect | null;
     anchor?: Record<string, any>;
     annotationId?: string;
+    phase: "draft" | "final";
+    source: "touch" | "mouse";
 }
 
 interface DefineResult {
@@ -756,13 +760,6 @@ export default function Reader({
     const shellRef = useRef<HTMLDivElement | null>(null);
     const surfaceRef = useRef<ReaderSurfaceHandle | null>(null);
     const wheelDeltaRef = useRef(0);
-    const touchGestureRef = useRef<{
-        x: number;
-        y: number;
-        time: number;
-        moved: boolean;
-        multiTouch: boolean;
-    } | null>(null);
     const hideChromeTimeoutRef = useRef<number | null>(null);
     const modeHydratedRef = useRef<string | null>(null);
     const suppressContextMenuUntilRef = useRef(0);
@@ -845,6 +842,7 @@ export default function Reader({
         useState<ReaderSurfaceInteractionState>({
             lockNavigation: false,
             scale: 1,
+            selectionInProgress: false,
         });
     selectionColorRef.current = selection?.color || selectionColorRef.current;
     overlayRef.current = overlay;
@@ -888,6 +886,7 @@ export default function Reader({
         setSurfaceInteraction({
             lockNavigation: false,
             scale: 1,
+            selectionInProgress: false,
         });
     }, [book?.filename, bookExtension]);
 
@@ -1063,7 +1062,9 @@ export default function Reader({
         Number.isFinite(initialPdfScaleValue) && initialPdfScaleValue >= 1
             ? clamp(initialPdfScaleValue, 1, 3)
             : 1;
-    const allowTapNavigation = !surfaceInteraction.lockNavigation;
+    const allowTapNavigation =
+        !surfaceInteraction.lockNavigation &&
+        !surfaceInteraction.selectionInProgress;
     const currentLocationPayload = surfaceState.locationPayload || {
         location: readerLocation || 0,
         locationType: "",
@@ -1128,6 +1129,16 @@ export default function Reader({
         window.getSelection()?.removeAllRanges();
     }, []);
 
+    const handleSurfaceInteractionChange = useCallback(
+        (nextState: ReaderSurfaceInteractionState) => {
+            setSurfaceInteraction((prev) => ({
+                ...prev,
+                ...nextState,
+            }));
+        },
+        [],
+    );
+
     const closeNoteOverlay = useCallback(() => {
         setOverlay(null);
         setActiveNote(null);
@@ -1173,6 +1184,8 @@ export default function Reader({
                 rect,
                 anchor: annotation.anchor || {},
                 annotationId: annotation.annotation_id,
+                phase: "final",
+                source: "mouse",
             });
             setOverflowOpen(false);
             setOverlay("note");
@@ -1193,6 +1206,8 @@ export default function Reader({
                 rect,
                 anchor: annotation.anchor || {},
                 annotationId: annotation.annotation_id,
+                phase: "final",
+                source: "mouse",
             });
         },
         [openExistingNote],
@@ -1350,13 +1365,12 @@ export default function Reader({
                 ...(payload?.annotationId
                     ? { annotationId: payload.annotationId }
                     : {}),
+                phase: payload.phase,
+                source: payload.source,
             };
             setSelection(nextSelection);
-            if (!payload?.annotationId && ext !== "pdf") {
-                void ensureSelectionHighlight(nextSelection);
-            }
         },
-        [ensureSelectionHighlight, ext],
+        [],
     );
 
     const handleSurfaceContextMenuRequest = useCallback(() => {
@@ -1727,7 +1741,13 @@ export default function Reader({
         (zone: ReaderTapZone) => {
             suppressTouchTapUntilRef.current = Date.now() + 350;
             if (overlay) return;
+            if (surfaceInteraction.selectionInProgress) {
+                return;
+            }
             if (selection) {
+                if (selection.phase === "draft") {
+                    return;
+                }
                 if (Date.now() >= suppressSelectionCloseUntilRef.current) {
                     closeSelection();
                 }
@@ -1766,107 +1786,11 @@ export default function Reader({
             overflowOpen,
             overlay,
             selection,
+            surfaceInteraction.selectionInProgress,
             turnNextPage,
             turnPrevPage,
         ],
     );
-
-    const resolveTapZone = useCallback((clientX: number): ReaderTapZone => {
-        const shell = shellRef.current;
-        if (!shell) {
-            return "center";
-        }
-        const rect = shell.getBoundingClientRect();
-        const localX = clientX - rect.left;
-        const edgeWidth = Math.min(120, Math.max(72, rect.width * 0.22));
-        if (localX <= edgeWidth) {
-            return "left";
-        }
-        if (localX >= rect.width - edgeWidth) {
-            return "right";
-        }
-        return "center";
-    }, []);
-
-    const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-        const touch = event.touches[0];
-        if (!touch) return;
-        touchGestureRef.current = {
-            x: touch.clientX,
-            y: touch.clientY,
-            time: Date.now(),
-            moved: false,
-            multiTouch: event.touches.length > 1,
-        };
-    };
-
-    const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
-        const touch = event.touches[0];
-        const current = touchGestureRef.current;
-        if (!touch || !current) return;
-        if (event.touches.length > 1) {
-            current.multiTouch = true;
-        }
-        if (
-            Math.abs(touch.clientX - current.x) > 10 ||
-            Math.abs(touch.clientY - current.y) > 10
-        ) {
-            current.moved = true;
-        }
-    };
-
-    const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
-        const gesture = touchGestureRef.current;
-        touchGestureRef.current = null;
-        if (!gesture) return;
-        const target = event.target as HTMLElement;
-        if (
-            target.closest("[data-reader-chrome='true']") ||
-            target.closest("[data-reader-overlay='true']")
-        ) {
-            return;
-        }
-        const touch = event.changedTouches[0];
-        if (!touch) return;
-        if (gesture.multiTouch) {
-            return;
-        }
-        if (Date.now() < suppressTouchTapUntilRef.current) {
-            return;
-        }
-        const deltaX = touch.clientX - gesture.x;
-        const deltaY = touch.clientY - gesture.y;
-        const liveSelectionText = getLiveSelectionText();
-        if (liveSelectionText) {
-            suppressTouchTapUntilRef.current = Date.now() + 350;
-            return;
-        }
-        if (
-            !overlay &&
-            !selection &&
-            allowTapNavigation &&
-            effectivePresentationMode === "paged" &&
-            Math.abs(deltaX) > 60 &&
-            Math.abs(deltaX) > Math.abs(deltaY)
-        ) {
-            suppressTouchTapUntilRef.current = Date.now() + 350;
-            if (deltaX < 0) {
-                turnNextPage();
-            } else {
-                turnPrevPage();
-            }
-            return;
-        }
-        const isTap =
-            !gesture.moved &&
-            Math.abs(deltaX) < 10 &&
-            Math.abs(deltaY) < 10 &&
-            Date.now() - gesture.time < 320;
-        if (!isTap || !isMobileLayout) {
-            return;
-        }
-        handleTapZoneRequest(resolveTapZone(touch.clientX));
-    };
 
     const renderSurface = () => {
         if (ext === "pdf") {
@@ -1882,7 +1806,7 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
-                    onInteractionStateChange={setSurfaceInteraction}
+                    onInteractionStateChange={handleSurfaceInteractionChange}
                     onContextMenuRequest={handleSurfaceContextMenuRequest}
                     onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
@@ -1907,7 +1831,7 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
-                    onInteractionStateChange={setSurfaceInteraction}
+                    onInteractionStateChange={handleSurfaceInteractionChange}
                     onContextMenuRequest={handleSurfaceContextMenuRequest}
                     onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
@@ -1963,7 +1887,7 @@ export default function Reader({
                 annotations={annotations}
                 onAnnotationPress={handleAnnotationPress}
                 onVisibleNoteMarkersChange={setVisibleNoteMarkers}
-                onInteractionStateChange={setSurfaceInteraction}
+                onInteractionStateChange={handleSurfaceInteractionChange}
                 onTapZoneRequest={handleTapZoneRequest}
                 searchQuery={activeSearchQuery}
                 showFocusPreview={showDesktopFocusPreview}
@@ -2035,9 +1959,6 @@ export default function Reader({
                 touchAction: "manipulation",
             }}
             onWheel={handleWheel}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
             onContextMenu={(event) => {
                 const target = event.target as HTMLElement;
                 if (Date.now() < suppressContextMenuUntilRef.current) {
@@ -2072,6 +1993,9 @@ export default function Reader({
                 if (Date.now() < suppressTouchTapUntilRef.current) {
                     return;
                 }
+                if (surfaceInteraction.selectionInProgress) {
+                    return;
+                }
                 const target = event.target as HTMLElement;
                 if (
                     target.closest("[data-reader-chrome='true']") ||
@@ -2080,6 +2004,9 @@ export default function Reader({
                     return;
                 }
                 if (selection) {
+                    if (selection.phase === "draft") {
+                        return;
+                    }
                     if (
                         Date.now() < suppressSelectionCloseUntilRef.current
                     ) {
@@ -3295,6 +3222,8 @@ export default function Reader({
                                                               activeNote?.quote_text ||
                                                               "",
                                                           color: chip.key,
+                                                          phase: "final",
+                                                          source: "mouse",
                                                       },
                                             )
                                         }
@@ -3384,7 +3313,11 @@ export default function Reader({
             </ReaderSheet>
 
             <ReaderSelectionMenu
-                open={!!selection && overlay === null}
+                open={
+                    !!selection &&
+                    selection.phase === "final" &&
+                    overlay === null
+                }
                 color={selection?.color || "amber"}
                 anchorRect={selection?.rect || null}
                 theme={settings.theme}
