@@ -42,6 +42,11 @@ export interface ReaderNoteMarker {
   rect: ReaderSelectionRect;
 }
 
+export interface ReaderSurfaceInteractionState {
+  lockNavigation?: boolean;
+  scale?: number;
+}
+
 export interface ReaderSurfaceHandle {
   prev: () => void;
   next: () => void;
@@ -59,6 +64,7 @@ export interface ReaderSurfaceCommonProps {
   annotations?: ReaderAnnotation[];
   onAnnotationPress?: (annotation: ReaderAnnotation, rect: ReaderSelectionRect | null) => void;
   onVisibleNoteMarkersChange?: (markers: ReaderNoteMarker[]) => void;
+  onInteractionStateChange?: (state: ReaderSurfaceInteractionState) => void;
   onContextMenuRequest?: () => void;
   onTapZoneRequest?: (zone: ReaderTapZone) => void;
   showFocusPreview?: boolean;
@@ -97,6 +103,36 @@ export function getReaderTheme(settings: ReaderSettings) {
     railText: settings.theme === "dark" ? "#d6d9e1" : "#545a66",
     overlay: settings.nightLight ? "rgba(255, 183, 77, 0.10)" : "transparent",
     brightness: Math.min(130, Math.max(55, Number(settings.brightness || 100))) / 100,
+  };
+}
+
+export function getReaderUiPalette(settings: ReaderSettings) {
+  const baseTheme = getReaderTheme(settings);
+  const isDark = settings.theme === "dark";
+  const isSepia = settings.theme === "sepia";
+
+  return {
+    shell: baseTheme.shellBackground,
+    overlayBackdrop: isDark ? "rgba(2, 6, 12, 0.34)" : "rgba(10, 17, 28, 0.12)",
+    overlayBackground: isDark ? "#0d1015" : isSepia ? "#f3ead9" : "#f4f3fb",
+    surface: isDark ? "#171a20" : isSepia ? "#fbf5ea" : "#ffffff",
+    surfaceMuted: isDark ? "#12151b" : isSepia ? "#f1e5cf" : "#eef0fa",
+    surfaceSoft: isDark ? "rgba(255,255,255,0.06)" : isSepia ? "#f4ead6" : "#f7f8fc",
+    border: isDark ? "rgba(255,255,255,0.12)" : isSepia ? "rgba(98,78,50,0.18)" : "rgba(0,0,0,0.08)",
+    borderStrong: isDark ? "rgba(255,255,255,0.18)" : isSepia ? "rgba(98,78,50,0.28)" : "rgba(136,142,156,0.35)",
+    textPrimary: isDark ? "#f3f4f6" : isSepia ? "#3a2f20" : "#202124",
+    textSecondary: isDark ? "#d6d9e1" : isSepia ? "#6f5b41" : "#5f6368",
+    iconPrimary: isDark ? "#f3f4f6" : isSepia ? "#3a2f20" : "#202124",
+    iconSecondary: isDark ? "#d6d9e1" : isSepia ? "#7b664e" : "#49515e",
+    accent: "#5670b5",
+    accentText: "#ffffff",
+    accentSoft: isDark ? "rgba(86,112,181,0.18)" : "rgba(86,112,181,0.12)",
+    paper: baseTheme.paperBackground,
+    paperText: baseTheme.paperText,
+    inputBackground: isDark ? "#111318" : isSepia ? "#fffaf1" : "#ffffff",
+    inputBorder: isDark ? "rgba(255,255,255,0.12)" : isSepia ? "rgba(98,78,50,0.18)" : "rgba(0,0,0,0.10)",
+    pillBackground: isDark ? "rgba(255,255,255,0.08)" : isSepia ? "rgba(58,47,32,0.08)" : "rgba(255,255,255,0.72)",
+    pillShadow: isDark ? "0 6px 16px rgba(0,0,0,0.18)" : "0 6px 16px rgba(15,23,42,0.08)",
   };
 }
 

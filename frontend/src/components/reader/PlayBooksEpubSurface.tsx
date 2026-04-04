@@ -58,6 +58,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             annotations = [],
             onAnnotationPress,
             onVisibleNoteMarkersChange,
+            onInteractionStateChange,
             onContextMenuRequest,
             onTapZoneRequest,
             onOpenContents,
@@ -102,6 +103,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const desktopLayout = platformLayout === "desktop";
         const desktopSectionPaging = pagedMode && desktopLayout;
         const desktopFocusPreview = pagedMode && desktopLayout && showFocusPreview;
+        const mobileScrollMode = !desktopLayout && !pagedMode;
 
         useEffect(() => {
             onSelectionRef.current = onSelection;
@@ -122,6 +124,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         useEffect(() => {
             onVisibleNoteMarkersChangeRef.current = onVisibleNoteMarkersChange;
         }, [onVisibleNoteMarkersChange]);
+
+        useEffect(() => {
+            onInteractionStateChange?.({
+                lockNavigation: false,
+                scale: 1,
+            });
+        }, [onInteractionStateChange]);
 
         const getActiveContents = useCallback(() => {
             const contents = renditionRef.current?.getContents?.() || [];
@@ -248,7 +257,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             scroll-behavior: smooth !important;
             overscroll-behavior: contain !important;
             -webkit-overflow-scrolling: touch !important;
-            touch-action: manipulation !important;
+            touch-action: ${mobileScrollMode ? "auto" : "manipulation"} !important;
             -webkit-text-size-adjust: 100% !important;
           }
           html::-webkit-scrollbar,
@@ -367,6 +376,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             [
                 desktopLayout,
                 desktopSectionPaging,
+                mobileScrollMode,
                 pagedMode,
                 settings.alignment,
                 settings.fontFamily,
@@ -720,6 +730,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             const deltaX = touch.clientX - previousTouch.x;
                             const deltaY = touch.clientY - previousTouch.y;
                             if (
+                                pagedMode &&
                                 Math.abs(deltaX) > 60 &&
                                 Math.abs(deltaX) > Math.abs(deltaY)
                             ) {
@@ -735,7 +746,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                 Date.now() - previousTouch.time < 320;
                             if (!isTap) return;
                             onTapZoneRequestRef.current?.(
-                                resolveTapZone(touch.clientX),
+                                pagedMode
+                                    ? resolveTapZone(touch.clientX)
+                                    : "center",
                             );
                         };
                         doc.addEventListener("touchstart", handleTouchStart, {
@@ -1254,7 +1267,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             [desktopSectionPaging, pagedMode],
         );
         const showMobilePagedShell = pagedMode && !desktopLayout;
-        const mobileScrollMode = !desktopLayout && !pagedMode;
         const paperBackground =
             settings.theme === "dark"
                 ? "#050505"
@@ -1391,9 +1403,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     className={`${desktopLayout || pagedMode ? "mx-auto" : ""} min-w-0 ${
                         pagedMode && desktopLayout
                             ? "h-full w-full"
-                            : pagedMode
+                        : pagedMode
                               ? "h-full"
-                              : "min-h-[calc(100vh-180px)] w-full"
+                              : "min-h-full w-full"
                     }`}
                     style={{
                         width: "100%",
@@ -1426,7 +1438,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             epubViewStyles={{
                                 viewHolder: {
                                     position: "relative",
-                                    height: "100%",
+                                    height: mobileScrollMode ? "auto" : "100%",
                                     width: "100%",
                                     minWidth: mobileScrollMode
                                         ? "100%"
@@ -1440,7 +1452,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     msOverflowStyle: "none",
                                 },
                                 view: {
-                                    height: "100%",
+                                    height: mobileScrollMode ? "auto" : "100%",
                                     width: "100%",
                                     minWidth: mobileScrollMode
                                         ? "100%"

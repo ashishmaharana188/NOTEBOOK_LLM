@@ -43,11 +43,13 @@ import {
     annotationHasAttachedNote,
     clamp,
     getReaderTheme,
+    getReaderUiPalette,
     PLAY_BOOKS_FONTS,
     PLAY_BOOKS_THEMES,
     type ReaderNoteMarker,
     type ReaderPlatformLayout,
     type ReaderPresentationMode,
+    type ReaderSurfaceInteractionState,
     type ReaderSelectionPayload,
     type ReaderSelectionRect,
     type ReaderSurfaceHandle,
@@ -147,6 +149,18 @@ function IconButton({
     theme?: "light" | "dark" | "sepia";
     compact?: boolean;
 }) {
+    const palette = getReaderUiPalette({
+        theme,
+        fontSize: 100,
+        fontFamily: "",
+        lineHeight: 1.6,
+        pageMargin: 0,
+        flow: "paginated",
+        spread: "none",
+        alignment: "default",
+        brightness: 100,
+        nightLight: false,
+    });
     const isDark = theme === "dark";
     return (
         <button
@@ -160,11 +174,23 @@ function IconButton({
                 active
                     ? isDark
                         ? "bg-white/12 text-white shadow-[0_6px_16px_rgba(0,0,0,0.24)] backdrop-blur-sm"
-                        : "bg-white/70 text-[#5069ad] shadow-[0_6px_16px_rgba(15,23,42,0.08)] backdrop-blur-sm"
+                        : "shadow-[0_6px_16px_rgba(15,23,42,0.08)] backdrop-blur-sm"
                     : isDark
-                      ? "text-white hover:bg-white/10 hover:shadow-[0_6px_16px_rgba(0,0,0,0.18)]"
-                      : "text-[#202124] hover:bg-white/55 hover:shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                        ? "text-white hover:bg-white/10 hover:shadow-[0_6px_16px_rgba(0,0,0,0.18)]"
+                        : "hover:shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
             }`}
+            style={
+                active
+                    ? {
+                          background: isDark ? "rgba(255,255,255,0.12)" : palette.pillBackground,
+                          color: isDark ? "#ffffff" : palette.accent,
+                      }
+                    : !isDark
+                      ? {
+                            color: palette.iconPrimary,
+                        }
+                      : undefined
+            }
         >
             <IonIcon icon={icon} />
         </button>
@@ -179,6 +205,7 @@ function ReaderSheet({
     widthClass = "max-w-[480px]",
     placement = "bottom",
     theme = "light",
+    compact = false,
 }: {
     title: string;
     open: boolean;
@@ -187,19 +214,41 @@ function ReaderSheet({
     widthClass?: string;
     placement?: "center" | "bottom" | "top-right";
     theme?: "light" | "dark" | "sepia";
+    compact?: boolean;
 }) {
     if (!open) return null;
-    const isDark = theme === "dark";
-    const placementClass =
-        placement === "top-right"
-            ? "items-start justify-end px-3 pt-20 sm:px-6 sm:pt-24"
-            : placement === "center"
-              ? "items-center justify-center px-3 pb-3 pt-20 sm:px-6 sm:pb-8"
-              : "items-end justify-center px-3 pb-3 pt-20 sm:px-6 sm:pb-8";
+    const palette = getReaderUiPalette({
+        theme,
+        fontSize: 100,
+        fontFamily: "",
+        lineHeight: 1.6,
+        pageMargin: 0,
+        flow: "paginated",
+        spread: "none",
+        alignment: "default",
+        brightness: 100,
+        nightLight: false,
+    });
+    const placementClass = compact
+        ? "items-end justify-center px-0"
+        : placement === "top-right"
+          ? "items-start justify-end px-3 pt-20 sm:px-6 sm:pt-24"
+          : placement === "center"
+            ? "items-center justify-center px-3 pb-3 pt-20 sm:px-6 sm:pb-8"
+            : "items-end justify-center px-3 pb-3 pt-20 sm:px-6 sm:pb-8";
     return (
         <div
             data-reader-overlay="true"
-            className={`absolute inset-0 z-[80] flex bg-black/10 ${placementClass}`}
+            className={`absolute inset-0 z-[80] flex ${placementClass}`}
+            style={{
+                background: palette.overlayBackdrop,
+                paddingTop: compact
+                    ? "max(12px, calc(env(safe-area-inset-top) + 12px))"
+                    : undefined,
+                paddingBottom: compact
+                    ? "max(0px, env(safe-area-inset-bottom))"
+                    : undefined,
+            }}
             onContextMenu={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -221,21 +270,24 @@ function ReaderSheet({
         }
       `}</style>
             <div
-                className={`w-full ${widthClass} overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)]`}
+                className={`w-full ${widthClass} overflow-hidden shadow-[0_10px_18px_rgba(15,23,42,0.10)] ${
+                    compact ? "rounded-t-[18px]" : "rounded-[10px]"
+                }`}
                 style={{
-                    border: isDark
-                        ? "1px solid rgba(255,255,255,0.12)"
-                        : "1px solid rgba(136,142,156,0.45)",
-                    background: isDark ? "#171a20" : "#eef0fa",
-                    color: isDark ? "#f3f4f6" : "#202124",
+                    border: `1px solid ${palette.borderStrong}`,
+                    background: palette.surfaceMuted,
+                    color: palette.textPrimary,
+                    maxWidth: compact ? "100%" : undefined,
+                    maxHeight: compact ? "min(82dvh, calc(100dvh - env(safe-area-inset-top) - 12px))" : undefined,
                 }}
             >
                 <div
                     className="flex items-center justify-between px-4 py-3 sm:px-5"
                     style={{
-                        borderBottom: isDark
-                            ? "1px solid rgba(255,255,255,0.08)"
-                            : "1px solid rgba(136,142,156,0.35)",
+                        borderBottom: `1px solid ${palette.border}`,
+                        paddingTop: compact
+                            ? "max(6px, calc(env(safe-area-inset-top) * 0.1))"
+                            : undefined,
                     }}
                 >
                     <div className="text-[1.16rem] font-normal tracking-[-0.03em] sm:text-[1.22rem]">
@@ -245,15 +297,22 @@ function ReaderSheet({
                         type="button"
                         onClick={onClose}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] text-[1.1rem] hover:bg-black/5"
-                        style={{ color: isDark ? "#f3f4f6" : "#4b5563" }}
+                        style={{ color: palette.iconSecondary }}
                         aria-label="Close"
                     >
                         <IonIcon icon={closeOutline} />
                     </button>
                 </div>
                 <div
-                    className="reader-sheet-scroll max-h-[58vh] overflow-y-auto px-4 py-3.5 sm:px-5 sm:py-4"
-                    style={{ WebkitOverflowScrolling: "touch" }}
+                    className={`reader-sheet-scroll overflow-y-auto px-4 py-3.5 sm:px-5 sm:py-4 ${
+                        compact ? "max-h-[calc(82dvh-72px)]" : "max-h-[58vh]"
+                    }`}
+                    style={{
+                        WebkitOverflowScrolling: "touch",
+                        paddingBottom: compact
+                            ? "calc(16px + env(safe-area-inset-bottom))"
+                            : undefined,
+                    }}
                 >
                     {children}
                 </div>
@@ -268,35 +327,56 @@ function TakeoverScreen({
     onClose,
     children,
     theme = "light",
+    compact = false,
 }: {
     title: string;
     open: boolean;
     onClose: () => void;
     children: ReactNode;
     theme?: "light" | "dark" | "sepia";
+    compact?: boolean;
 }) {
     if (!open) return null;
-    const isDark = theme === "dark";
+    const palette = getReaderUiPalette({
+        theme,
+        fontSize: 100,
+        fontFamily: "",
+        lineHeight: 1.6,
+        pageMargin: 0,
+        flow: "paginated",
+        spread: "none",
+        alignment: "default",
+        brightness: 100,
+        nightLight: false,
+    });
     return (
         <div
             data-reader-overlay="true"
             className="absolute inset-0 z-[70]"
             style={{
-                background: isDark ? "#0d1015" : "#f4f3fb",
-                color: isDark ? "#f3f4f6" : "#202124",
+                background: palette.overlayBackground,
+                color: palette.textPrimary,
             }}
             onContextMenu={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
             }}
         >
-            <div className="flex h-full flex-col">
+            <div
+                className="flex h-full flex-col"
+                style={{
+                    paddingTop: compact
+                        ? "env(safe-area-inset-top)"
+                        : undefined,
+                    paddingBottom: compact
+                        ? "env(safe-area-inset-bottom)"
+                        : undefined,
+                }}
+            >
                 <div
-                    className="flex items-center gap-3 px-5 py-5 sm:px-8"
+                    className={`flex items-center gap-3 ${compact ? "px-4 py-4" : "px-5 py-5 sm:px-8"}`}
                     style={{
-                        borderBottom: isDark
-                            ? "1px solid rgba(255,255,255,0.10)"
-                            : "1px solid rgba(0,0,0,0.10)",
+                        borderBottom: `1px solid ${palette.border}`,
                     }}
                 >
                     <IconButton
@@ -304,8 +384,13 @@ function TakeoverScreen({
                         label="Back"
                         onClick={onClose}
                         theme={theme}
+                        compact={compact}
                     />
-                    <div className="min-w-0 text-[2.1rem] font-normal tracking-[-0.05em]">
+                    <div
+                        className={`min-w-0 font-normal tracking-[-0.05em] ${
+                            compact ? "text-[1.4rem]" : "text-[2.1rem]"
+                        }`}
+                    >
                         <div className="truncate">{title}</div>
                     </div>
                 </div>
@@ -322,6 +407,7 @@ function ReaderListRow({
     body,
     accent = "#5772b7",
     onClick,
+    theme = "light",
 }: {
     icon?: ReactNode;
     title: string;
@@ -329,27 +415,50 @@ function ReaderListRow({
     body?: ReactNode | undefined;
     accent?: string;
     onClick?: () => void;
+    theme?: "light" | "dark" | "sepia";
 }) {
+    const palette = getReaderUiPalette({
+        theme,
+        fontSize: 100,
+        fontFamily: "",
+        lineHeight: 1.6,
+        pageMargin: 0,
+        flow: "paginated",
+        spread: "none",
+        alignment: "default",
+        brightness: 100,
+        nightLight: false,
+    });
     return (
         <button
             type="button"
             onClick={onClick}
             className="flex w-full gap-5 border-b border-black/8 px-6 py-6 text-left transition hover:bg-black/[0.02] sm:px-10"
+            style={{ borderBottomColor: palette.border }}
         >
             <div className="pt-2 text-[26px]" style={{ color: accent }}>
                 {icon}
             </div>
             <div className="min-w-0 flex-1">
-                <div className="text-[1rem] font-medium uppercase tracking-[-0.01em] text-[#202124]">
+                <div
+                    className="text-[1rem] font-medium uppercase tracking-[-0.01em]"
+                    style={{ color: palette.textPrimary }}
+                >
                     {title}
                 </div>
                 {subtitle ? (
-                    <div className="mt-1 text-[1.02rem] text-[#5f6368]">
+                    <div
+                        className="mt-1 text-[1.02rem]"
+                        style={{ color: palette.textSecondary }}
+                    >
                         {subtitle}
                     </div>
                 ) : null}
                 {body ? (
-                    <div className="mt-5 text-[1.05rem] leading-8 text-[#202124]">
+                    <div
+                        className="mt-5 text-[1.05rem] leading-8"
+                        style={{ color: palette.textPrimary }}
+                    >
                         {body}
                     </div>
                 ) : null}
@@ -371,8 +480,10 @@ function ReaderSelectionMenu({
     onFindEchoes,
     onAskRag,
     onDeleteHighlight,
+    onDismiss,
     hasSavedHighlight,
     theme = "light",
+    mobile = false,
 }: {
     open: boolean;
     color: string;
@@ -386,16 +497,63 @@ function ReaderSelectionMenu({
     onFindEchoes: () => void;
     onAskRag: () => void;
     onDeleteHighlight: () => void;
+    onDismiss: () => void;
     hasSavedHighlight: boolean;
     theme?: "light" | "dark" | "sepia";
+    mobile?: boolean;
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [position, setPosition] = useState({ left: 20, top: 20 });
-    const isDark = theme === "dark";
     const panelWidth = 216;
+    const palette = getReaderUiPalette({
+        theme,
+        fontSize: 100,
+        fontFamily: "",
+        lineHeight: 1.6,
+        pageMargin: 0,
+        flow: "paginated",
+        spread: "none",
+        alignment: "default",
+        brightness: 100,
+        nightLight: false,
+    });
+    const actions = [
+        {
+            icon: createOutline,
+            label: "Add note",
+            action: onAddNote,
+        },
+        { icon: textOutline, label: "Define", action: onDefine },
+        {
+            icon: languageOutline,
+            label: "Translate",
+            action: onTranslate,
+        },
+        { icon: copyOutline, label: "Copy", action: onCopy },
+        { icon: searchOutline, label: "Search", action: onSearch },
+        {
+            icon: sparklesOutline,
+            label: "Find Echoes",
+            action: onFindEchoes,
+        },
+        {
+            icon: sparklesOutline,
+            label: "Ask RAG",
+            action: onAskRag,
+        },
+        ...(hasSavedHighlight
+            ? [
+                  {
+                      icon: removeOutline,
+                      label: "Delete highlight",
+                      action: onDeleteHighlight,
+                  },
+              ]
+            : []),
+    ];
 
     useEffect(() => {
-        if (!open) return;
+        if (!open || mobile) return;
         const updatePosition = () => {
             if (!anchorRect) return;
             const node = panelRef.current;
@@ -423,9 +581,92 @@ function ReaderSelectionMenu({
             window.removeEventListener("resize", updatePosition);
             window.removeEventListener("scroll", updatePosition, true);
         };
-    }, [anchorRect, open, panelWidth]);
+    }, [anchorRect, mobile, open, panelWidth]);
 
-    if (!open || !anchorRect) return null;
+    if (!open) return null;
+    if (mobile) {
+        return (
+            <div
+                data-reader-overlay="true"
+                className="fixed inset-0 z-[75] flex items-end justify-center"
+                style={{
+                    background: palette.overlayBackdrop,
+                    paddingTop: "max(12px, calc(env(safe-area-inset-top) + 12px))",
+                    paddingBottom: "env(safe-area-inset-bottom)",
+                }}
+                onClick={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    onDismiss();
+                }}
+                onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }}
+            >
+                <div
+                    className="w-full overflow-hidden rounded-t-[22px] shadow-[0_18px_36px_rgba(15,23,42,0.16)]"
+                    style={{
+                        border: `1px solid ${palette.borderStrong}`,
+                        background: palette.surfaceMuted,
+                        color: palette.textPrimary,
+                    }}
+                >
+                    <div
+                        className="mx-auto mt-3 h-1.5 w-12 rounded-full"
+                        style={{ background: palette.borderStrong }}
+                    />
+                    <div
+                        className="flex items-center justify-start gap-4 px-5 py-3.5"
+                        style={{ borderBottom: `1px solid ${palette.border}` }}
+                    >
+                        {HIGHLIGHT_COLORS.map((chip) => (
+                            <button
+                                key={chip.key}
+                                type="button"
+                                onClick={() => onColor(chip.key)}
+                                className={`h-8 w-8 rounded-full border-2 transition ${
+                                    color === chip.key
+                                        ? "border-white ring-2 ring-current"
+                                        : "border-transparent"
+                                }`}
+                                style={{
+                                    backgroundColor: chip.swatch,
+                                    color: chip.swatch,
+                                }}
+                                aria-label={`Highlight ${chip.key}`}
+                            />
+                        ))}
+                    </div>
+                    <div
+                        className="max-h-[52dvh] overflow-y-auto py-1"
+                        style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}
+                    >
+                        {actions.map((item) => (
+                            <button
+                                key={item.label}
+                                type="button"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    item.action();
+                                }}
+                                className="flex w-full items-center gap-3 px-6 py-4 text-left text-[0.98rem] hover:bg-black/[0.03]"
+                                style={{ color: palette.textPrimary }}
+                            >
+                                <IonIcon
+                                    icon={item.icon}
+                                    className="text-[1.45rem]"
+                                    style={{ color: palette.iconSecondary }}
+                                />
+                                <span className="tracking-[-0.02em]">{item.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    if (!anchorRect) return null;
     return (
         <div
             ref={panelRef}
@@ -435,11 +676,9 @@ function ReaderSelectionMenu({
                 left: `${position.left}px`,
                 top: `${position.top}px`,
                 width: `min(${panelWidth}px, calc(100vw - 24px))`,
-                border: isDark
-                    ? "1px solid rgba(255,255,255,0.12)"
-                    : "1px solid rgba(168,174,190,0.46)",
-                background: isDark ? "#171a20" : "#eef0fa",
-                color: isDark ? "#f3f4f6" : "#202124",
+                border: `1px solid ${palette.borderStrong}`,
+                background: palette.surfaceMuted,
+                color: palette.textPrimary,
                 fontFamily:
                     "'Google Sans', 'Roboto', 'Helvetica Neue', Arial, sans-serif",
             }}
@@ -448,67 +687,32 @@ function ReaderSelectionMenu({
                 event.stopPropagation();
             }}
         >
-        <div
-            className="flex items-center justify-start gap-4 px-5 py-3.5"
-            style={{
-                borderBottom: isDark
-                    ? "1px solid rgba(255,255,255,0.10)"
-                    : "1px solid rgba(168,174,190,0.38)",
-            }}
-        >
-            {HIGHLIGHT_COLORS.map((chip) => (
-                <button
-                    key={chip.key}
-                    type="button"
-                    onClick={() => onColor(chip.key)}
-                    className={`h-6 w-6 rounded-full border-2 transition ${
-                        color === chip.key
-                            ? "border-white ring-2 ring-current"
-                            : "border-transparent"
-                    }`}
-                    style={{
-                        backgroundColor: chip.swatch,
-                        color: chip.swatch,
+            <div
+                className="flex items-center justify-start gap-4 px-5 py-3.5"
+                style={{
+                    borderBottom: `1px solid ${palette.border}`,
+                }}
+            >
+                {HIGHLIGHT_COLORS.map((chip) => (
+                    <button
+                        key={chip.key}
+                        type="button"
+                        onClick={() => onColor(chip.key)}
+                        className={`h-6 w-6 rounded-full border-2 transition ${
+                            color === chip.key
+                                ? "border-white ring-2 ring-current"
+                                : "border-transparent"
+                        }`}
+                        style={{
+                            backgroundColor: chip.swatch,
+                            color: chip.swatch,
                         }}
                         aria-label={`Highlight ${chip.key}`}
                     />
                 ))}
             </div>
             <div className="flex flex-col py-1.5">
-                {[
-                    {
-                        icon: createOutline,
-                        label: "Add note",
-                        action: onAddNote,
-                    },
-                    { icon: textOutline, label: "Define", action: onDefine },
-                    {
-                        icon: languageOutline,
-                        label: "Translate",
-                        action: onTranslate,
-                    },
-                    { icon: copyOutline, label: "Copy", action: onCopy },
-                    { icon: searchOutline, label: "Search", action: onSearch },
-                    {
-                        icon: sparklesOutline,
-                        label: "Find Echoes",
-                        action: onFindEchoes,
-                    },
-                    {
-                        icon: sparklesOutline,
-                        label: "Ask RAG",
-                        action: onAskRag,
-                    },
-                    ...(hasSavedHighlight
-                        ? [
-                              {
-                                  icon: removeOutline,
-                                  label: "Delete highlight",
-                                  action: onDeleteHighlight,
-                              },
-                          ]
-                        : []),
-                ].map((item) => (
+                {actions.map((item) => (
                     <button
                         key={item.label}
                         type="button"
@@ -522,12 +726,12 @@ function ReaderSelectionMenu({
                             item.action();
                         }}
                         className="flex items-center gap-3 px-6 py-3 text-left text-[0.94rem] hover:bg-black/[0.03]"
-                        style={{ color: isDark ? "#f3f4f6" : "#202124" }}
+                        style={{ color: palette.textPrimary }}
                     >
                         <IonIcon
                             icon={item.icon}
                             className="text-[1.45rem]"
-                            style={{ color: isDark ? "#f3f4f6" : "#49515e" }}
+                            style={{ color: palette.iconSecondary }}
                         />
                         <span className="tracking-[-0.02em]">{item.label}</span>
                     </button>
@@ -557,6 +761,7 @@ export default function Reader({
         y: number;
         time: number;
         moved: boolean;
+        multiTouch: boolean;
     } | null>(null);
     const hideChromeTimeoutRef = useRef<number | null>(null);
     const modeHydratedRef = useRef<string | null>(null);
@@ -636,6 +841,11 @@ export default function Reader({
         ReaderNoteMarker[]
     >([]);
     const [ragPrompt, setRagPrompt] = useState("");
+    const [surfaceInteraction, setSurfaceInteraction] =
+        useState<ReaderSurfaceInteractionState>({
+            lockNavigation: false,
+            scale: 1,
+        });
     selectionColorRef.current = selection?.color || selectionColorRef.current;
     overlayRef.current = overlay;
     overflowOpenRef.current = overflowOpen;
@@ -661,9 +871,7 @@ export default function Reader({
 
     useEffect(() => {
         if (typeof window === "undefined") return undefined;
-        const mediaQuery = window.matchMedia(
-            "(max-width: 900px), (pointer: coarse)",
-        );
+        const mediaQuery = window.matchMedia("(max-width: 900px)");
         const syncLayout = () => {
             setIsMobileLayout(mediaQuery.matches);
         };
@@ -675,6 +883,13 @@ export default function Reader({
             window.removeEventListener("resize", syncLayout);
         };
     }, []);
+
+    useEffect(() => {
+        setSurfaceInteraction({
+            lockNavigation: false,
+            scale: 1,
+        });
+    }, [book?.filename, bookExtension]);
 
     useEffect(() => {
         if (!book?.filename) return;
@@ -834,18 +1049,21 @@ export default function Reader({
             }))
           : ([] as Array<TocItem & { page?: number; sectionIndex?: number }>);
     const surfaceTheme = getReaderTheme(settings);
+    const uiPalette = getReaderUiPalette(settings);
     const readerShellBackground =
         platformLayout === "desktop"
             ? surfaceTheme.paperBackground
             : surfaceTheme.shellBackground;
-    const chromePrimary = settings.theme === "dark" ? "#f3f4f6" : "#202124";
-    const chromeSecondary = settings.theme === "dark" ? "#d6d9e1" : "#5f6368";
-    const chromePanelBackground =
-        settings.theme === "dark" ? "#171a20" : "#ffffff";
-    const chromePanelBorder =
-        settings.theme === "dark"
-            ? "rgba(255,255,255,0.12)"
-            : "rgba(0,0,0,0.08)";
+    const chromePrimary = uiPalette.textPrimary;
+    const chromeSecondary = uiPalette.textSecondary;
+    const chromePanelBackground = uiPalette.surface;
+    const chromePanelBorder = uiPalette.border;
+    const initialPdfScaleValue = Number(session?.view_state?.scale);
+    const initialPdfScale =
+        Number.isFinite(initialPdfScaleValue) && initialPdfScaleValue >= 1
+            ? clamp(initialPdfScaleValue, 1, 3)
+            : 1;
+    const allowTapNavigation = !surfaceInteraction.lockNavigation;
     const currentLocationPayload = surfaceState.locationPayload || {
         location: readerLocation || 0,
         locationType: "",
@@ -1519,17 +1737,29 @@ export default function Reader({
                 setOverflowOpen(false);
                 return;
             }
-            if (zone === "left" && (isMobileLayout || effectivePresentationMode === "paged")) {
+            if (!allowTapNavigation && zone !== "center") {
+                return;
+            }
+            if (
+                allowTapNavigation &&
+                zone === "left" &&
+                (isMobileLayout || effectivePresentationMode === "paged")
+            ) {
                 turnPrevPage();
                 return;
             }
-            if (zone === "right" && (isMobileLayout || effectivePresentationMode === "paged")) {
+            if (
+                allowTapNavigation &&
+                zone === "right" &&
+                (isMobileLayout || effectivePresentationMode === "paged")
+            ) {
                 turnNextPage();
                 return;
             }
             setChromeVisible((prev) => !prev);
         },
         [
+            allowTapNavigation,
             closeSelection,
             isMobileLayout,
             effectivePresentationMode,
@@ -1566,6 +1796,7 @@ export default function Reader({
             y: touch.clientY,
             time: Date.now(),
             moved: false,
+            multiTouch: event.touches.length > 1,
         };
     };
 
@@ -1573,6 +1804,9 @@ export default function Reader({
         const touch = event.touches[0];
         const current = touchGestureRef.current;
         if (!touch || !current) return;
+        if (event.touches.length > 1) {
+            current.multiTouch = true;
+        }
         if (
             Math.abs(touch.clientX - current.x) > 10 ||
             Math.abs(touch.clientY - current.y) > 10
@@ -1594,6 +1828,9 @@ export default function Reader({
         }
         const touch = event.changedTouches[0];
         if (!touch) return;
+        if (gesture.multiTouch) {
+            return;
+        }
         if (Date.now() < suppressTouchTapUntilRef.current) {
             return;
         }
@@ -1607,6 +1844,7 @@ export default function Reader({
         if (
             !overlay &&
             !selection &&
+            allowTapNavigation &&
             effectivePresentationMode === "paged" &&
             Math.abs(deltaX) > 60 &&
             Math.abs(deltaX) > Math.abs(deltaY)
@@ -1644,12 +1882,14 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
+                    onInteractionStateChange={setSurfaceInteraction}
                     onContextMenuRequest={handleSurfaceContextMenuRequest}
                     onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
                     showFocusPreview={showDesktopFocusPreview}
                     presentationMode={effectivePresentationMode}
                     platformLayout={platformLayout}
+                    initialScale={initialPdfScale}
                     settings={settings}
                 />
             );
@@ -1667,6 +1907,7 @@ export default function Reader({
                     annotations={annotations}
                     onAnnotationPress={handleAnnotationPress}
                     onVisibleNoteMarkersChange={setVisibleNoteMarkers}
+                    onInteractionStateChange={setSurfaceInteraction}
                     onContextMenuRequest={handleSurfaceContextMenuRequest}
                     onTapZoneRequest={handleTapZoneRequest}
                     searchQuery={activeSearchQuery}
@@ -1722,6 +1963,7 @@ export default function Reader({
                 annotations={annotations}
                 onAnnotationPress={handleAnnotationPress}
                 onVisibleNoteMarkersChange={setVisibleNoteMarkers}
+                onInteractionStateChange={setSurfaceInteraction}
                 onTapZoneRequest={handleTapZoneRequest}
                 searchQuery={activeSearchQuery}
                 showFocusPreview={showDesktopFocusPreview}
@@ -1767,6 +2009,19 @@ export default function Reader({
         typeof window === "undefined" ? 900 : window.innerHeight;
     const showDesktopContentsControl =
         platformLayout === "desktop" && viewportWidth > 900;
+    const sheetCardStyle = {
+        background: uiPalette.surface,
+        border: `1px solid ${uiPalette.border}`,
+        color: uiPalette.textPrimary,
+    } as const;
+    const sheetInputStyle = {
+        background: uiPalette.inputBackground,
+        border: `1px solid ${uiPalette.inputBorder}`,
+        color: uiPalette.textPrimary,
+    } as const;
+    const sheetMutedTextStyle = {
+        color: uiPalette.textSecondary,
+    } as const;
 
     return (
         <div
@@ -1852,6 +2107,11 @@ export default function Reader({
                         ? "opacity-100"
                         : "pointer-events-none opacity-0"
                 }`}
+                style={{
+                    paddingTop: isMobileLayout
+                        ? "calc(env(safe-area-inset-top) + 8px)"
+                        : undefined,
+                }}
             >
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
@@ -1963,7 +2223,7 @@ export default function Reader({
 
             <div className="relative z-[5] h-full">{renderSurface()}</div>
 
-            {visibleNoteMarkers.length ? (
+            {visibleNoteMarkers.length && !isMobileLayout ? (
                 <div className="pointer-events-none fixed inset-0 z-[18]">
                     {visibleNoteMarkers.map(({ annotation, rect }) => {
                         const markerSize = 28;
@@ -2038,6 +2298,11 @@ export default function Reader({
                         ? "opacity-100"
                         : "pointer-events-none opacity-0"
                 }`}
+                style={{
+                    paddingBottom: isMobileLayout
+                        ? "calc(env(safe-area-inset-bottom) + 16px)"
+                        : undefined,
+                }}
             >
                 <div
                     className="mx-auto mb-[-20px] flex max-w-[1080px] flex-col items-center gap-3 sm:gap-4"
@@ -2065,14 +2330,8 @@ export default function Reader({
                             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-[22px] md:hidden sm:h-10 sm:w-10 sm:text-[24px]"
                             style={{
                                 color: chromePrimary,
-                                background:
-                                    settings.theme === "dark"
-                                        ? "rgba(255,255,255,0.08)"
-                                        : "rgba(255,255,255,0.72)",
-                                boxShadow:
-                                    settings.theme === "dark"
-                                        ? "0 6px 16px rgba(0,0,0,0.18)"
-                                        : "0 6px 16px rgba(15,23,42,0.08)",
+                                background: uiPalette.pillBackground,
+                                boxShadow: uiPalette.pillShadow,
                             }}
                             onClick={(event) => {
                                 event.preventDefault();
@@ -2093,6 +2352,9 @@ export default function Reader({
                                 );
                             }}
                             className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full bg-[#bfc8ec] accent-[#5670b5]"
+                            style={{
+                                background: uiPalette.accentSoft,
+                            }}
                         />
                         <button
                             type="button"
@@ -2101,14 +2363,8 @@ export default function Reader({
                             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] text-[22px] md:hidden sm:h-10 sm:w-10 sm:text-[24px]"
                             style={{
                                 color: chromePrimary,
-                                background:
-                                    settings.theme === "dark"
-                                        ? "rgba(255,255,255,0.08)"
-                                        : "rgba(255,255,255,0.72)",
-                                boxShadow:
-                                    settings.theme === "dark"
-                                        ? "0 6px 16px rgba(0,0,0,0.18)"
-                                        : "0 6px 16px rgba(15,23,42,0.08)",
+                                background: uiPalette.pillBackground,
+                                boxShadow: uiPalette.pillShadow,
                             }}
                             onClick={(event) => {
                                 event.preventDefault();
@@ -2161,9 +2417,13 @@ export default function Reader({
                 open={overlay === "contents"}
                 onClose={() => setOverlay(null)}
                 theme={settings.theme}
+                compact={isMobileLayout}
             >
                 <div className="mx-auto w-full max-w-[980px]">
-                    <div className="flex items-center justify-center gap-10 border-b border-black/10 px-6 pt-4 sm:px-10">
+                    <div
+                        className="flex items-center justify-center gap-10 px-6 pt-4 sm:px-10"
+                        style={{ borderBottom: `1px solid ${uiPalette.border}` }}
+                    >
                         {(["chapters", "bookmarks", "notes"] as const).map(
                             (tab) => (
                                 <button
@@ -2173,8 +2433,13 @@ export default function Reader({
                                     className={`border-b-[4px] px-2 pb-4 text-[1.1rem] tracking-[-0.03em] ${
                                         contentsTab === tab
                                             ? "border-[#5670b5] text-[#5670b5]"
-                                            : "border-transparent text-[#202124]"
+                                            : "border-transparent"
                                     }`}
+                                    style={
+                                        contentsTab === tab
+                                            ? undefined
+                                            : { color: uiPalette.textPrimary }
+                                    }
                                 >
                                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                                 </button>
@@ -2204,6 +2469,7 @@ export default function Reader({
                                               ? `page ${item.page}`
                                               : undefined
                                     }
+                                    theme={settings.theme}
                                     onClick={() => handleContentsJump(item)}
                                 />
                             ))}
@@ -2213,7 +2479,10 @@ export default function Reader({
                     {contentsTab === "bookmarks" ? (
                         <div>
                             {bookmarkAnnotations.length === 0 ? (
-                                <div className="px-10 py-14 text-lg text-[#5f6368]">
+                                <div
+                                    className="px-10 py-14 text-lg"
+                                    style={{ color: uiPalette.textSecondary }}
+                                >
                                     No bookmarks yet.
                                 </div>
                             ) : (
@@ -2237,6 +2506,7 @@ export default function Reader({
                                             ) : undefined
                                         }
                                         accent="#5f6368"
+                                        theme={settings.theme}
                                         onClick={() => {
                                             jumpToAnnotation(annotation);
                                             setOverlay(null);
@@ -2250,7 +2520,10 @@ export default function Reader({
                     {contentsTab === "notes" ? (
                         <div>
                             {noteAnnotations.length === 0 ? (
-                                <div className="px-10 py-14 text-lg text-[#5f6368]">
+                                <div
+                                    className="px-10 py-14 text-lg"
+                                    style={{ color: uiPalette.textSecondary }}
+                                >
                                     No reader notes yet.
                                 </div>
                             ) : (
@@ -2272,6 +2545,7 @@ export default function Reader({
                                             </span>
                                         }
                                         accent="#c99812"
+                                        theme={settings.theme}
                                         onClick={() =>
                                             openExistingNote(annotation)
                                         }
@@ -2288,13 +2562,21 @@ export default function Reader({
                 open={overlay === "search"}
                 onClose={() => setOverlay(null)}
                 theme={settings.theme}
+                compact={isMobileLayout}
             >
                 <div className="mx-auto flex h-full w-full max-w-[980px] flex-col">
                     <div className="px-6 py-4 sm:px-10">
-                        <div className="flex items-center gap-4 rounded-[16px] bg-white px-6 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.08)]">
+                        <div
+                            className="flex items-center gap-4 rounded-[16px] px-6 py-4 shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                            style={{
+                                background: uiPalette.surface,
+                                border: `1px solid ${uiPalette.border}`,
+                            }}
+                        >
                             <IonIcon
                                 icon={searchOutline}
-                                className="text-2xl text-[#5f6368]"
+                                className="text-2xl"
+                                style={{ color: uiPalette.iconSecondary }}
                             />
                             <input
                                 autoFocus
@@ -2309,24 +2591,33 @@ export default function Reader({
                                 }}
                                 placeholder="Search in book"
                                 className="w-full bg-transparent text-[1.3rem] outline-none placeholder:text-[#9aa0a6]"
+                                style={{ color: uiPalette.textPrimary }}
                             />
                         </div>
                     </div>
 
                     {!searchQuery.trim() && recentQueries.length ? (
                         <div className="px-6 pb-4 sm:px-10">
-                            <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_8px_20px_rgba(15,23,42,0.08)]">
+                            <div
+                                className="overflow-hidden rounded-[16px] shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                                style={{
+                                    background: uiPalette.surface,
+                                    border: `1px solid ${uiPalette.border}`,
+                                }}
+                            >
                                 {recentQueries.map((item) => (
                                     <button
                                         key={item}
                                         type="button"
                                         onClick={() => void openSearch(item)}
-                                        className="flex w-full items-center justify-between px-10 py-6 text-left text-[1.2rem] text-[#202124] hover:bg-black/[0.02]"
+                                        className="flex w-full items-center justify-between px-10 py-6 text-left text-[1.2rem] hover:bg-black/[0.02]"
+                                        style={{ color: uiPalette.textPrimary }}
                                     >
                                         <span>{item}</span>
                                         <IonIcon
                                             icon={arrowBackOutline}
-                                            className="rotate-[135deg] text-[1.8rem] text-[#5f6368]"
+                                            className="rotate-[135deg] text-[1.8rem]"
+                                            style={{ color: uiPalette.iconSecondary }}
                                         />
                                     </button>
                                 ))}
@@ -2336,11 +2627,17 @@ export default function Reader({
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 sm:px-10">
                         {searchLoading ? (
-                            <div className="py-8 text-lg text-[#5f6368]">
+                            <div
+                                className="py-8 text-lg"
+                                style={{ color: uiPalette.textSecondary }}
+                            >
                                 Searching…
                             </div>
                         ) : searchResults.length === 0 ? (
-                            <div className="py-8 text-lg text-[#5f6368]">
+                            <div
+                                className="py-8 text-lg"
+                                style={{ color: uiPalette.textSecondary }}
+                            >
                                 No matches yet.
                             </div>
                         ) : (
@@ -2350,19 +2647,32 @@ export default function Reader({
                                         key={result.result_id}
                                         type="button"
                                         onClick={() => handleResultJump(result)}
-                                        className="w-full rounded-[16px] bg-white px-8 py-6 text-left shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                                        className="w-full rounded-[16px] px-8 py-6 text-left shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                                        style={{
+                                            background: uiPalette.surface,
+                                            border: `1px solid ${uiPalette.border}`,
+                                        }}
                                     >
-                                        <div className="text-[1.15rem] font-semibold text-[#202124]">
+                                        <div
+                                            className="text-[1.15rem] font-semibold"
+                                            style={{ color: uiPalette.textPrimary }}
+                                        >
                                             {result.label ||
                                                 result.page_label ||
                                                 `Result ${result.result_id}`}
                                         </div>
-                                        <div className="mt-2 text-[1rem] text-[#5f6368]">
+                                        <div
+                                            className="mt-2 text-[1rem]"
+                                            style={{ color: uiPalette.textSecondary }}
+                                        >
                                             {result.page
                                                 ? `page ${result.page}`
                                                 : result.page_label || ""}
                                         </div>
-                                        <div className="mt-4 text-[1.2rem] leading-9 text-[#202124]">
+                                        <div
+                                            className="mt-4 text-[1.2rem] leading-9"
+                                            style={{ color: uiPalette.textPrimary }}
+                                        >
                                             <mark className="bg-[#f3dd73] px-1">
                                                 {result.snippet}
                                             </mark>
@@ -2380,19 +2690,28 @@ export default function Reader({
                 open={overlay === "settings"}
                 onClose={() => setOverlay(null)}
                 widthClass="max-w-[360px]"
-                placement={isMobileLayout ? "center" : "top-right"}
+                placement={isMobileLayout ? "bottom" : "top-right"}
                 theme={settings.theme}
+                compact={isMobileLayout}
             >
                 <div className="space-y-4">
-                    <div className="flex items-center justify-center gap-10 border-b border-black/10 pb-2.5">
+                    <div
+                        className="flex items-center justify-center gap-10 pb-2.5"
+                        style={{ borderBottom: `1px solid ${uiPalette.border}` }}
+                    >
                         <button
                             type="button"
                             onClick={() => setSettingsTab("text")}
                             className={`border-b-[4px] px-2 pb-2.5 text-[1.08rem] ${
                                 settingsTab === "text"
                                     ? "border-[#5670b5] text-[#5670b5]"
-                                    : "border-transparent text-[#5f6368]"
+                                    : "border-transparent"
                             }`}
+                            style={
+                                settingsTab === "text"
+                                    ? undefined
+                                    : { color: uiPalette.textSecondary }
+                            }
                         >
                             Text
                         </button>
@@ -2402,8 +2721,13 @@ export default function Reader({
                             className={`border-b-[4px] px-2 pb-2.5 text-[1.08rem] ${
                                 settingsTab === "lighting"
                                     ? "border-[#5670b5] text-[#5670b5]"
-                                    : "border-transparent text-[#5f6368]"
+                                    : "border-transparent"
                             }`}
+                            style={
+                                settingsTab === "lighting"
+                                    ? undefined
+                                    : { color: uiPalette.textSecondary }
+                            }
                         >
                             Lighting
                         </button>
@@ -2423,17 +2747,22 @@ export default function Reader({
                                                     font.value,
                                                 )
                                             }
-                                            className="flex flex-col items-center gap-2 text-[#202124]"
+                                            className="flex flex-col items-center gap-2"
+                                            style={{ color: uiPalette.textPrimary }}
                                         >
                                             <span
                                                 className={`flex h-[64px] w-[64px] items-center justify-center rounded-full border text-[2.55rem] ${
                                                     settings.fontFamily ===
                                                     font.value
                                                         ? "border-[#5670b5] bg-[#5670b5] text-white"
-                                                        : "border-black/25 bg-white"
+                                                        : ""
                                                 }`}
                                                 style={{
                                                     fontFamily: font.value,
+                                                    ...(settings.fontFamily ===
+                                                    font.value
+                                                        ? {}
+                                                        : sheetInputStyle),
                                                 }}
                                             >
                                                 A
@@ -2459,14 +2788,18 @@ export default function Reader({
                                             ),
                                         )
                                     }
-                                    className="flex h-[58px] items-center justify-center rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                                    className="flex h-[58px] items-center justify-center rounded-[8px]"
+                                    style={sheetInputStyle}
                                     aria-label="Smaller text"
                                 >
                                     <span className="text-[1.9rem] font-semibold leading-none">
                                         T
                                     </span>
                                 </button>
-                                <div className="text-center text-[0.94rem] text-[#5f6368]">
+                                <div
+                                    className="text-center text-[0.94rem]"
+                                    style={sheetMutedTextStyle}
+                                >
                                     {Math.round(
                                         (settings.fontSize / 100) * 100,
                                     )}
@@ -2484,7 +2817,8 @@ export default function Reader({
                                             ),
                                         )
                                     }
-                                    className="flex h-[58px] items-center justify-center rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                                    className="flex h-[58px] items-center justify-center rounded-[8px]"
+                                    style={sheetInputStyle}
                                     aria-label="Larger text"
                                 >
                                     <span className="text-[2.35rem] font-semibold leading-none">
@@ -2504,7 +2838,8 @@ export default function Reader({
                                             ),
                                         )
                                     }
-                                    className="flex h-[58px] items-center justify-center gap-1 rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                                    className="flex h-[58px] items-center justify-center gap-1 rounded-[8px]"
+                                    style={sheetInputStyle}
                                     aria-label="Tighter spacing"
                                 >
                                     <IonIcon
@@ -2516,7 +2851,10 @@ export default function Reader({
                                         className="text-[1.45rem]"
                                     />
                                 </button>
-                                <div className="text-center text-[0.94rem] text-[#5f6368]">
+                                <div
+                                    className="text-center text-[0.94rem]"
+                                    style={sheetMutedTextStyle}
+                                >
                                     {Math.round(
                                         (settings.lineHeight / 1.6) * 100,
                                     )}
@@ -2534,7 +2872,8 @@ export default function Reader({
                                             ),
                                         )
                                     }
-                                    className="flex h-[58px] items-center justify-center gap-1 rounded-[8px] border border-black/18 bg-white text-[#202124]"
+                                    className="flex h-[58px] items-center justify-center gap-1 rounded-[8px]"
+                                    style={sheetInputStyle}
                                     aria-label="Looser spacing"
                                 >
                                     <IonIcon
@@ -2550,7 +2889,10 @@ export default function Reader({
 
                             {ext === "pdf" && platformLayout === "desktop" ? (
                                 <div className="space-y-2">
-                                    <div className="text-[0.78rem] font-medium uppercase tracking-[0.18em] text-[#5f6368]">
+                                    <div
+                                        className="text-[0.78rem] font-medium uppercase tracking-[0.18em]"
+                                        style={sheetMutedTextStyle}
+                                    >
                                         Page Layout
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
@@ -2562,8 +2904,13 @@ export default function Reader({
                                             className={`rounded-[8px] border px-3.5 py-2 text-[0.86rem] ${
                                                 settings.spread !== "always"
                                                     ? "border-[#5670b5] bg-[#5670b5] text-white"
-                                                    : "border-black/20 bg-white text-[#202124]"
+                                                    : ""
                                             }`}
+                                            style={
+                                                settings.spread !== "always"
+                                                    ? undefined
+                                                    : sheetInputStyle
+                                            }
                                         >
                                             Single page
                                         </button>
@@ -2578,8 +2925,13 @@ export default function Reader({
                                             className={`rounded-[8px] border px-3.5 py-2 text-[0.86rem] ${
                                                 settings.spread === "always"
                                                     ? "border-[#5670b5] bg-[#5670b5] text-white"
-                                                    : "border-black/20 bg-white text-[#202124]"
+                                                    : ""
                                             }`}
+                                            style={
+                                                settings.spread === "always"
+                                                    ? undefined
+                                                    : sheetInputStyle
+                                            }
                                         >
                                             Two-page
                                         </button>
@@ -2587,12 +2939,19 @@ export default function Reader({
                                 </div>
                             ) : null}
 
-                            <div className="flex items-center gap-3 rounded-[8px] border border-black/12 bg-white px-3.5 py-3">
+                            <div
+                                className="flex items-center gap-3 rounded-[8px] px-3.5 py-3"
+                                style={sheetInputStyle}
+                            >
                                 <IonIcon
                                     icon={menuSharp}
-                                    className="text-[1.35rem] text-[#5f6368]"
+                                    className="text-[1.35rem]"
+                                    style={{ color: uiPalette.iconSecondary }}
                                 />
-                                <div className="flex-1 text-[0.9rem] text-[#202124]">
+                                <div
+                                    className="flex-1 text-[0.9rem]"
+                                    style={{ color: uiPalette.textPrimary }}
+                                >
                                     {settings.alignment === "left"
                                         ? "Left"
                                         : settings.alignment === "justify"
@@ -2610,7 +2969,8 @@ export default function Reader({
                                                 | "justify",
                                         )
                                     }
-                                    className="bg-transparent text-[0.9rem] text-[#202124] outline-none"
+                                    className="bg-transparent text-[0.9rem] outline-none"
+                                    style={{ color: uiPalette.textPrimary }}
                                 >
                                     <option value="default">Default</option>
                                     <option value="left">Left</option>
@@ -2618,7 +2978,8 @@ export default function Reader({
                                 </select>
                                 <IonIcon
                                     icon={chevronDownOutline}
-                                    className="text-xl text-[#5f6368]"
+                                    className="text-xl"
+                                    style={{ color: uiPalette.iconSecondary }}
                                 />
                             </div>
                         </>
@@ -2626,7 +2987,10 @@ export default function Reader({
 
                     {settingsTab === "lighting" ? (
                         <div className="space-y-4">
-                            <div className="text-[0.96rem] text-[#202124]">
+                            <div
+                                className="text-[0.96rem]"
+                                style={{ color: uiPalette.textPrimary }}
+                            >
                                 Reading brightness
                             </div>
                             <input
@@ -2642,7 +3006,10 @@ export default function Reader({
                                 }
                                 className="w-full accent-[#5670b5]"
                             />
-                            <div className="text-[0.96rem] text-[#202124]">
+                            <div
+                                className="text-[0.96rem]"
+                                style={{ color: uiPalette.textPrimary }}
+                            >
                                 Viewing theme
                             </div>
                             <div className="grid grid-cols-3 gap-3">
@@ -2655,16 +3022,25 @@ export default function Reader({
                                         }
                                         className={`h-12 rounded-[6px] border ${
                                             settings.theme === theme.value
-                                                ? "border-[#202124]"
-                                                : "border-black/10"
+                                                ? ""
+                                                : ""
                                         }`}
-                                        style={{ backgroundColor: theme.paper }}
+                                        style={{
+                                            backgroundColor: theme.paper,
+                                            borderColor:
+                                                settings.theme === theme.value
+                                                    ? uiPalette.textPrimary
+                                                    : uiPalette.border,
+                                        }}
                                         aria-label={theme.label}
                                     />
                                 ))}
                             </div>
                             <div className="flex items-center justify-between">
-                                <div className="text-[0.96rem] text-[#202124]">
+                                <div
+                                    className="text-[0.96rem]"
+                                    style={{ color: uiPalette.textPrimary }}
+                                >
                                     Reading Night Light
                                 </div>
                                 <button
@@ -2678,8 +3054,13 @@ export default function Reader({
                                     className={`relative h-9 w-16 rounded-full transition ${
                                         settings.nightLight
                                             ? "bg-[#5670b5]"
-                                            : "bg-black/20"
+                                            : ""
                                     }`}
+                                    style={
+                                        settings.nightLight
+                                            ? undefined
+                                            : { background: uiPalette.borderStrong }
+                                    }
                                 >
                                     <span
                                         className={`absolute top-1 h-7 w-7 rounded-full bg-white transition ${
@@ -2702,9 +3083,16 @@ export default function Reader({
                 widthClass="max-w-[372px]"
                 placement="bottom"
                 theme={settings.theme}
+                compact={isMobileLayout}
             >
                 <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-[1px] overflow-hidden border border-black/18 bg-[#b8bdcc]">
+                    <div
+                        className="grid grid-cols-2 gap-[1px] overflow-hidden"
+                        style={{
+                            background: uiPalette.borderStrong,
+                            border: `1px solid ${uiPalette.borderStrong}`,
+                        }}
+                    >
                         <select
                             value={translateSourceLanguage}
                             onChange={(event) => {
@@ -2717,7 +3105,11 @@ export default function Reader({
                                     translateMode,
                                 );
                             }}
-                            className="bg-[#eef0fa] px-4 py-3 text-[0.96rem] text-[#202124] outline-none"
+                            className="px-4 py-3 text-[0.96rem] outline-none"
+                            style={{
+                                background: uiPalette.surfaceMuted,
+                                color: uiPalette.textPrimary,
+                            }}
                         >
                             {LANGUAGE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -2737,7 +3129,11 @@ export default function Reader({
                                     translateMode,
                                 );
                             }}
-                            className="bg-[#eef0fa] px-4 py-3 text-[0.96rem] text-[#202124] outline-none"
+                            className="px-4 py-3 text-[0.96rem] outline-none"
+                            style={{
+                                background: uiPalette.surfaceMuted,
+                                color: uiPalette.textPrimary,
+                            }}
                         >
                             {LANGUAGE_OPTIONS.filter(
                                 (option) => option.value !== "auto",
@@ -2748,7 +3144,10 @@ export default function Reader({
                             ))}
                         </select>
                     </div>
-                    <div className="min-h-[180px] border border-black/12 bg-white px-4 py-4 text-[0.96rem] leading-7 text-[#202124]">
+                    <div
+                        className="min-h-[180px] px-4 py-4 text-[0.96rem] leading-7"
+                        style={sheetInputStyle}
+                    >
                         {translateLoading
                             ? "Translating…"
                             : translateState?.translated_text ||
@@ -2764,16 +3163,17 @@ export default function Reader({
                 widthClass="max-w-[372px]"
                 placement="bottom"
                 theme={settings.theme}
+                compact={isMobileLayout}
             >
-                <div className="space-y-5 text-[#202124]">
+                <div className="space-y-5" style={{ color: uiPalette.textPrimary }}>
                     {defineLoading ? (
-                        <div className="text-lg text-[#5f6368]">
+                        <div className="text-lg" style={sheetMutedTextStyle}>
                             Looking up definition…
                         </div>
                     ) : defineResult ? (
                         <>
                             {defineResult.phonetic ? (
-                                <div className="text-[1rem] text-[#5f6368]">
+                                <div className="text-[1rem]" style={sheetMutedTextStyle}>
                                     {defineResult.phonetic}
                                 </div>
                             ) : null}
@@ -2795,7 +3195,7 @@ export default function Reader({
                                             ) : null}
                                             <div>{item.definition}</div>
                                             {item.example ? (
-                                                <div className="mt-1 text-[#5f6368]">
+                                                <div className="mt-1" style={sheetMutedTextStyle}>
                                                     {item.example}
                                                 </div>
                                             ) : null}
@@ -2805,7 +3205,7 @@ export default function Reader({
                             </div>
                         </>
                     ) : (
-                        <div className="text-lg text-[#5f6368]">
+                        <div className="text-lg" style={sheetMutedTextStyle}>
                             No definition available.
                         </div>
                     )}
@@ -2815,7 +3215,18 @@ export default function Reader({
             {overlay === "note" ? (
                 <div
                     data-reader-overlay="true"
-                    className="absolute inset-0 z-[80] flex items-end justify-center bg-black/10 px-3 pb-3 pt-20 sm:px-6 sm:pb-8"
+                    className={`absolute inset-0 z-[80] flex items-end justify-center ${
+                        isMobileLayout ? "px-0" : "px-3 pt-20 sm:px-6 sm:pb-8"
+                    }`}
+                    style={{
+                        background: uiPalette.overlayBackdrop,
+                        paddingTop: isMobileLayout
+                            ? "max(12px, calc(env(safe-area-inset-top) + 12px))"
+                            : undefined,
+                        paddingBottom: isMobileLayout
+                            ? "env(safe-area-inset-bottom)"
+                            : undefined,
+                    }}
                     onClick={(event) => {
                         if (event.target !== event.currentTarget) return;
                         closeNoteOverlay();
@@ -2826,30 +3237,40 @@ export default function Reader({
                     }}
                 >
                     <div
-                        className="w-full max-w-[388px] overflow-hidden rounded-[10px] shadow-[0_10px_18px_rgba(15,23,42,0.10)]"
+                        className={`w-full max-w-[388px] overflow-hidden shadow-[0_10px_18px_rgba(15,23,42,0.10)] ${
+                            isMobileLayout ? "rounded-t-[20px]" : "rounded-[10px]"
+                        }`}
                         style={{
-                            border:
-                                settings.theme === "dark"
-                                    ? "1px solid rgba(255,255,255,0.12)"
-                                    : "1px solid rgba(136,142,156,0.35)",
-                            background:
-                                settings.theme === "dark"
-                                    ? "#171a20"
-                                    : "#eef0fa",
+                            border: `1px solid ${uiPalette.borderStrong}`,
+                            background: uiPalette.surfaceMuted,
                         }}
                         onContextMenu={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
                         }}
                     >
-                        <div className="px-4 pt-5">
+                        {isMobileLayout ? (
+                            <div
+                                className="mx-auto mt-3 h-1.5 w-12 rounded-full"
+                                style={{ background: uiPalette.borderStrong }}
+                            />
+                        ) : null}
+                        <div
+                            className="px-4 pt-5"
+                            style={{
+                                paddingTop: isMobileLayout
+                                    ? "12px"
+                                    : undefined,
+                            }}
+                        >
                             <textarea
                                 value={noteDraft}
                                 onChange={(event) =>
                                     setNoteDraft(event.target.value)
                                 }
                                 placeholder="Add note"
-                                className="min-h-[250px] w-full resize-none bg-transparent px-0 py-0 text-[1rem] leading-7 text-[#202124] outline-none placeholder:text-[#9aa0a6]"
+                                className="min-h-[250px] w-full resize-none bg-transparent px-0 py-0 text-[1rem] leading-7 outline-none placeholder:text-[#9aa0a6]"
+                                style={{ color: uiPalette.textPrimary }}
                                 onContextMenu={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
@@ -2901,7 +3322,12 @@ export default function Reader({
                                             closeNoteOverlay();
                                         }
                                     }}
-                                    className="rounded-full border border-[#6d7382] bg-white px-6 py-2.5 text-[0.96rem] text-[#5670b5]"
+                                    className="rounded-full px-6 py-2.5 text-[0.96rem]"
+                                    style={{
+                                        border: `1px solid ${uiPalette.borderStrong}`,
+                                        background: uiPalette.surface,
+                                        color: uiPalette.accent,
+                                    }}
                                 >
                                     Delete
                                 </button>
@@ -2925,16 +3351,25 @@ export default function Reader({
                 widthClass="max-w-[372px]"
                 placement="bottom"
                 theme={settings.theme}
+                compact={isMobileLayout}
             >
                 <div className="space-y-5">
-                    <div className="rounded-[12px] bg-white px-5 py-4 text-[0.96rem] leading-7 text-[#5f6368]">
+                    <div
+                        className="rounded-[12px] px-5 py-4 text-[0.96rem] leading-7"
+                        style={{
+                            background: uiPalette.surface,
+                            border: `1px solid ${uiPalette.border}`,
+                            color: uiPalette.textSecondary,
+                        }}
+                    >
                         {selection?.text}
                     </div>
                     <textarea
                         value={ragPrompt}
                         onChange={(event) => setRagPrompt(event.target.value)}
                         placeholder="What should I analyze from this passage?"
-                        className="min-h-[112px] w-full resize-none rounded-[12px] border border-black/10 bg-white px-4 py-4 text-[0.96rem] leading-7 text-[#202124] outline-none"
+                        className="min-h-[112px] w-full resize-none rounded-[12px] px-4 py-4 text-[0.96rem] leading-7 outline-none"
+                        style={sheetInputStyle}
                     />
                     <div className="flex justify-end">
                         <button
@@ -2953,6 +3388,7 @@ export default function Reader({
                 color={selection?.color || "amber"}
                 anchorRect={selection?.rect || null}
                 theme={settings.theme}
+                mobile={isMobileLayout}
                 onColor={(color) => void handleSelectionColor(color)}
                 onAddNote={openNewNote}
                 onDefine={() => void openDefine()}
@@ -2962,6 +3398,7 @@ export default function Reader({
                 onFindEchoes={handleFindEchoes}
                 onAskRag={handleAskRag}
                 onDeleteHighlight={() => void deleteSelectedHighlight()}
+                onDismiss={closeSelection}
                 hasSavedHighlight={Boolean(selection?.annotationId)}
             />
         </div>

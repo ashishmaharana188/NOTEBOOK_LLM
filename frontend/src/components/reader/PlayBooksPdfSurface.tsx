@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import type {
@@ -27,6 +28,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface PlayBooksPdfSurfaceProps extends ReaderSurfaceCommonProps {
   book: ReaderBook;
   initialLocation: string | number | null;
+  initialScale?: number;
 }
 
 function getDomRectPayload(
@@ -52,15 +54,20 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       onStateChange,
       onSelection,
       onVisibleNoteMarkersChange,
+      onInteractionStateChange,
       onContextMenuRequest,
       presentationMode,
       platformLayout,
       settings,
       showFocusPreview = false,
+      initialScale = 1,
     },
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const zoomWrapperRef = useRef<any>(null);
+    const previousPageRef = useRef<number | null>(null);
+    const previousViewportRef = useRef({ width: 0, height: 0 });
     const [pageNumber, setPageNumber] = useState(() => {
       const numeric =
         typeof initialLocation === "string"
@@ -79,10 +86,23 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const desktopFocusPreview =
       desktopLayout && pagedMode && !spreadMode && showFocusPreview;
     const contentPadding = desktopLayout ? 12 : 8;
+    const mobileZoomEnabled = !desktopLayout && pagedMode;
+    const [mobileScale, setMobileScale] = useState(() =>
+      clamp(Number(initialScale) || 1, 1, 3),
+    );
     const activeHeight = Math.max(
       320,
       viewport.height - (desktopLayout ? contentPadding * 2 : 28),
     );
+    const navigationLocked = mobileZoomEnabled && mobileScale > 1.01;
+
+    const syncMobileTransform = (nextScale = 1, duration = 0) => {
+      const clampedScale = clamp(nextScale, 1, 3);
+      setMobileScale(clampedScale);
+      if (zoomWrapperRef.current?.setTransform) {
+        zoomWrapperRef.current.setTransform(0, 0, clampedScale, duration, "easeOutCubic");
+      }
+    };
 
     useEffect(() => {
       const node = containerRef.current;
@@ -106,6 +126,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     }, [onVisibleNoteMarkersChange]);
 
     useEffect(() => {
+      onInteractionStateChange?.({
+        lockNavigation: navigationLocked,
+        scale: mobileZoomEnabled ? mobileScale : 1,
+      });
+    }, [
+      mobileScale,
+      mobileZoomEnabled,
+      navigationLocked,
+      onInteractionStateChange,
+    ]);
+
+    useEffect(() => {
       const numeric =
         typeof initialLocation === "string"
           ? Number.parseInt(initialLocation, 10)
@@ -114,6 +146,43 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         setPageNumber(numeric);
       }
     }, [initialLocation]);
+
+    useEffect(() => {
+      const nextScale = mobileZoomEnabled
+        ? clamp(Number(initialScale) || 1, 1, 3)
+        : 1;
+      syncMobileTransform(nextScale, 0);
+      previousPageRef.current = pageNumber;
+    }, [book.filename, initialScale, mobileZoomEnabled]);
+
+    useEffect(() => {
+      if (!mobileZoomEnabled) return;
+      if (previousPageRef.current === null) {
+        previousPageRef.current = pageNumber;
+        return;
+      }
+      if (previousPageRef.current !== pageNumber) {
+        previousPageRef.current = pageNumber;
+        syncMobileTransform(1, 0);
+      }
+    }, [mobileZoomEnabled, pageNumber]);
+
+    useEffect(() => {
+      if (!mobileZoomEnabled) {
+        previousViewportRef.current = viewport;
+        return;
+      }
+      const previousViewport = previousViewportRef.current;
+      if (
+        previousViewport.width > 0 &&
+        previousViewport.height > 0 &&
+        (previousViewport.width !== viewport.width ||
+          previousViewport.height !== viewport.height)
+      ) {
+        syncMobileTransform(1, 0);
+      }
+      previousViewportRef.current = viewport;
+    }, [mobileZoomEnabled, viewport]);
 
     useEffect(() => {
       const safePage = clamp(pageNumber, 1, Math.max(numPages, 1));
@@ -126,6 +195,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         pageLabel: String(safePage),
         viewState: {
           flow: pagedMode ? "paginated" : "scrolled",
+          scale: mobileZoomEnabled ? mobileScale : 1,
         },
       };
       onStateChange({
@@ -146,6 +216,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       pageNumber,
       pageTexts,
       pagedMode,
+      mobileScale,
+      mobileZoomEnabled,
     ]);
 
     const goToPage = (page: number) => {
@@ -212,7 +284,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       (!desktopLayout && pagedMode && viewport.width >= 1280);
     const mobilePageWidth = Math.max(170, viewport.width - 20);
     const activeWidth = Math.max(
-      spreadMode ? 260 : desktopFocusPreview ? 420 : desktopLayout ? 420 : 170,
+      spreadMode
+        ? 260
+        : desktopFocusPreview
+          ? 420
+          : desktopLayout
+            ? 420
+            : Math.max(200, mobilePageWidth),
       Math.min(
         spreadMode
           ? 620
@@ -287,7 +365,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         : peekWidth;
       const sizeProps =
         isActive && !desktopLayout && pagedMode
-          ? { height: Math.max(320, activeHeight - 12) }
+          ? { width: activeWidth }
           : isActive && desktopLayout && pagedMode && !desktopFocusPreview
           ? { height: activeHeight }
           : focusPreviewPeek
@@ -504,7 +582,49 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
                   ) : usePeekLayout ? (
                     renderPdfPage(pageNumber - 1, "peek")
                   ) : null}
-                  {renderPdfPage(pageNumber, "active")}
+                  {mobileZoomEnabled ? (
+                    <div
+                      className="flex w-full items-center justify-center overflow-hidden"
+                      style={{
+                        minHeight: `${Math.max(320, activeHeight)}px`,
+                      }}
+                    >
+                      <TransformWrapper
+                        initialScale={clamp(Number(initialScale) || 1, 1, 3)}
+                        minScale={1}
+                        maxScale={3}
+                        centerOnInit
+                        limitToBounds={false}
+                        doubleClick={{ disabled: true }}
+                        wheel={{ disabled: true }}
+                        panning={{ disabled: mobileScale <= 1.01 }}
+                        onInit={(refInstance) => {
+                          zoomWrapperRef.current = refInstance;
+                        }}
+                        onZoomStop={(refInstance) => {
+                          setMobileScale(refInstance?.state?.scale || 1);
+                        }}
+                        onPanningStop={(refInstance) => {
+                          setMobileScale(refInstance?.state?.scale || mobileScale);
+                        }}
+                      >
+                        <TransformComponent
+                          wrapperStyle={{
+                            width: "100%",
+                            height: "100%",
+                            overflow: "hidden",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {renderPdfPage(pageNumber, "active")}
+                        </TransformComponent>
+                      </TransformWrapper>
+                    </div>
+                  ) : (
+                    renderPdfPage(pageNumber, "active")
+                  )}
                   {desktopFocusPreview ? (
                     <div
                       className="pointer-events-none absolute inset-y-0 right-0 hidden items-center justify-end md:flex"
