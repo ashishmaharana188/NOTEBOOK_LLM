@@ -191,12 +191,153 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             [],
         );
 
-        const getActiveContents = useCallback(() => {
-            const contents = renditionRef.current?.getContents?.() || [];
-            return contents[0] || null;
+        const getRenderedContents = useCallback(() => {
+            return renditionRef.current?.getContents?.() || [];
         }, []);
 
+        const getMatchedTocState = useCallback(
+            (href: string) => {
+                const normalizedHref = String(href || "");
+                const tocIndex = toc.findIndex(
+                    (item) =>
+                        item.href &&
+                        normalizedHref &&
+                        normalizedHref.startsWith(item.href.replace(/#.*$/, "")),
+                );
+                return {
+                    tocIndex,
+                    item:
+                        (tocIndex >= 0 ? toc[tocIndex] : null) ||
+                        toc.find((entry) => entry.href === normalizedHref) ||
+                        null,
+                };
+            },
+            [toc],
+        );
+
+        const getContentHref = useCallback((content: any) => {
+            const hrefCandidates = [
+                content?.section?.href,
+                content?.href,
+                content?.document?.documentElement?.getAttribute?.("data-href"),
+                content?.document?.body?.getAttribute?.("data-href"),
+            ];
+            for (const candidate of hrefCandidates) {
+                if (typeof candidate === "string" && candidate.trim()) {
+                    return String(candidate);
+                }
+            }
+            return "";
+        }, []);
+
+        const getVisibleContentState = useCallback(() => {
+            const contents = getRenderedContents();
+            if (!contents.length) return null;
+            const ownerRect = (
+                mobileScrollMode ? containerRef.current : viewportRef.current
+            )?.getBoundingClientRect();
+            if (!ownerRect) {
+                const fallbackContent = contents[0] || null;
+                const fallbackHref =
+                    getContentHref(fallbackContent) ||
+                    String(
+                        renditionRef.current?.currentLocation?.()?.start?.href ||
+                            currentHref ||
+                            "",
+                    );
+                const fallbackToc = getMatchedTocState(fallbackHref);
+                return {
+                    content: fallbackContent,
+                    href: fallbackHref,
+                    tocIndex: fallbackToc.tocIndex,
+                    tocItem: fallbackToc.item,
+                };
+            }
+
+            let bestContent: any = contents[0] || null;
+            let bestScore = Number.POSITIVE_INFINITY;
+
+            contents.forEach((content: any) => {
+                const frameElement = content?.window?.frameElement as
+                    | HTMLElement
+                    | null;
+                const rect = frameElement?.getBoundingClientRect?.();
+                if (!rect) return;
+                const intersectsTop =
+                    rect.top <= ownerRect.top && rect.bottom > ownerRect.top;
+                const intersectsViewport =
+                    rect.bottom > ownerRect.top && rect.top < ownerRect.bottom;
+                const distance = Math.abs(rect.top - ownerRect.top);
+                const score = intersectsTop
+                    ? distance
+                    : intersectsViewport
+                      ? 1000 + distance
+                      : 2000 + distance;
+                if (score < bestScore) {
+                    bestContent = content;
+                    bestScore = score;
+                }
+            });
+
+            const href =
+                getContentHref(bestContent) ||
+                String(
+                    renditionRef.current?.currentLocation?.()?.start?.href ||
+                        currentHref ||
+                        "",
+                );
+            const matchedToc = getMatchedTocState(href);
+            return {
+                content: bestContent,
+                href,
+                tocIndex: matchedToc.tocIndex,
+                tocItem: matchedToc.item,
+            };
+        }, [
+            currentHref,
+            getContentHref,
+            getMatchedTocState,
+            getRenderedContents,
+            mobileScrollMode,
+        ]);
+
+        const getActiveContents = useCallback(() => {
+            return getVisibleContentState()?.content || getRenderedContents()[0] || null;
+        }, [getRenderedContents, getVisibleContentState]);
+
         const getScrollMetrics = useCallback(() => {
+            if (mobileScrollMode) {
+                const scrollingElement = containerRef.current;
+                if (!scrollingElement) return null;
+                const clientHeight = Math.max(
+                    Number(scrollingElement.clientHeight || 0),
+                    1,
+                );
+                const scrollTop = Math.max(
+                    0,
+                    Number(scrollingElement.scrollTop || 0),
+                );
+                const scrollHeight = Math.max(
+                    Number(scrollingElement.scrollHeight || clientHeight),
+                    clientHeight,
+                );
+                const totalVirtualPages = Math.max(
+                    1,
+                    Math.ceil(scrollHeight / clientHeight),
+                );
+                const currentVirtualPage = Math.min(
+                    totalVirtualPages,
+                    Math.max(1, Math.floor(scrollTop / clientHeight) + 1),
+                );
+                return {
+                    scrollingElement,
+                    clientHeight,
+                    scrollTop,
+                    scrollHeight,
+                    totalVirtualPages,
+                    currentVirtualPage,
+                };
+            }
             const activeContents = getActiveContents();
             const doc = activeContents?.document;
             const scrollingElement =
@@ -234,9 +375,27 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 totalVirtualPages,
                 currentVirtualPage,
             };
-        }, [getActiveContents]);
+        }, [getActiveContents, mobileScrollMode]);
 
         const getCurrentTocState = useCallback(() => {
+            if (mobileScrollMode) {
+                const visibleContentState = getVisibleContentState();
+                return {
+                    tocIndex: visibleContentState?.tocIndex ?? -1,
+                    prevItem:
+                        visibleContentState &&
+                        visibleContentState.tocIndex > 0 &&
+                        visibleContentState.tocIndex < toc.length
+                            ? toc[visibleContentState.tocIndex - 1]
+                            : null,
+                    nextItem:
+                        visibleContentState &&
+                        visibleContentState.tocIndex >= 0 &&
+                        visibleContentState.tocIndex < toc.length - 1
+                            ? toc[visibleContentState.tocIndex + 1]
+                            : null,
+                };
+            }
             const liveHref = String(
                 renditionRef.current?.currentLocation?.()?.start?.href ||
                     currentHref ||
@@ -259,7 +418,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         ? toc[tocIndex + 1]
                         : null,
             };
-        }, [currentHref, toc]);
+        }, [currentHref, getVisibleContentState, mobileScrollMode, toc]);
 
         const applyThemeToContents = useCallback(
             (contents: any) => {
@@ -446,8 +605,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         );
 
         const syncVisibleText = useCallback(() => {
-            const rendition = renditionRef.current;
-            const contents = rendition?.getContents?.() || [];
+            const activeContent = getActiveContents();
+            const contents = activeContent ? [activeContent] : getRenderedContents();
             const text = contents
                 .map((content: any) =>
                     String(content?.document?.body?.innerText || "").trim(),
@@ -457,7 +616,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 .trim();
             setVisibleText(text);
             return text;
-        }, []);
+        }, [getActiveContents, getRenderedContents]);
 
         const syncScrollPagingState = useCallback(
             (
@@ -922,7 +1081,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             passive: true,
                         });
                     }
-                    if (desktopSectionPaging || !pagedMode) {
+                    if (desktopSectionPaging || (!pagedMode && !mobileScrollMode)) {
                         const scrollingElement =
                             doc?.scrollingElement ||
                             doc?.documentElement ||
@@ -1049,6 +1208,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 chapterLabel,
                 desktopSectionPaging,
                 location,
+                mobileScrollMode,
                 onContextMenuRequest,
                 onSelection,
                 pagedMode,
@@ -1165,7 +1325,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             const emitVisibleNoteMarkers = () => {
                 const onChange = onVisibleNoteMarkersChangeRef.current;
                 const rendition = renditionRef.current;
-                const activeContents = rendition?.getContents?.()?.[0];
+                const activeContents = getActiveContents();
                 const frameElement = activeContents?.window?.frameElement as
                     | HTMLElement
                     | null;
@@ -1232,10 +1392,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             };
 
             const frame = window.requestAnimationFrame(emitVisibleNoteMarkers);
-            const activeContents = renditionRef.current?.getContents?.()?.[0];
+            const activeContents = getActiveContents();
             const doc = activeContents?.document;
-            const scrollingElement =
-                doc?.scrollingElement || doc?.documentElement || doc?.body || null;
+            const scrollingElement = mobileScrollMode
+                ? containerRef.current
+                : doc?.scrollingElement || doc?.documentElement || doc?.body || null;
             const handleSync = () => {
                 window.requestAnimationFrame(emitVisibleNoteMarkers);
             };
@@ -1251,14 +1412,94 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 window.removeEventListener("resize", handleSync);
                 onVisibleNoteMarkersChangeRef.current?.([]);
             };
-        }, [annotations, currentHref, currentPage, totalPages, viewportSize]);
+        }, [
+            annotations,
+            currentHref,
+            currentPage,
+            getActiveContents,
+            mobileScrollMode,
+            totalPages,
+            viewportSize,
+        ]);
 
-        const currentTocIndex = toc.findIndex(
-            (item) =>
-                item.href &&
-                currentHref &&
-                currentHref.startsWith(item.href.replace(/#.*$/, "")),
-        );
+        const syncMobileScrollState = useCallback(() => {
+            if (!mobileScrollMode) return;
+            const metrics = getScrollMetrics();
+            if (!metrics) return;
+            const visibleContentState = getVisibleContentState();
+            const activeHref = String(
+                visibleContentState?.href ||
+                    renditionRef.current?.currentLocation?.()?.start?.href ||
+                    currentHref ||
+                    "",
+            );
+            const matchedToc =
+                visibleContentState?.tocItem || getMatchedTocState(activeHref).item;
+            const matchedIndex =
+                visibleContentState?.tocIndex ?? getMatchedTocState(activeHref).tocIndex;
+            const matchedLabel =
+                matchedToc?.label || chapterLabel || book.title;
+            const progressWithinView =
+                metrics.totalVirtualPages <= 1
+                    ? 0
+                    : (metrics.currentVirtualPage - 1) /
+                      Math.max(metrics.totalVirtualPages - 1, 1);
+            const overallProgress =
+                matchedIndex >= 0 && toc.length > 0
+                    ? (Math.max(0, matchedIndex) + progressWithinView) /
+                      Math.max(toc.length - 1, 1)
+                    : progressWithinView;
+            const nextVisibleText = syncVisibleText();
+            const currentLocation = renditionRef.current?.currentLocation?.();
+            const cfi = String(
+                currentLocation?.start?.cfi || location || activeHref || "",
+            );
+            const locationPayload = {
+                location: cfi,
+                locationType: "epub_cfi",
+                progressPercent:
+                    Math.max(0, Math.min(overallProgress, 1)) * 100,
+                pageLabel: matchedLabel,
+                viewState: {
+                    page: metrics.currentVirtualPage,
+                    total: metrics.totalVirtualPages,
+                    displayedPage: metrics.currentVirtualPage,
+                    displayedTotal: metrics.totalVirtualPages,
+                    sectionScrollTop: metrics.scrollTop,
+                    flow: "scrolled",
+                },
+            };
+            setCurrentHref(activeHref);
+            setCurrentPage(metrics.currentVirtualPage);
+            setTotalPages(metrics.totalVirtualPages);
+            setChapterLabel(matchedLabel);
+            onStateChange({
+                currentPage: metrics.currentVirtualPage,
+                totalPages: metrics.totalVirtualPages,
+                pageLabel: `Page ${metrics.currentVirtualPage}`,
+                chapterLabel: matchedLabel,
+                progressPercent: locationPayload.progressPercent,
+                pagesLeftLabel: `${Math.max(metrics.totalVirtualPages - metrics.currentVirtualPage, 0)} pages left in view`,
+                visibleText: nextVisibleText,
+                locationPayload,
+            });
+            onSaveLocation(locationPayload);
+        }, [
+            book.title,
+            chapterLabel,
+            currentHref,
+            getMatchedTocState,
+            getScrollMetrics,
+            getVisibleContentState,
+            location,
+            mobileScrollMode,
+            onSaveLocation,
+            onStateChange,
+            syncVisibleText,
+            toc.length,
+        ]);
+
+        const currentTocIndex = getCurrentTocState().tocIndex;
         const nextTocItem =
             currentTocIndex >= 0 && currentTocIndex < toc.length - 1
                 ? toc[currentTocIndex + 1]
@@ -1266,11 +1507,15 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const prevTocItem =
             currentTocIndex > 0 ? toc[currentTocIndex - 1] : null;
         const syncDisplayedRelocation = useCallback(() => {
+            if (mobileScrollMode) {
+                syncMobileScrollState();
+                return;
+            }
             const nextLocation = renditionRef.current?.currentLocation?.();
             if (nextLocation) {
                 syncRelocation(nextLocation);
             }
-        }, [syncRelocation]);
+        }, [mobileScrollMode, syncMobileScrollState, syncRelocation]);
         const stepScrollPage = useCallback(
             (direction: "prev" | "next") => {
                 const metrics = getScrollMetrics();
@@ -1314,6 +1559,29 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 syncDisplayedRelocation,
             ],
         );
+
+        useEffect(() => {
+            if (!mobileScrollMode) return;
+            const scrollingElement = containerRef.current;
+            if (!scrollingElement) return;
+
+            const handleSync = () => {
+                window.requestAnimationFrame(() => {
+                    syncMobileScrollState();
+                });
+            };
+
+            handleSync();
+            scrollingElement.addEventListener("scroll", handleSync, {
+                passive: true,
+            });
+            window.addEventListener("resize", handleSync);
+
+            return () => {
+                scrollingElement.removeEventListener("scroll", handleSync);
+                window.removeEventListener("resize", handleSync);
+            };
+        }, [mobileScrollMode, syncMobileScrollState]);
 
         useImperativeHandle(
             ref,
