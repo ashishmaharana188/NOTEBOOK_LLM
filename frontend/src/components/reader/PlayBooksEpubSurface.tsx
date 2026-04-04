@@ -1265,6 +1265,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 : null;
         const prevTocItem =
             currentTocIndex > 0 ? toc[currentTocIndex - 1] : null;
+        const syncDisplayedRelocation = useCallback(() => {
+            const nextLocation = renditionRef.current?.currentLocation?.();
+            if (nextLocation) {
+                syncRelocation(nextLocation);
+            }
+        }, [syncRelocation]);
         const stepScrollPage = useCallback(
             (direction: "prev" | "next") => {
                 const metrics = getScrollMetrics();
@@ -1290,19 +1296,30 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 const tocTarget =
                     direction === "next" ? nextTocItem : prevTocItem;
                 if (tocTarget?.href && renditionRef.current) {
-                    void renditionRef.current.display(tocTarget.href);
+                    void renditionRef.current
+                        .display(tocTarget.href)
+                        .then(() => {
+                            window.requestAnimationFrame(() => {
+                                syncDisplayedRelocation();
+                            });
+                        });
                     return true;
                 }
                 return false;
             },
-            [getScrollMetrics, nextTocItem, prevTocItem],
+            [
+                getScrollMetrics,
+                nextTocItem,
+                prevTocItem,
+                syncDisplayedRelocation,
+            ],
         );
 
         useImperativeHandle(
             ref,
             () => ({
                 prev: () => {
-                    if (!pagedMode && stepScrollPage("prev")) {
+                    if ((!pagedMode || !desktopLayout) && stepScrollPage("prev")) {
                         return;
                     }
                     if (desktopSectionPaging) {
@@ -1316,7 +1333,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     renditionRef.current?.prev?.();
                 },
                 next: () => {
-                    if (!pagedMode && stepScrollPage("next")) {
+                    if ((!pagedMode || !desktopLayout) && stepScrollPage("next")) {
                         return;
                     }
                     if (desktopSectionPaging) {
@@ -1407,6 +1424,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 },
             }),
             [
+                desktopLayout,
                 desktopSectionPaging,
                 getCurrentTocState,
                 getScrollMetrics,

@@ -2365,12 +2365,42 @@ export default function Reader({
                     className="mx-auto mb-[-20px] flex max-w-[1080px] flex-col items-center gap-3 sm:gap-4"
                     style={{ color: chromePrimary }}
                 >
-                    <div
-                        className="text-center mb-[-30px] text-[0.8rem] tracking-[-0.03em]"
-                        style={{ color: chromeSecondary }}
-                    >
-                        {pagesLeftText}
-                    </div>
+                    {isMobileLayout ? (
+                        <div className="grid w-full grid-cols-[40px,1fr,40px] items-center gap-2">
+                            <div aria-hidden="true" />
+                            <div
+                                className="text-center mb-[-30px] text-[0.8rem] tracking-[-0.03em]"
+                                style={{ color: chromeSecondary }}
+                            >
+                                {pagesLeftText}
+                            </div>
+                            <button
+                                type="button"
+                                data-reader-chrome="true"
+                                aria-label="Contents"
+                                className="inline-flex h-9 w-9 items-center justify-center justify-self-end rounded-[14px] text-[20px]"
+                                style={{
+                                    color: chromePrimary,
+                                    background: uiPalette.pillBackground,
+                                    boxShadow: uiPalette.pillShadow,
+                                }}
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    openContents("chapters");
+                                }}
+                            >
+                                <IonIcon icon={menuOutline} />
+                            </button>
+                        </div>
+                    ) : (
+                        <div
+                            className="text-center mb-[-30px] text-[0.8rem] tracking-[-0.03em]"
+                            style={{ color: chromeSecondary }}
+                        >
+                            {pagesLeftText}
+                        </div>
+                    )}
                     <div className="flex w-full min-w-0 items-center gap-2 sm:gap-4">
                         {showDesktopContentsControl ? (
                             <IconButton
