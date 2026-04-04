@@ -1516,6 +1516,50 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 syncRelocation(nextLocation);
             }
         }, [mobileScrollMode, syncMobileScrollState, syncRelocation]);
+        const stepSpineNavigation = useCallback(
+            (direction: "prev" | "next") => {
+                const rendition = renditionRef.current;
+                if (!rendition) return false;
+                const tocTarget =
+                    direction === "next"
+                        ? getCurrentTocState().nextItem
+                        : getCurrentTocState().prevItem;
+                if (tocTarget?.href) {
+                    void rendition.display(tocTarget.href).then(() => {
+                        const scrollOwner = containerRef.current;
+                        if (scrollOwner) {
+                            scrollOwner.scrollTo({
+                                top: 0,
+                                behavior: "auto",
+                            });
+                        }
+                        window.requestAnimationFrame(() => {
+                            syncDisplayedRelocation();
+                        });
+                    });
+                    return true;
+                }
+                const step =
+                    direction === "next"
+                        ? rendition.next?.bind(rendition)
+                        : rendition.prev?.bind(rendition);
+                if (!step) return false;
+                void Promise.resolve(step()).then(() => {
+                    const scrollOwner = containerRef.current;
+                    if (scrollOwner) {
+                        scrollOwner.scrollTo({
+                            top: 0,
+                            behavior: "auto",
+                        });
+                    }
+                    window.requestAnimationFrame(() => {
+                        syncDisplayedRelocation();
+                    });
+                });
+                return true;
+            },
+            [getCurrentTocState, syncDisplayedRelocation],
+        );
         const stepScrollPage = useCallback(
             (direction: "prev" | "next") => {
                 const metrics = getScrollMetrics();
@@ -1587,6 +1631,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             ref,
             () => ({
                 prev: () => {
+                    if (mobileScrollMode && stepSpineNavigation("prev")) {
+                        return;
+                    }
                     if ((!pagedMode || !desktopLayout) && stepScrollPage("prev")) {
                         return;
                     }
@@ -1601,6 +1648,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     renditionRef.current?.prev?.();
                 },
                 next: () => {
+                    if (mobileScrollMode && stepSpineNavigation("next")) {
+                        return;
+                    }
                     if ((!pagedMode || !desktopLayout) && stepScrollPage("next")) {
                         return;
                     }
@@ -1696,7 +1746,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 desktopSectionPaging,
                 getCurrentTocState,
                 getScrollMetrics,
+                mobileScrollMode,
                 pagedMode,
+                stepSpineNavigation,
                 stepScrollPage,
                 totalPages,
             ],
