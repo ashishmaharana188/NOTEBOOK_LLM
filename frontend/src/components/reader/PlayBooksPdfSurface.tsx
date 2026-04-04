@@ -73,6 +73,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const selectionFinalizeTimeoutRef = useRef<number | null>(null);
     const selectionInProgressRef = useRef(false);
     const touchSelectionActiveRef = useRef(false);
+    const suppressSelectionEventsRef = useRef(false);
     const touchGestureRef = useRef<{
       x: number;
       y: number;
@@ -103,6 +104,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       clamp(Number(initialScale) || 1, 1, 3),
     );
     const [selectionInProgress, setSelectionInProgress] = useState(false);
+    const [tempHighlightReady, setTempHighlightReady] = useState(false);
     const activeHeight = Math.max(
       320,
       viewport.height - (desktopLayout ? contentPadding * 2 : 28),
@@ -137,20 +139,26 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
     const emitSelection = useCallback(
       (
-        payload: Omit<ReaderSelectionPayload, "phase" | "source"> | null,
+        payload: Omit<
+          ReaderSelectionPayload,
+          "phase" | "source" | "kind"
+        > | null,
         phase: ReaderSelectionPayload["phase"],
         source: ReaderSelectionPayload["source"],
+        kind: ReaderSelectionPayload["kind"],
       ) => {
         onSelection?.(
           payload
             ? {
                 ...payload,
+                kind,
                 phase,
                 source,
               }
             : {
                 text: "",
                 rect: null,
+                kind,
                 phase,
                 source,
               },
@@ -185,6 +193,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         lockNavigation: navigationLocked,
         scale: mobileZoomEnabled ? mobileScale : 1,
         selectionInProgress,
+        tempHighlightReady,
       });
     }, [
       mobileScale,
@@ -192,6 +201,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       navigationLocked,
       onInteractionStateChange,
       selectionInProgress,
+      tempHighlightReady,
     ]);
 
     useEffect(() => {
@@ -286,7 +296,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
       () => ({
         prev: () => goToPage(pageNumber - (spreadMode ? 2 : 1)),
         next: () => goToPage(pageNumber + (spreadMode ? 2 : 1)),
-        clearSelection: () => {
+        clearSelection: (options) => {
+          suppressSelectionEventsRef.current = true;
+          setSelectionInProgress(false);
+          if (!options?.preserveTemporary) {
+            setTempHighlightReady(false);
+          }
           window.getSelection()?.removeAllRanges();
         },
         goToPage,
@@ -306,7 +321,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
     const getSelectionPayload = useCallback((): Omit<
       ReaderSelectionPayload,
-      "phase" | "source"
+      "phase" | "source" | "kind"
     > | null => {
       if (!containerRef.current) return null;
       const selection = window.getSelection();
@@ -338,7 +353,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
 
     const handleMouseSelection = () => {
       setSelectionInProgress(false);
-      emitSelection(getSelectionPayload(), "final", "mouse");
+      setTempHighlightReady(false);
+      emitSelection(getSelectionPayload(), "final", "mouse", "selection");
     };
 
     const finalizeTouchSelection = () => {
@@ -352,10 +368,14 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         const hasMinText = String(payload?.text || "").trim().length >= 2;
         setSelectionInProgress(false);
         selectionFinalizeTimeoutRef.current = null;
+        setTempHighlightReady(Boolean(payload && hasValidRect && hasMinText));
         emitSelection(
           payload && hasValidRect && hasMinText ? payload : null,
           "final",
           "touch",
+          payload && hasValidRect && hasMinText
+            ? "temp-highlight"
+            : "selection",
         );
       }, 180);
     };
@@ -365,6 +385,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         return;
       }
       const handleSelectionChange = () => {
+        if (suppressSelectionEventsRef.current) {
+          suppressSelectionEventsRef.current = false;
+          return;
+        }
         if (
           !touchSelectionActiveRef.current &&
           !selectionInProgressRef.current
@@ -375,11 +399,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         const payload = getSelectionPayload();
         if (!payload) {
           setSelectionInProgress(false);
-          emitSelection(null, "draft", "touch");
+          setTempHighlightReady(false);
+          emitSelection(null, "draft", "touch", "selection");
           return;
         }
         setSelectionInProgress(true);
-        emitSelection(payload, "draft", "touch");
+        setTempHighlightReady(false);
+        emitSelection(payload, "draft", "touch", "selection");
       };
       document.addEventListener("selectionchange", handleSelectionChange);
       return () => {

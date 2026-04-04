@@ -33,6 +33,7 @@ export interface ReaderSelectionPayload {
   rect?: ReaderSelectionRect | null;
   anchor?: Record<string, any>;
   annotationId?: string;
+  kind: "selection" | "temp-highlight";
   phase: "draft" | "final";
   source: "touch" | "mouse";
 }
@@ -48,6 +49,7 @@ export interface ReaderSurfaceInteractionState {
   lockNavigation?: boolean;
   scale?: number;
   selectionInProgress?: boolean;
+  tempHighlightReady?: boolean;
 }
 
 export interface ReaderSurfaceHandle {
@@ -56,7 +58,7 @@ export interface ReaderSurfaceHandle {
   goToPage: (page: number) => void;
   goToSearchResult: (result: ReaderSearchResult) => void;
   goToTocTarget?: (target: { href?: string; page?: number; sectionIndex?: number }) => void;
-  clearSelection?: () => void;
+  clearSelection?: (options?: { preserveTemporary?: boolean }) => void;
 }
 
 export interface ReaderSurfaceCommonProps {

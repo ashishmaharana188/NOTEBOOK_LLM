@@ -96,6 +96,7 @@ interface SelectionState {
     rect?: ReaderSelectionRect | null;
     anchor?: Record<string, any>;
     annotationId?: string;
+    kind: "selection" | "temp-highlight";
     phase: "draft" | "final";
     source: "touch" | "mouse";
 }
@@ -106,6 +107,7 @@ interface SelectionSnapshot {
     rect?: ReaderSelectionRect | null;
     anchor?: Record<string, any>;
     annotationId?: string;
+    kind: "selection" | "temp-highlight";
     phase: "draft" | "final";
     source: "touch" | "mouse";
 }
@@ -476,6 +478,8 @@ function ReaderSelectionMenu({
     color,
     anchorRect,
     onColor,
+    onSaveHighlight,
+    onClearHighlight,
     onAddNote,
     onDefine,
     onTranslate,
@@ -486,6 +490,7 @@ function ReaderSelectionMenu({
     onDeleteHighlight,
     onDismiss,
     hasSavedHighlight,
+    isTemporaryHighlight = false,
     theme = "light",
     mobile = false,
 }: {
@@ -493,6 +498,8 @@ function ReaderSelectionMenu({
     color: string;
     anchorRect?: ReaderSelectionRect | null;
     onColor: (color: string) => void;
+    onSaveHighlight: () => void;
+    onClearHighlight: () => void;
     onAddNote: () => void;
     onDefine: () => void;
     onTranslate: () => void;
@@ -503,6 +510,7 @@ function ReaderSelectionMenu({
     onDeleteHighlight: () => void;
     onDismiss: () => void;
     hasSavedHighlight: boolean;
+    isTemporaryHighlight?: boolean;
     theme?: "light" | "dark" | "sepia";
     mobile?: boolean;
 }) {
@@ -522,6 +530,20 @@ function ReaderSelectionMenu({
         nightLight: false,
     });
     const actions = [
+        ...(!hasSavedHighlight && isTemporaryHighlight
+            ? [
+                  {
+                      icon: bookmarkOutline,
+                      label: "Save highlight",
+                      action: onSaveHighlight,
+                  },
+                  {
+                      icon: closeOutline,
+                      label: "Clear",
+                      action: onClearHighlight,
+                  },
+              ]
+            : []),
         {
             icon: createOutline,
             label: "Add note",
@@ -843,7 +865,9 @@ export default function Reader({
             lockNavigation: false,
             scale: 1,
             selectionInProgress: false,
+            tempHighlightReady: false,
         });
+    const [selectionMenuOpen, setSelectionMenuOpen] = useState(false);
     selectionColorRef.current = selection?.color || selectionColorRef.current;
     overlayRef.current = overlay;
     overflowOpenRef.current = overflowOpen;
@@ -887,6 +911,7 @@ export default function Reader({
             lockNavigation: false,
             scale: 1,
             selectionInProgress: false,
+            tempHighlightReady: false,
         });
     }, [book?.filename, bookExtension]);
 
@@ -1124,6 +1149,7 @@ export default function Reader({
     }, [updateSetting]);
 
     const closeSelection = useCallback(() => {
+        setSelectionMenuOpen(false);
         setSelection(null);
         surfaceRef.current?.clearSelection?.();
         window.getSelection()?.removeAllRanges();
@@ -1160,6 +1186,7 @@ export default function Reader({
 
     const prepareSelectionOverlay = useCallback(() => {
         suppressContextMenu();
+        setSelectionMenuOpen(false);
         surfaceRef.current?.clearSelection?.();
         window.getSelection()?.removeAllRanges();
         setOverflowOpen(false);
@@ -1184,9 +1211,11 @@ export default function Reader({
                 rect,
                 anchor: annotation.anchor || {},
                 annotationId: annotation.annotation_id,
+                kind: "temp-highlight",
                 phase: "final",
                 source: "mouse",
             });
+            setSelectionMenuOpen(false);
             setOverflowOpen(false);
             setOverlay("note");
         },
@@ -1206,9 +1235,11 @@ export default function Reader({
                 rect,
                 anchor: annotation.anchor || {},
                 annotationId: annotation.annotation_id,
+                kind: "temp-highlight",
                 phase: "final",
                 source: "mouse",
             });
+            setSelectionMenuOpen(true);
         },
         [openExistingNote],
     );
@@ -1351,6 +1382,7 @@ export default function Reader({
         (payload: ReaderSelectionPayload) => {
             const nextText = String(payload?.text || "").trim();
             if (!nextText) {
+                setSelectionMenuOpen(false);
                 setSelection(null);
                 return;
             }
@@ -1365,12 +1397,32 @@ export default function Reader({
                 ...(payload?.annotationId
                     ? { annotationId: payload.annotationId }
                     : {}),
+                kind: payload.kind,
                 phase: payload.phase,
                 source: payload.source,
             };
+            setSelectionMenuOpen(
+                !isMobileLayout ||
+                    Boolean(payload.annotationId) ||
+                    (payload.kind === "temp-highlight" &&
+                        payload.source === "mouse"),
+            );
             setSelection(nextSelection);
+            if (
+                isMobileLayout &&
+                payload.kind === "temp-highlight" &&
+                payload.source === "touch" &&
+                payload.phase === "final"
+            ) {
+                window.requestAnimationFrame(() => {
+                    surfaceRef.current?.clearSelection?.({
+                        preserveTemporary: true,
+                    });
+                    window.getSelection()?.removeAllRanges();
+                });
+            }
         },
-        [],
+        [isMobileLayout],
     );
 
     const handleSurfaceContextMenuRequest = useCallback(() => {
@@ -1394,6 +1446,14 @@ export default function Reader({
         async (color: string) => {
             if (!selection?.text?.trim()) return;
             suppressSelectionCloseUntilRef.current = Date.now() + 250;
+            if (
+                isMobileLayout &&
+                selection.kind === "temp-highlight" &&
+                !selection.annotationId
+            ) {
+                setSelection((prev) => (prev ? { ...prev, color } : prev));
+                return;
+            }
             if (selection.annotationId) {
                 await updateAnnotation(selection.annotationId, { color });
                 setSelection((prev) => (prev ? { ...prev, color } : prev));
@@ -1409,7 +1469,7 @@ export default function Reader({
                 console.error("Reader highlight save failed", error);
             }
         },
-        [ensureSelectionHighlight, selection, updateAnnotation],
+        [ensureSelectionHighlight, isMobileLayout, selection, updateAnnotation],
     );
 
     const deleteSelectedHighlight = useCallback(async () => {
@@ -1678,6 +1738,25 @@ export default function Reader({
         setOverlay("note");
     };
 
+    const saveTemporaryHighlight = useCallback(async () => {
+        if (!selection?.text?.trim() || selection.annotationId) return;
+        try {
+            await ensureSelectionHighlight(
+                selection,
+                selection.color || "amber",
+            );
+            setSelectionMenuOpen(true);
+            surfaceRef.current?.clearSelection?.();
+            window.getSelection()?.removeAllRanges();
+        } catch (error) {
+            console.error("Reader temporary highlight save failed", error);
+        }
+    }, [ensureSelectionHighlight, selection]);
+
+    const clearTemporaryHighlight = useCallback(() => {
+        closeSelection();
+    }, [closeSelection]);
+
     const handleFindEchoes = () => {
         if (!selection?.text || !onFindEchoes) return;
         onFindEchoes(selection.text);
@@ -1748,10 +1827,22 @@ export default function Reader({
                 if (selection.phase === "draft") {
                     return;
                 }
-                if (Date.now() >= suppressSelectionCloseUntilRef.current) {
+                if (
+                    isMobileLayout &&
+                    selection.kind === "temp-highlight" &&
+                    !selection.annotationId
+                ) {
+                    if (selectionMenuOpen) {
+                        setSelectionMenuOpen(false);
+                        return;
+                    }
                     closeSelection();
+                } else {
+                    if (Date.now() >= suppressSelectionCloseUntilRef.current) {
+                        closeSelection();
+                    }
+                    return;
                 }
-                return;
             }
             if (overflowOpen) {
                 setOverflowOpen(false);
@@ -1786,6 +1877,7 @@ export default function Reader({
             overflowOpen,
             overlay,
             selection,
+            selectionMenuOpen,
             surfaceInteraction.selectionInProgress,
             turnNextPage,
             turnPrevPage,
@@ -2004,6 +2096,16 @@ export default function Reader({
                     return;
                 }
                 if (selection) {
+                    if (
+                        isMobileLayout &&
+                        selection.kind === "temp-highlight" &&
+                        !selection.annotationId
+                    ) {
+                        if (selectionMenuOpen) {
+                            setSelectionMenuOpen(false);
+                        }
+                        return;
+                    }
                     if (selection.phase === "draft") {
                         return;
                     }
@@ -2149,6 +2251,47 @@ export default function Reader({
             </div>
 
             <div className="relative z-[5] h-full">{renderSurface()}</div>
+
+            {isMobileLayout &&
+            selection?.kind === "temp-highlight" &&
+            !selection.annotationId &&
+            !selectionMenuOpen &&
+            overlay === null &&
+            selection.rect ? (
+                <button
+                    type="button"
+                    data-reader-overlay="true"
+                    className="fixed z-[16] rounded-[6px] border shadow-[0_8px_18px_rgba(15,23,42,0.12)]"
+                    style={{
+                        left: `${selection.rect.left}px`,
+                        top: `${selection.rect.top}px`,
+                        width: `${Math.max(selection.rect.width, 18)}px`,
+                        height: `${Math.max(selection.rect.height, 18)}px`,
+                        borderColor:
+                            selection.color === "orange"
+                                ? "rgba(223,107,65,0.48)"
+                                : selection.color === "green"
+                                  ? "rgba(111,159,56,0.48)"
+                                  : selection.color === "blue"
+                                    ? "rgba(47,159,180,0.48)"
+                                    : "rgba(201,152,18,0.48)",
+                        background:
+                            selection.color === "orange"
+                                ? "rgba(255,116,72,0.26)"
+                                : selection.color === "green"
+                                  ? "rgba(138,198,80,0.26)"
+                                  : selection.color === "blue"
+                                    ? "rgba(55,197,221,0.24)"
+                                    : "rgba(247,201,72,0.34)",
+                    }}
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setSelectionMenuOpen(true);
+                    }}
+                    aria-label="Open temporary highlight tools"
+                />
+            ) : null}
 
             {visibleNoteMarkers.length && !isMobileLayout ? (
                 <div className="pointer-events-none fixed inset-0 z-[18]">
@@ -3222,6 +3365,7 @@ export default function Reader({
                                                               activeNote?.quote_text ||
                                                               "",
                                                           color: chip.key,
+                                                          kind: "temp-highlight",
                                                           phase: "final",
                                                           source: "mouse",
                                                       },
@@ -3316,13 +3460,23 @@ export default function Reader({
                 open={
                     !!selection &&
                     selection.phase === "final" &&
-                    overlay === null
+                    overlay === null &&
+                    (!isMobileLayout || selectionMenuOpen)
                 }
                 color={selection?.color || "amber"}
                 anchorRect={selection?.rect || null}
                 theme={settings.theme}
                 mobile={isMobileLayout}
+                isTemporaryHighlight={
+                    Boolean(
+                        selection &&
+                            selection.kind === "temp-highlight" &&
+                            !selection.annotationId,
+                    )
+                }
                 onColor={(color) => void handleSelectionColor(color)}
+                onSaveHighlight={() => void saveTemporaryHighlight()}
+                onClearHighlight={clearTemporaryHighlight}
                 onAddNote={openNewNote}
                 onDefine={() => void openDefine()}
                 onTranslate={() => void openTranslate("selection")}
@@ -3331,7 +3485,17 @@ export default function Reader({
                 onFindEchoes={handleFindEchoes}
                 onAskRag={handleAskRag}
                 onDeleteHighlight={() => void deleteSelectedHighlight()}
-                onDismiss={closeSelection}
+                onDismiss={() => {
+                    if (
+                        isMobileLayout &&
+                        selection?.kind === "temp-highlight" &&
+                        !selection.annotationId
+                    ) {
+                        setSelectionMenuOpen(false);
+                        return;
+                    }
+                    closeSelection();
+                }}
                 hasSavedHighlight={Boolean(selection?.annotationId)}
             />
         </div>

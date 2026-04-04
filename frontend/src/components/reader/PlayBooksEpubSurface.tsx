@@ -89,6 +89,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const boundScrollTargetsRef = useRef(new WeakSet<EventTarget>());
         const selectionFinalizeTimeoutRef = useRef<number | null>(null);
         const selectionInProgressRef = useRef(false);
+        const suppressSelectionEventsRef = useRef(false);
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
         );
@@ -103,6 +104,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             height: 0,
         });
         const [selectionInProgress, setSelectionInProgress] = useState(false);
+        const [tempHighlightReady, setTempHighlightReady] = useState(false);
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
         const desktopSectionPaging = pagedMode && desktopLayout;
@@ -138,8 +140,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 lockNavigation: false,
                 scale: 1,
                 selectionInProgress,
+                tempHighlightReady,
             });
-        }, [onInteractionStateChange, selectionInProgress]);
+        }, [onInteractionStateChange, selectionInProgress, tempHighlightReady]);
 
         useEffect(() => {
             return () => {
@@ -157,20 +160,26 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
 
         const emitSelectionPayload = useCallback(
             (
-                payload: Omit<ReaderSelectionPayload, "phase" | "source"> | null,
+                payload: Omit<
+                    ReaderSelectionPayload,
+                    "phase" | "source" | "kind"
+                > | null,
                 phase: ReaderSelectionPayload["phase"],
                 source: ReaderSelectionPayload["source"],
+                kind: ReaderSelectionPayload["kind"],
             ) => {
                 onSelectionRef.current?.(
                     payload
                         ? {
                               ...payload,
+                              kind,
                               phase,
                               source,
                           }
                         : {
                               text: "",
                               rect: null,
+                              kind,
                               phase,
                               source,
                           },
@@ -676,7 +685,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         lastSelectedCfiRef.current = "";
                         clearPendingSelectionFinalize();
                         setSelectionInProgress(false);
-                        emitSelectionPayload(null, phase, source);
+                        setTempHighlightReady(false);
+                        emitSelectionPayload(null, phase, source, "selection");
                     };
                     const finalizeIframeSelection = (
                         source: ReaderSelectionPayload["source"] = desktopLayout
@@ -687,10 +697,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         const selectionPayload = getIframeSelectionPayload();
                         if (source === "mouse" || desktopLayout) {
                             setSelectionInProgress(false);
+                            setTempHighlightReady(false);
                             emitSelectionPayload(
                                 selectionPayload,
                                 "final",
                                 "mouse",
+                                "selection",
                             );
                             return;
                         }
@@ -719,17 +731,21 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     !hasValidRect ||
                                     !hasMinText
                                 ) {
+                                    setTempHighlightReady(false);
                                     emitSelectionPayload(
                                         null,
                                         "final",
                                         "touch",
+                                        "selection",
                                     );
                                     return;
                                 }
+                                setTempHighlightReady(true);
                                 emitSelectionPayload(
                                     settledPayload,
                                     "final",
                                     "touch",
+                                    "temp-highlight",
                                 );
                             }, 180);
                     };
@@ -748,6 +764,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (doc && !boundSelectionDocsRef.current.has(doc)) {
                         boundSelectionDocsRef.current.add(doc);
                         doc.addEventListener("selectionchange", () => {
+                            if (suppressSelectionEventsRef.current) {
+                                suppressSelectionEventsRef.current = false;
+                                return;
+                            }
                             const selectionPayload = getIframeSelectionPayload();
                             if (desktopLayout) {
                                 if (!selectionPayload) {
@@ -761,10 +781,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                 return;
                             }
                             setSelectionInProgress(true);
+                            setTempHighlightReady(false);
                             emitSelectionPayload(
                                 selectionPayload,
                                 "draft",
                                 "touch",
+                                "selection",
                             );
                         });
                         doc.addEventListener("mouseup", () =>
@@ -857,7 +879,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             const deltaX = touch.clientX - previousTouch.x;
                             const deltaY = touch.clientY - previousTouch.y;
                             if (
-                                pagedMode &&
                                 Math.abs(deltaX) > 60 &&
                                 Math.abs(deltaX) > Math.abs(deltaY)
                             ) {
@@ -977,6 +998,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                         "",
                                 ),
                             },
+                            kind: "selection",
                             phase: "final",
                             source: "mouse",
                         });
@@ -1355,7 +1377,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         await renditionRef.current.display(target.href);
                     }
                 },
-                clearSelection: () => {
+                clearSelection: (options) => {
+                    suppressSelectionEventsRef.current = true;
+                    setSelectionInProgress(false);
+                    if (!options?.preserveTemporary) {
+                        setTempHighlightReady(false);
+                    }
                     window.getSelection()?.removeAllRanges();
                     const contents = renditionRef.current?.getContents?.() || [];
                     contents.forEach((content: any) => {
