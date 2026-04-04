@@ -90,6 +90,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const selectionFinalizeTimeoutRef = useRef<number | null>(null);
         const selectionInProgressRef = useRef(false);
         const suppressSelectionEventsRef = useRef(false);
+        const pendingTouchSelectionRef = useRef<
+            Omit<ReaderSelectionPayload, "phase" | "source" | "kind"> | null
+        >(null);
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
         );
@@ -684,6 +687,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     ) => {
                         lastSelectedCfiRef.current = "";
                         clearPendingSelectionFinalize();
+                        pendingTouchSelectionRef.current = null;
                         setSelectionInProgress(false);
                         setTempHighlightReady(false);
                         emitSelectionPayload(null, phase, source, "selection");
@@ -731,6 +735,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     !hasValidRect ||
                                     !hasMinText
                                 ) {
+                                    pendingTouchSelectionRef.current = null;
                                     setTempHighlightReady(false);
                                     emitSelectionPayload(
                                         null,
@@ -740,13 +745,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     );
                                     return;
                                 }
-                                setTempHighlightReady(true);
-                                emitSelectionPayload(
-                                    settledPayload,
-                                    "final",
-                                    "touch",
-                                    "temp-highlight",
-                                );
+                                pendingTouchSelectionRef.current = settledPayload;
+                                setTempHighlightReady(false);
                             }, 180);
                     };
                     if (
@@ -777,9 +777,24 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             }
                             clearPendingSelectionFinalize();
                             if (!selectionPayload) {
+                                if (pendingTouchSelectionRef.current) {
+                                    const pendingSelection =
+                                        pendingTouchSelectionRef.current;
+                                    pendingTouchSelectionRef.current = null;
+                                    setSelectionInProgress(false);
+                                    setTempHighlightReady(true);
+                                    emitSelectionPayload(
+                                        pendingSelection,
+                                        "final",
+                                        "touch",
+                                        "temp-highlight",
+                                    );
+                                    return;
+                                }
                                 clearIframeSelection("touch", "draft");
                                 return;
                             }
+                            pendingTouchSelectionRef.current = null;
                             setSelectionInProgress(true);
                             setTempHighlightReady(false);
                             emitSelectionPayload(
@@ -1379,6 +1394,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 },
                 clearSelection: (options) => {
                     suppressSelectionEventsRef.current = true;
+                    pendingTouchSelectionRef.current = null;
                     setSelectionInProgress(false);
                     if (!options?.preserveTemporary) {
                         setTempHighlightReady(false);

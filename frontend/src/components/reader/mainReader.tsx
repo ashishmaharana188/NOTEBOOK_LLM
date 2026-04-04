@@ -1408,19 +1408,6 @@ export default function Reader({
                         payload.source === "mouse"),
             );
             setSelection(nextSelection);
-            if (
-                isMobileLayout &&
-                payload.kind === "temp-highlight" &&
-                payload.source === "touch" &&
-                payload.phase === "final"
-            ) {
-                window.requestAnimationFrame(() => {
-                    surfaceRef.current?.clearSelection?.({
-                        preserveTemporary: true,
-                    });
-                    window.getSelection()?.removeAllRanges();
-                });
-            }
         },
         [isMobileLayout],
     );

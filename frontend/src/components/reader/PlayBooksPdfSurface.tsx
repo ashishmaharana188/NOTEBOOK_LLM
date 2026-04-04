@@ -74,6 +74,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
     const selectionInProgressRef = useRef(false);
     const touchSelectionActiveRef = useRef(false);
     const suppressSelectionEventsRef = useRef(false);
+    const pendingTouchSelectionRef = useRef<
+      Omit<ReaderSelectionPayload, "phase" | "source" | "kind"> | null
+    >(null);
     const touchGestureRef = useRef<{
       x: number;
       y: number;
@@ -298,6 +301,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         next: () => goToPage(pageNumber + (spreadMode ? 2 : 1)),
         clearSelection: (options) => {
           suppressSelectionEventsRef.current = true;
+          pendingTouchSelectionRef.current = null;
           setSelectionInProgress(false);
           if (!options?.preserveTemporary) {
             setTempHighlightReady(false);
@@ -366,17 +370,16 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
             ((payload.rect.width || 0) > 0 || (payload.rect.height || 0) > 0),
         );
         const hasMinText = String(payload?.text || "").trim().length >= 2;
-        setSelectionInProgress(false);
         selectionFinalizeTimeoutRef.current = null;
-        setTempHighlightReady(Boolean(payload && hasValidRect && hasMinText));
-        emitSelection(
-          payload && hasValidRect && hasMinText ? payload : null,
-          "final",
-          "touch",
-          payload && hasValidRect && hasMinText
-            ? "temp-highlight"
-            : "selection",
-        );
+        if (payload && hasValidRect && hasMinText) {
+          pendingTouchSelectionRef.current = payload;
+          setTempHighlightReady(false);
+          return;
+        }
+        pendingTouchSelectionRef.current = null;
+        setSelectionInProgress(false);
+        setTempHighlightReady(false);
+        emitSelection(null, "final", "touch", "selection");
       }, 180);
     };
 
@@ -398,11 +401,25 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksPdfSurfaceProps>(
         clearPendingSelectionFinalize();
         const payload = getSelectionPayload();
         if (!payload) {
+          if (pendingTouchSelectionRef.current) {
+            const pendingSelection = pendingTouchSelectionRef.current;
+            pendingTouchSelectionRef.current = null;
+            setSelectionInProgress(false);
+            setTempHighlightReady(true);
+            emitSelection(
+              pendingSelection,
+              "final",
+              "touch",
+              "temp-highlight",
+            );
+            return;
+          }
           setSelectionInProgress(false);
           setTempHighlightReady(false);
           emitSelection(null, "draft", "touch", "selection");
           return;
         }
+        pendingTouchSelectionRef.current = null;
         setSelectionInProgress(true);
         setTempHighlightReady(false);
         emitSelection(payload, "draft", "touch", "selection");
