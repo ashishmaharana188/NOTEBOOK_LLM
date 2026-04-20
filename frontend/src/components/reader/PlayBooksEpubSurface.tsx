@@ -110,7 +110,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const [tempHighlightReady, setTempHighlightReady] = useState(false);
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
-        const desktopSectionPaging = pagedMode && desktopLayout;
+        const desktopSectionPaging = false;
         const desktopFocusPreview = pagedMode && desktopLayout && showFocusPreview;
         const mobileScrollMode = !desktopLayout && !pagedMode;
 
