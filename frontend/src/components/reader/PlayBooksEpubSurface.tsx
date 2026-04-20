@@ -117,10 +117,17 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const desktopSectionPaging = false;
         const desktopFocusPreview = false;
         const mobileScrollMode = !desktopLayout && !pagedMode;
+        const shouldManageViewportResize = !mobileScrollMode;
 
         useEffect(() => {
             selectionInProgressRef.current = selectionInProgress;
         }, [selectionInProgress]);
+
+        useEffect(() => {
+            const nextLocation = initialLocation ?? null;
+            lastKnownLocationRef.current = nextLocation;
+            setLocation((prev) => (prev === nextLocation ? prev : nextLocation));
+        }, [book.filename, initialLocation]);
 
         useEffect(() => {
             lastKnownLocationRef.current = location;
@@ -445,7 +452,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             overflow-x: hidden !important;
             scrollbar-width: none !important;
             -ms-overflow-style: none !important;
-            scroll-behavior: smooth !important;
             overscroll-behavior: contain !important;
             -webkit-overflow-scrolling: touch !important;
             touch-action: ${mobileScrollMode ? "auto" : "manipulation"} !important;
@@ -805,6 +811,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         );
 
         const resizeViewportRendition = useCallback(() => {
+            if (!shouldManageViewportResize) return false;
             const viewport = viewportRef.current;
             const rendition = renditionRef.current;
             if (!viewport || !rendition?.resize) return false;
@@ -830,14 +837,16 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             });
             rendition.resize(nextWidth, nextHeight);
             return true;
-        }, []);
+        }, [shouldManageViewportResize]);
 
         const configureRendition = useCallback(
             (rendition: any) => {
                 renditionRef.current = rendition;
-                window.requestAnimationFrame(() => {
-                    resizeViewportRendition();
-                });
+                if (shouldManageViewportResize) {
+                    window.requestAnimationFrame(() => {
+                        resizeViewportRendition();
+                    });
+                }
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
                     const doc = contents?.document;
@@ -1271,6 +1280,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 pagedMode,
                 platformLayout,
                 resizeViewportRendition,
+                shouldManageViewportResize,
                 syncRelocation,
                 syncScrollPagingState,
                 toc,
@@ -1278,6 +1288,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         );
 
         useLayoutEffect(() => {
+            if (!shouldManageViewportResize) return;
             const viewport = viewportRef.current;
             if (!viewport) return;
 
@@ -1298,6 +1309,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             resizeViewportRendition,
             settings.fontSize,
             settings.lineHeight,
+            shouldManageViewportResize,
         ]);
 
         useEffect(() => {
