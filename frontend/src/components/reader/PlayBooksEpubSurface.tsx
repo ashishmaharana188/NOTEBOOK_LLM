@@ -78,7 +78,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const lastKnownLocationRef = useRef<string | number | null>(
             initialLocation,
         );
-        const pendingInitialDesktopDisplayRef = useRef(false);
         const onSelectionRef = useRef(onSelection);
         const onContextMenuRequestRef = useRef(onContextMenuRequest);
         const onTapZoneRequestRef = useRef(onTapZoneRequest);
@@ -115,7 +114,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const [tempHighlightReady, setTempHighlightReady] = useState(false);
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
-        const desktopSectionPaging = false;
+        const desktopSectionPaging = pagedMode && desktopLayout;
         const desktopFocusPreview =
             pagedMode && desktopLayout && showFocusPreview;
         const mobileScrollMode = !desktopLayout && !pagedMode;
@@ -840,38 +839,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 height: nextHeight,
             });
             rendition.resize(nextWidth, nextHeight);
-            if (pendingInitialDesktopDisplayRef.current && desktopLayout) {
-                pendingInitialDesktopDisplayRef.current = false;
-                const nextTarget = lastKnownLocationRef.current;
-                window.requestAnimationFrame(() => {
-                    if (
-                        typeof nextTarget === "string" &&
-                        nextTarget.trim()
-                    ) {
-                        void rendition.display(nextTarget);
-                        return;
-                    }
-                    if (typeof nextTarget === "number") {
-                        void rendition.display(String(nextTarget));
-                        return;
-                    }
-                    const liveLocation =
-                        rendition.currentLocation?.()?.start?.cfi || null;
-                    if (liveLocation) {
-                        void rendition.display(String(liveLocation));
-                        return;
-                    }
-                    void rendition.display();
-                });
-            }
             return true;
         }, [desktopLayout, shouldObserveViewportResize]);
 
         const configureRendition = useCallback(
             (rendition: any) => {
                 renditionRef.current = rendition;
-                pendingInitialDesktopDisplayRef.current =
-                    shouldObserveViewportResize && desktopLayout;
                 window.requestAnimationFrame(() => {
                     resizeViewportRendition({ force: true });
                 });
@@ -1824,12 +1797,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const epubOptions = useMemo(
             () =>
                 ({
-                    flow: mobileScrollMode
+                    flow: desktopSectionPaging || mobileScrollMode
                         ? "scrolled-doc"
                         : pagedMode
                           ? "paginated"
                           : "scrolled",
-                    manager: mobileScrollMode
+                    manager: desktopSectionPaging || mobileScrollMode
                         ? "default"
                         : pagedMode
                           ? "default"
@@ -2019,6 +1992,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     position: "relative",
                                     height: "100%",
                                     width: "100%",
+                                    minWidth: mobileScrollMode
+                                        ? "100%"
+                                        : undefined,
+                                    background: mobileScrollMode
+                                        ? paperBackground
+                                        : undefined,
                                     overflowX: "hidden",
                                     overflowY: "hidden",
                                     scrollbarWidth: "none",
@@ -2027,6 +2006,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                 view: {
                                     height: "100%",
                                     width: "100%",
+                                    minWidth: mobileScrollMode
+                                        ? "100%"
+                                        : undefined,
+                                    background: mobileScrollMode
+                                        ? paperBackground
+                                        : undefined,
                                     overflowX: "hidden",
                                     overflowY: mobileScrollMode
                                         ? "auto"
@@ -2035,6 +2020,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                         : pagedMode
                                           ? "hidden"
                                           : "visible",
+                                    WebkitOverflowScrolling: mobileScrollMode
+                                        ? "touch"
+                                        : undefined,
                                     scrollbarWidth: "none",
                                     msOverflowStyle: "none",
                                 },
@@ -2058,6 +2046,24 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             [data-reader-epub-viewport="true"] iframe {
               scrollbar-width: none;
               -ms-overflow-style: none;
+            }
+            ${
+                mobileScrollMode
+                    ? `
+            [data-reader-epub-viewport="true"] .epub-container,
+            [data-reader-epub-viewport="true"] .epub-view,
+            [data-reader-epub-viewport="true"] .epub-view iframe {
+              width: 100% !important;
+              min-width: 100% !important;
+              max-width: 100% !important;
+            }
+            [data-reader-epub-viewport="true"] .epub-container,
+            [data-reader-epub-viewport="true"] .epub-view {
+              display: block !important;
+              margin: 0 !important;
+            }
+            `
+                    : ""
             }
             [data-reader-epub-viewport="true"]::-webkit-scrollbar,
             [data-reader-epub-viewport="true"] *::-webkit-scrollbar,
@@ -2102,7 +2108,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     </div>
                 ) : (
                     <div
-                        className={`relative mx-auto w-full ${
+                        className={`relative min-w-0 w-full ${
                             pagedMode
                                 ? showMobilePagedShell
                                     ? "h-full min-h-0 max-w-[1040px] overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(15,23,42,0.1)]"
