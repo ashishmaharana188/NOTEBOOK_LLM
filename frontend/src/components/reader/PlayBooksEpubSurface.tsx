@@ -793,9 +793,26 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             ],
         );
 
+        const resizeViewportRendition = useCallback(() => {
+            const viewport = viewportRef.current;
+            const rendition = renditionRef.current;
+            if (!viewport || !rendition?.resize) return false;
+            const rect = viewport.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return false;
+            setViewportSize({
+                width: Math.floor(rect.width),
+                height: Math.floor(rect.height),
+            });
+            rendition.resize(rect.width, rect.height);
+            return true;
+        }, []);
+
         const configureRendition = useCallback(
             (rendition: any) => {
                 renditionRef.current = rendition;
+                window.requestAnimationFrame(() => {
+                    resizeViewportRendition();
+                });
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
                     const doc = contents?.document;
@@ -1227,6 +1244,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 onSelection,
                 pagedMode,
                 platformLayout,
+                resizeViewportRendition,
                 syncRelocation,
                 syncScrollPagingState,
                 toc,
@@ -1235,18 +1253,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
 
         useLayoutEffect(() => {
             const viewport = viewportRef.current;
-            const rendition = renditionRef.current;
-            if (!viewport || !rendition?.resize) return;
+            if (!viewport) return;
 
             const resize = () => {
-                const rect = viewport.getBoundingClientRect();
-                if (rect.width > 0 && rect.height > 0) {
-                    setViewportSize({
-                        width: Math.floor(rect.width),
-                        height: Math.floor(rect.height),
-                    });
-                    rendition.resize(rect.width, rect.height);
-                }
+                resizeViewportRendition();
             };
 
             resize();
@@ -1259,6 +1269,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         }, [
             pagedMode,
             presentationMode,
+            resizeViewportRendition,
             settings.fontSize,
             settings.lineHeight,
         ]);
