@@ -17,6 +17,7 @@ import type {
 } from "../../types/readerBackendTypes";
 import {
     annotationHasAttachedNote,
+    flattenReaderToc,
     type ReaderNoteMarker,
     type ReaderSurfaceCommonProps,
     type ReaderSurfaceHandle,
@@ -30,10 +31,7 @@ interface PlayBooksEpubSurfaceProps extends ReaderSurfaceCommonProps {
 }
 
 function normalizeToc(tocData: any[]): TocItem[] {
-    return (tocData || []).map((item) => ({
-        label: String(item?.label || ""),
-        href: String(item?.href || ""),
-    }));
+    return flattenReaderToc(tocData);
 }
 
 function getDomRectPayload(rect: DOMRect | null | undefined) {
@@ -100,6 +98,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const isMountedRef = useRef(true);
         const renditionInstanceRef = useRef(0);
         const locationsPreparedInstanceRef = useRef(0);
+        const lastDisplayedHrefRef = useRef("");
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
         );
@@ -236,6 +235,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const displayTarget = useCallback(async (target: string | number) => {
             const rendition = renditionRef.current;
             if (!rendition?.display) return false;
+            if (
+                typeof target === "string" &&
+                target.trim() &&
+                !target.trim().startsWith("epubcfi(")
+            ) {
+                lastDisplayedHrefRef.current = target;
+            }
             try {
                 await rendition.display(target);
                 return rendition === renditionRef.current;
@@ -248,12 +254,31 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const getMatchedTocState = useCallback(
             (href: string) => {
                 const normalizedHref = String(href || "");
-                const tocIndex = toc.findIndex(
-                    (item) =>
-                        item.href &&
-                        normalizedHref &&
-                        normalizedHref.startsWith(item.href.replace(/#.*$/, "")),
+                const exactIndex = toc.findIndex(
+                    (item) => item.href && normalizedHref && item.href === normalizedHref,
                 );
+                const tocIndex =
+                    exactIndex >= 0
+                        ? exactIndex
+                        : (() => {
+                              const normalizedBaseHref = normalizedHref.replace(
+                                  /#.*$/,
+                                  "",
+                              );
+                              let fallbackIndex = -1;
+                              toc.forEach((item, index) => {
+                                  if (
+                                      item.href &&
+                                      normalizedBaseHref &&
+                                      normalizedBaseHref.startsWith(
+                                          item.href.replace(/#.*$/, ""),
+                                      )
+                                  ) {
+                                      fallbackIndex = index;
+                                  }
+                              });
+                              return fallbackIndex;
+                          })();
                 return {
                     tocIndex,
                     item:
@@ -732,16 +757,22 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     Math.max(derivedTotal, 1),
                 );
                 const href = String(loc?.start?.href || "");
-                setCurrentHref(href);
+                const exactHrefHint = lastDisplayedHrefRef.current;
+                const resolvedHref =
+                    exactHrefHint &&
+                    exactHrefHint.replace(/#.*$/, "") === href.replace(/#.*$/, "")
+                        ? exactHrefHint
+                        : href;
+                setCurrentHref(resolvedHref);
                 const matchedIndex = toc.findIndex(
                     (item) =>
                         item.href &&
-                        href &&
-                        href.startsWith(item.href.replace(/#.*$/, "")),
+                        resolvedHref &&
+                        resolvedHref.startsWith(item.href.replace(/#.*$/, "")),
                 );
                 const matchedChapter =
                     (matchedIndex >= 0 ? toc[matchedIndex] : null) ||
-                    toc.find((item) => item.href === href);
+                    toc.find((item) => item.href === resolvedHref);
                 if (desktopSectionPaging) {
                     setChapterLabel(
                         matchedChapter?.label || chapterLabel || book.title,

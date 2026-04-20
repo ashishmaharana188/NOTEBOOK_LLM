@@ -42,6 +42,7 @@ import PlayBooksEpubSurface from "./PlayBooksEpubSurface";
 import {
     annotationHasAttachedNote,
     clamp,
+    flattenReaderToc,
     getReaderTheme,
     getReaderUiPalette,
     PLAY_BOOKS_FONTS,
@@ -1113,7 +1114,7 @@ export default function Reader({
         (annotation) => annotation.kind === "bookmark",
     );
     const tocItems = manifest?.toc?.length
-        ? manifest.toc
+        ? flattenReaderToc(manifest.toc)
         : manifest?.section_index?.length
           ? manifest.section_index.map((section) => ({
                 label: section.label || `Section ${section.section_index + 1}`,
@@ -2604,7 +2605,11 @@ export default function Reader({
                                             }`}
                                         />
                                     }
-                                    title={item.label || `Chapter ${index + 1}`}
+                                    title={`${
+                                        item.depth
+                                            ? `${"-- ".repeat(item.depth)}`
+                                            : ""
+                                    }${item.label || `Chapter ${index + 1}`}`}
                                     subtitle={
                                         index === 0
                                             ? `currently on ${surfaceState.pageLabel.toLowerCase()}`

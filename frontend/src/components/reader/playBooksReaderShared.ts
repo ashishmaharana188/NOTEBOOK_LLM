@@ -3,6 +3,7 @@ import type {
   ReaderLocationPayload,
   ReaderSearchResult,
   ReaderSettings,
+  TocItem,
 } from "../../types/readerBackendTypes";
 
 export type ReaderPresentationMode = "paged" | "scroll";
@@ -157,4 +158,43 @@ export function annotationHasAttachedNote(annotation: ReaderAnnotation) {
     Boolean(String(annotation.note || "").trim()) ||
     Boolean(String(annotation.anchor?.linked_note_id || "").trim())
   );
+}
+
+function getNestedTocItems(item: Record<string, any>) {
+  if (Array.isArray(item?.subitems)) return item.subitems;
+  if (Array.isArray(item?.children)) return item.children;
+  if (Array.isArray(item?.items)) return item.items;
+  return [];
+}
+
+export function flattenReaderToc<T extends Record<string, any>>(
+  tocData: T[] | null | undefined,
+): Array<T & TocItem> {
+  const flattened: Array<T & TocItem> = [];
+  const seen = new Set<string>();
+
+  const walk = (items: T[] | null | undefined, depth: number) => {
+    (items || []).forEach((item) => {
+      const label = String(item?.label || item?.title || "").trim();
+      const href = String(item?.href || "").trim();
+
+      if (href && !seen.has(href)) {
+        seen.add(href);
+        flattened.push({
+          ...item,
+          label: label || href,
+          href,
+          depth,
+        });
+      }
+
+      const nested = getNestedTocItems(item);
+      if (nested.length) {
+        walk(nested, depth + 1);
+      }
+    });
+  };
+
+  walk(tocData, 0);
+  return flattened;
 }

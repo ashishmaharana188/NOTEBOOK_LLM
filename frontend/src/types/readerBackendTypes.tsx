@@ -110,6 +110,7 @@ export interface ThemeStyles {
 export interface TocItem {
   label: string;
   href: string;
+  depth?: number;
 }
 
 export interface ReaderProps {
