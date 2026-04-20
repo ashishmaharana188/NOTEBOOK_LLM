@@ -118,7 +118,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const desktopSectionPaging = false;
         const desktopFocusPreview = false;
         const mobileScrollMode = !desktopLayout && !pagedMode;
-        const shouldManageViewportResize = !mobileScrollMode;
+        const shouldObserveViewportResize = !mobileScrollMode;
 
         useEffect(() => {
             selectionInProgressRef.current = selectionInProgress;
@@ -811,8 +811,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             ],
         );
 
-        const resizeViewportRendition = useCallback(() => {
-            if (!shouldManageViewportResize) return false;
+        const resizeViewportRendition = useCallback((options?: { force?: boolean }) => {
+            if (!options?.force && !shouldObserveViewportResize) return false;
             const viewport = viewportRef.current;
             const rendition = renditionRef.current;
             if (!viewport || !rendition?.resize) return false;
@@ -862,18 +862,16 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 });
             }
             return true;
-        }, [desktopLayout, shouldManageViewportResize]);
+        }, [desktopLayout, shouldObserveViewportResize]);
 
         const configureRendition = useCallback(
             (rendition: any) => {
                 renditionRef.current = rendition;
                 pendingInitialDesktopDisplayRef.current =
-                    shouldManageViewportResize && desktopLayout;
-                if (shouldManageViewportResize) {
-                    window.requestAnimationFrame(() => {
-                        resizeViewportRendition();
-                    });
-                }
+                    shouldObserveViewportResize && desktopLayout;
+                window.requestAnimationFrame(() => {
+                    resizeViewportRendition({ force: true });
+                });
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
                     const doc = contents?.document;
@@ -1307,7 +1305,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 pagedMode,
                 platformLayout,
                 resizeViewportRendition,
-                shouldManageViewportResize,
+                shouldObserveViewportResize,
                 syncRelocation,
                 syncScrollPagingState,
                 toc,
@@ -1315,7 +1313,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         );
 
         useLayoutEffect(() => {
-            if (!shouldManageViewportResize) return;
+            resizeViewportRendition({ force: true });
+            if (!shouldObserveViewportResize) return;
             const viewport = viewportRef.current;
             if (!viewport) return;
 
@@ -1336,7 +1335,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             resizeViewportRendition,
             settings.fontSize,
             settings.lineHeight,
-            shouldManageViewportResize,
+            shouldObserveViewportResize,
         ]);
 
         useEffect(() => {
@@ -2069,6 +2068,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
               scrollbar-width: none;
               -ms-overflow-style: none;
             }
+            ${
+                mobileScrollMode
+                    ? `
             [data-reader-epub-viewport="true"] .epub-container,
             [data-reader-epub-viewport="true"] .epub-view,
             [data-reader-epub-viewport="true"] .epub-view iframe {
@@ -2080,6 +2082,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             [data-reader-epub-viewport="true"] .epub-view {
               display: block !important;
               margin: 0 !important;
+            }
+            `
+                    : ""
             }
             [data-reader-epub-viewport="true"]::-webkit-scrollbar,
             [data-reader-epub-viewport="true"] *::-webkit-scrollbar,
