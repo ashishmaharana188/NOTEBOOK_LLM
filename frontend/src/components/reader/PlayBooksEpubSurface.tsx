@@ -115,7 +115,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const [tempHighlightReady, setTempHighlightReady] = useState(false);
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
-        const desktopSectionPaging = pagedMode && desktopLayout;
+        const desktopSectionPaging = false;
         const desktopFocusPreview =
             pagedMode && desktopLayout && showFocusPreview;
         const mobileScrollMode = !desktopLayout && !pagedMode;
@@ -421,7 +421,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                           : "#171717";
                 const alignment =
                     settings.alignment === "left" ? "left" : "justify";
-                const overflowMode = desktopSectionPaging
+                const overflowMode = mobileScrollMode
+                    ? "auto"
+                    : desktopSectionPaging
                     ? "auto"
                     : pagedMode
                       ? "hidden"
@@ -433,7 +435,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 const scrollBodyMaxWidth = desktopLayout ? "760px" : "100%";
                 const scrollBodyPadding = desktopLayout
                     ? "28px 0 112px"
-                    : "24px 0 96px";
+                    : "16px 14px calc(84px + env(safe-area-inset-bottom))";
 
                 let styleTag = doc.getElementById("reader-play-books-style");
                 if (!styleTag) {
@@ -1822,12 +1824,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const epubOptions = useMemo(
             () =>
                 ({
-                    flow: desktopSectionPaging
+                    flow: mobileScrollMode
                         ? "scrolled-doc"
                         : pagedMode
                           ? "paginated"
                           : "scrolled",
-                    manager: desktopSectionPaging
+                    manager: mobileScrollMode
                         ? "default"
                         : pagedMode
                           ? "default"
@@ -1854,7 +1856,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 : "10px 10px 18px"
             : desktopLayout
               ? "24px 0 96px"
-              : "0 10px 84px";
+              : "0";
         const viewportMaxWidth = pagedMode
             ? showMobilePagedShell
                 ? undefined
@@ -1976,6 +1978,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     className={`mx-auto ${
                         pagedMode && desktopLayout
                             ? "h-full w-full"
+                        : mobileScrollMode
+                          ? "h-full min-h-0 w-full"
                             : pagedMode
                               ? "h-full"
                               : "min-h-[calc(100vh-180px)]"
@@ -2024,7 +2028,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                     height: "100%",
                                     width: "100%",
                                     overflowX: "hidden",
-                                    overflowY: desktopSectionPaging
+                                    overflowY: mobileScrollMode
+                                        ? "auto"
+                                        : desktopSectionPaging
                                         ? "auto"
                                         : pagedMode
                                           ? "hidden"
@@ -2070,6 +2076,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 className={`relative flex h-full min-h-0 justify-center px-0 py-0 ${
                     pagedMode
                         ? "items-center overflow-hidden"
+                        : mobileScrollMode
+                          ? "items-stretch overflow-hidden"
                         : "items-start overflow-x-hidden overflow-y-auto pb-16 pt-12 sm:pb-24 sm:pt-16"
                 }`}
             >
@@ -2099,17 +2107,22 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                 ? showMobilePagedShell
                                     ? "h-full min-h-0 max-w-[1040px] overflow-hidden rounded-[18px] shadow-[0_14px_32px_rgba(15,23,42,0.1)]"
                                     : "h-full min-h-0 overflow-hidden"
+                                : mobileScrollMode
+                                  ? "h-full min-h-0 flex-1 overflow-hidden"
                                 : ""
                         }`}
                         style={{
-                            background: pagedMode ? paperBackground : "transparent",
+                            background:
+                                pagedMode || mobileScrollMode
+                                    ? paperBackground
+                                    : "transparent",
                             maxWidth: undefined,
                         }}
                     >
                         {epubViewNode}
                     </div>
                 )}
-                {!pagedMode ? (
+                {!pagedMode && desktopLayout ? (
                         <div
                             className={`mt-12 text-[#202124] ${
                                 desktopLayout
