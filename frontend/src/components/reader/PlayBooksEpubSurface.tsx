@@ -78,6 +78,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const lastKnownLocationRef = useRef<string | number | null>(
             initialLocation,
         );
+        const pendingInitialDesktopDisplayRef = useRef(false);
         const onSelectionRef = useRef(onSelection);
         const onContextMenuRequestRef = useRef(onContextMenuRequest);
         const onTapZoneRequestRef = useRef(onTapZoneRequest);
@@ -836,12 +837,38 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 height: nextHeight,
             });
             rendition.resize(nextWidth, nextHeight);
+            if (pendingInitialDesktopDisplayRef.current && desktopLayout) {
+                pendingInitialDesktopDisplayRef.current = false;
+                const nextTarget = lastKnownLocationRef.current;
+                window.requestAnimationFrame(() => {
+                    if (
+                        typeof nextTarget === "string" &&
+                        nextTarget.trim()
+                    ) {
+                        void rendition.display(nextTarget);
+                        return;
+                    }
+                    if (typeof nextTarget === "number") {
+                        void rendition.display(String(nextTarget));
+                        return;
+                    }
+                    const liveLocation =
+                        rendition.currentLocation?.()?.start?.cfi || null;
+                    if (liveLocation) {
+                        void rendition.display(String(liveLocation));
+                        return;
+                    }
+                    void rendition.display();
+                });
+            }
             return true;
-        }, [shouldManageViewportResize]);
+        }, [desktopLayout, shouldManageViewportResize]);
 
         const configureRendition = useCallback(
             (rendition: any) => {
                 renditionRef.current = rendition;
+                pendingInitialDesktopDisplayRef.current =
+                    shouldManageViewportResize && desktopLayout;
                 if (shouldManageViewportResize) {
                     window.requestAnimationFrame(() => {
                         resizeViewportRendition();
