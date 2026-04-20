@@ -111,7 +111,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
         const desktopSectionPaging = false;
-        const desktopFocusPreview = pagedMode && desktopLayout && showFocusPreview;
+        const desktopFocusPreview = false;
         const mobileScrollMode = !desktopLayout && !pagedMode;
 
         useEffect(() => {
