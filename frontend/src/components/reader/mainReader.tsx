@@ -1048,6 +1048,12 @@ export default function Reader({
     const activeTextSection = loadedTextSections[currentTextSection] || null;
     const ext = bookExtension;
     const supportsDesktopScroll = false;
+    const initialEpubLocation =
+        ext === "epub" &&
+        typeof readerLocation === "string" &&
+        readerLocation.trim()
+            ? readerLocation
+            : null;
     const platformLayout: ReaderPlatformLayout = isMobileLayout
         ? "mobile"
         : "desktop";
@@ -1903,7 +1909,7 @@ export default function Reader({
                 <PlayBooksEpubSurface
                     ref={surfaceRef}
                     book={book}
-                    initialLocation={readerLocation}
+                    initialLocation={initialEpubLocation}
                     onSaveLocation={handleSaveLocation}
                     onStateChange={setSurfaceState}
                     onSelection={handleSurfaceSelection}
