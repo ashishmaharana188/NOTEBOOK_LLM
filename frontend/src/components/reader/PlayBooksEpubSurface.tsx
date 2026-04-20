@@ -97,6 +97,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const pendingTouchSelectionRef = useRef<
             Omit<ReaderSelectionPayload, "phase" | "source" | "kind"> | null
         >(null);
+        const isMountedRef = useRef(true);
+        const renditionInstanceRef = useRef(0);
+        const locationsPreparedInstanceRef = useRef(0);
         const [location, setLocation] = useState<string | number | null>(
             initialLocation,
         );
@@ -164,7 +167,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         }, [onInteractionStateChange, selectionInProgress, tempHighlightReady]);
 
         useEffect(() => {
+            isMountedRef.current = true;
             return () => {
+                isMountedRef.current = false;
+                renditionInstanceRef.current += 1;
+                renditionRef.current = null;
                 if (selectionFinalizeTimeoutRef.current) {
                     window.clearTimeout(selectionFinalizeTimeoutRef.current);
                 }
@@ -211,6 +218,33 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             return renditionRef.current?.getContents?.() || [];
         }, []);
 
+        const getSafeCurrentLocation = useCallback((rendition?: any) => {
+            const activeRendition = rendition || renditionRef.current;
+            if (!activeRendition || activeRendition !== renditionRef.current) {
+                return null;
+            }
+            if (!activeRendition.manager) {
+                return null;
+            }
+            try {
+                return activeRendition.currentLocation?.() || null;
+            } catch {
+                return null;
+            }
+        }, []);
+
+        const displayTarget = useCallback(async (target: string | number) => {
+            const rendition = renditionRef.current;
+            if (!rendition?.display) return false;
+            try {
+                await rendition.display(target);
+                return rendition === renditionRef.current;
+            } catch (error) {
+                console.error("EPUB display failed", error);
+                return false;
+            }
+        }, []);
+
         const getMatchedTocState = useCallback(
             (href: string) => {
                 const normalizedHref = String(href || "");
@@ -254,11 +288,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 const fallbackContent = contents[0] || null;
                 const fallbackHref =
                     getContentHref(fallbackContent) ||
-                    String(
-                        renditionRef.current?.currentLocation?.()?.start?.href ||
-                            currentHref ||
-                            "",
-                    );
+                    String(getSafeCurrentLocation()?.start?.href || currentHref || "");
                 const fallbackToc = getMatchedTocState(fallbackHref);
                 return {
                     content: fallbackContent,
@@ -295,11 +325,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
 
             const href =
                 getContentHref(bestContent) ||
-                String(
-                    renditionRef.current?.currentLocation?.()?.start?.href ||
-                        currentHref ||
-                        "",
-                );
+                String(getSafeCurrentLocation()?.start?.href || currentHref || "");
             const matchedToc = getMatchedTocState(href);
             return {
                 content: bestContent,
@@ -312,6 +338,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             getContentHref,
             getMatchedTocState,
             getRenderedContents,
+            getSafeCurrentLocation,
         ]);
 
         const getActiveContents = useCallback(() => {
@@ -378,7 +405,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 };
             }
             const liveHref = String(
-                renditionRef.current?.currentLocation?.()?.start?.href ||
+                getSafeCurrentLocation()?.start?.href ||
                     currentHref ||
                     "",
             );
@@ -399,7 +426,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         ? toc[tocIndex + 1]
                         : null,
             };
-        }, [currentHref, getVisibleContentState, mobileScrollMode, toc]);
+        }, [
+            currentHref,
+            getSafeCurrentLocation,
+            getVisibleContentState,
+            mobileScrollMode,
+            toc,
+        ]);
 
         const applyThemeToContents = useCallback(
             (contents: any) => {
@@ -844,11 +877,19 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
 
         const configureRendition = useCallback(
             (rendition: any) => {
+                const renditionInstanceId = renditionInstanceRef.current + 1;
+                renditionInstanceRef.current = renditionInstanceId;
                 renditionRef.current = rendition;
+                const isActiveRendition = () =>
+                    isMountedRef.current &&
+                    renditionRef.current === rendition &&
+                    renditionInstanceRef.current === renditionInstanceId;
                 window.requestAnimationFrame(() => {
+                    if (!isActiveRendition()) return;
                     resizeViewportRendition({ force: true });
                 });
                 rendition.hooks.content.register((contents: any) => {
+                    if (!isActiveRendition()) return;
                     applyThemeToContents(contents);
                     const doc = contents?.document;
                     const getIframeSelectionPayload = () => {
@@ -889,8 +930,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                       anchor: {
                                           cfi_range: lastSelectedCfiRef.current,
                                           href: String(
-                                              renditionRef.current?.currentLocation?.()?.start
-                                                  ?.href || "",
+                                              getSafeCurrentLocation()?.start?.href || "",
                                           ),
                                       },
                                   }
@@ -1156,45 +1196,46 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         ) {
                             let ticking = false;
                             const handleScroll = () => {
-                                if (ticking) return;
-                                ticking = true;
-                                win.requestAnimationFrame(() => {
-                                    ticking = false;
-                                    const currentLocation =
-                                        rendition.currentLocation?.();
-                                    if (mobileScrollMode) {
+                                    if (ticking) return;
+                                    ticking = true;
+                                    win.requestAnimationFrame(() => {
+                                        ticking = false;
+                                        if (!isActiveRendition()) return;
+                                        const currentLocation =
+                                            getSafeCurrentLocation(rendition);
+                                        if (mobileScrollMode) {
+                                            if (currentLocation) {
+                                                syncRelocation(currentLocation);
+                                            }
+                                            return;
+                                        }
+                                        if (desktopSectionPaging) {
+                                            const href = String(
+                                                currentLocation?.start?.href || "",
+                                            );
+                                            const matchedIndex = toc.findIndex(
+                                                (item) =>
+                                                    item.href &&
+                                                    href &&
+                                                    href.startsWith(
+                                                        item.href.replace(/#.*$/, ""),
+                                                    ),
+                                            );
+                                            syncScrollPagingState(
+                                                (matchedIndex >= 0
+                                                    ? toc[matchedIndex]?.label
+                                                    : chapterLabel) || book.title,
+                                                matchedIndex >= 0 ? matchedIndex : 0,
+                                                currentLocation?.start?.cfi ||
+                                                    lastKnownLocationRef.current,
+                                            );
+                                            return;
+                                        }
                                         if (currentLocation) {
                                             syncRelocation(currentLocation);
                                         }
-                                        return;
-                                    }
-                                    if (desktopSectionPaging) {
-                                        const href = String(
-                                            currentLocation?.start?.href || "",
-                                        );
-                                        const matchedIndex = toc.findIndex(
-                                            (item) =>
-                                                item.href &&
-                                                href &&
-                                                href.startsWith(
-                                                    item.href.replace(/#.*$/, ""),
-                                                ),
-                                        );
-                                        syncScrollPagingState(
-                                            (matchedIndex >= 0
-                                                ? toc[matchedIndex]?.label
-                                                : chapterLabel) || book.title,
-                                            matchedIndex >= 0 ? matchedIndex : 0,
-                                            currentLocation?.start?.cfi ||
-                                                lastKnownLocationRef.current,
-                                        );
-                                        return;
-                                    }
-                                    if (currentLocation) {
-                                        syncRelocation(currentLocation);
-                                    }
-                                });
-                            };
+                                    });
+                                };
                             boundScrollTargetsRef.current.add(scrollingElement);
                             scrollingElement.addEventListener(
                                 "scroll",
@@ -1236,8 +1277,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             anchor: {
                                 cfi_range: cfiRange,
                                 href: String(
-                                    rendition.currentLocation?.()?.start?.href ||
-                                        "",
+                                    getSafeCurrentLocation(rendition)?.start?.href || "",
                                 ),
                             },
                             kind: "selection",
@@ -1246,19 +1286,29 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         });
                     }
                 });
-                rendition.on("relocated", syncRelocation);
+                rendition.on("relocated", (nextLocation: any) => {
+                    if (!isActiveRendition()) return;
+                    syncRelocation(nextLocation);
+                });
 
-                Promise.resolve(rendition.book?.ready)
+                Promise.resolve(rendition.started)
                     .then(async () => {
+                        if (!isActiveRendition()) return;
                         const locations = rendition.book?.locations;
                         const generatedCount =
                             typeof locations?.length === "function"
                                 ? Number(locations.length())
                                 : Number(locations?.total || 0);
-                        if (locations && generatedCount <= 0) {
+                        if (
+                            locations &&
+                            generatedCount <= 0 &&
+                            locationsPreparedInstanceRef.current !== renditionInstanceId
+                        ) {
                             await locations.generate?.(1600);
+                            if (!isActiveRendition()) return;
+                            locationsPreparedInstanceRef.current = renditionInstanceId;
                         }
-                        const currentLocation = rendition.currentLocation?.();
+                        const currentLocation = getSafeCurrentLocation(rendition);
                         if (currentLocation) {
                             syncRelocation(currentLocation);
                         }
@@ -1275,6 +1325,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 book.title,
                 chapterLabel,
                 desktopSectionPaging,
+                getSafeCurrentLocation,
                 location,
                 onContextMenuRequest,
                 onSelection,
@@ -1492,7 +1543,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             const visibleContentState = getVisibleContentState();
             const activeHref = String(
                 visibleContentState?.href ||
-                    renditionRef.current?.currentLocation?.()?.start?.href ||
+                    getSafeCurrentLocation()?.start?.href ||
                     currentHref ||
                     "",
             );
@@ -1513,7 +1564,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                       Math.max(toc.length - 1, 1)
                     : progressWithinView;
             const nextVisibleText = syncVisibleText();
-            const currentLocation = renditionRef.current?.currentLocation?.();
+            const currentLocation = getSafeCurrentLocation();
             const cfi = String(
                 currentLocation?.start?.cfi ||
                     lastKnownLocationRef.current ||
@@ -1556,6 +1607,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             currentHref,
             getMatchedTocState,
             getScrollMetrics,
+            getSafeCurrentLocation,
             getVisibleContentState,
             location,
             mobileScrollMode,
@@ -1577,11 +1629,16 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 syncMobileScrollState();
                 return;
             }
-            const nextLocation = renditionRef.current?.currentLocation?.();
+            const nextLocation = getSafeCurrentLocation();
             if (nextLocation) {
                 syncRelocation(nextLocation);
             }
-        }, [mobileScrollMode, syncMobileScrollState, syncRelocation]);
+        }, [
+            getSafeCurrentLocation,
+            mobileScrollMode,
+            syncMobileScrollState,
+            syncRelocation,
+        ]);
         const stepSpineNavigation = useCallback(
             (direction: "prev" | "next") => {
                 const rendition = renditionRef.current;
@@ -1591,7 +1648,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         ? getCurrentTocState().nextItem
                         : getCurrentTocState().prevItem;
                 if (tocTarget?.href) {
-                    void rendition.display(tocTarget.href).then(() => {
+                    void displayTarget(tocTarget.href).then((displayed) => {
+                        if (!displayed) return;
                         window.requestAnimationFrame(() => {
                             syncDisplayedRelocation();
                         });
@@ -1610,7 +1668,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 });
                 return true;
             },
-            [getCurrentTocState, syncDisplayedRelocation],
+            [displayTarget, getCurrentTocState, syncDisplayedRelocation],
         );
         const stepScrollPage = useCallback(
             (direction: "prev" | "next") => {
@@ -1637,18 +1695,18 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 const tocTarget =
                     direction === "next" ? nextTocItem : prevTocItem;
                 if (tocTarget?.href && renditionRef.current) {
-                    void renditionRef.current
-                        .display(tocTarget.href)
-                        .then(() => {
-                            window.requestAnimationFrame(() => {
-                                syncDisplayedRelocation();
-                            });
+                    void displayTarget(tocTarget.href).then((displayed) => {
+                        if (!displayed) return;
+                        window.requestAnimationFrame(() => {
+                            syncDisplayedRelocation();
                         });
+                    });
                     return true;
                 }
                 return false;
             },
             [
+                displayTarget,
                 getScrollMetrics,
                 nextTocItem,
                 prevTocItem,
@@ -1669,7 +1727,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (desktopSectionPaging) {
                         const prevTocItem = getCurrentTocState().prevItem;
                         if (prevTocItem?.href && renditionRef.current) {
-                            void renditionRef.current.display(prevTocItem.href);
+                            void displayTarget(prevTocItem.href);
                             return;
                         }
                     }
@@ -1686,7 +1744,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (desktopSectionPaging) {
                         const nextItem = getCurrentTocState().nextItem;
                         if (nextItem?.href && renditionRef.current) {
-                            void renditionRef.current.display(nextItem.href);
+                            void displayTarget(nextItem.href);
                             return;
                         }
                     }
@@ -1743,12 +1801,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                               );
                     const cfi = locations.cfiFromPercentage(percentage);
                     if (cfi) {
-                        await rendition.display(cfi);
+                        await displayTarget(cfi);
                     }
                 },
                 goToSearchResult: async (result: ReaderSearchResult) => {
                     if (result.href && renditionRef.current) {
-                        await renditionRef.current.display(result.href);
+                        const displayed = await displayTarget(result.href);
+                        if (!displayed) return;
                         if (mobileScrollMode) {
                             window.requestAnimationFrame(() => {
                                 syncDisplayedRelocation();
@@ -1758,7 +1817,8 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 },
                 goToTocTarget: async (target) => {
                     if (target.href && renditionRef.current) {
-                        await renditionRef.current.display(target.href);
+                        const displayed = await displayTarget(target.href);
+                        if (!displayed) return;
                         if (mobileScrollMode) {
                             window.requestAnimationFrame(() => {
                                 syncDisplayedRelocation();
@@ -1781,6 +1841,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 },
             }),
             [
+                displayTarget,
                 desktopLayout,
                 desktopSectionPaging,
                 getCurrentTocState,
@@ -1813,6 +1874,13 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     allowPopups: true,
                 }) as any,
             [desktopSectionPaging, mobileScrollMode, pagedMode],
+        );
+        const epubInitOptions = useMemo(
+            () =>
+                ({
+                    openAs: "epub",
+                }) as any,
+            [],
         );
         const epubRenderLocation =
             desktopLayout && pagedMode ? null : location;
@@ -1979,6 +2047,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                             ref={readerRef}
                             url={book.url}
                             location={epubRenderLocation}
+                            epubInitOptions={epubInitOptions}
                             tocChanged={(value) =>
                                 setToc(normalizeToc(value))
                             }
@@ -2149,7 +2218,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                                                     nextTocItem.href &&
                                                     renditionRef.current
                                                 ) {
-                                                    void renditionRef.current.display(
+                                                    void displayTarget(
                                                         nextTocItem.href,
                                                     );
                                                 }

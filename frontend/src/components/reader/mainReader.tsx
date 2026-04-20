@@ -78,6 +78,29 @@ const LANGUAGE_OPTIONS = [
     { label: "Spanish", value: "es" },
 ];
 
+function getInitialReaderMobileLayout() {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(max-width: 900px)").matches;
+}
+
+function normalizeReaderExtension(extension: unknown) {
+    return String(extension || "")
+        .toLowerCase()
+        .replace(/^\./, "");
+}
+
+function readStoredPresentationMode(filename: string | null | undefined) {
+    if (!filename || typeof window === "undefined") return null;
+    try {
+        const raw = localStorage.getItem(
+            `${PRESENTATION_STORAGE_KEY}:${filename}`,
+        );
+        return raw === "paged" || raw === "scroll" ? raw : null;
+    } catch {
+        return null;
+    }
+}
+
 type OverlayMode =
     | null
     | "contents"
@@ -815,10 +838,23 @@ export default function Reader({
         jumpToAnnotation,
     } = useReaderSession(book);
     const { settings, updateSetting } = useReaderSetting();
+    const bookExtension = normalizeReaderExtension(book?.extension);
+    const mobilePreferredPresentationMode: ReaderPresentationMode =
+        bookExtension === "pdf" ? "paged" : "scroll";
     const [chromeVisible, setChromeVisible] = useState(false);
-    const [isMobileLayout, setIsMobileLayout] = useState(false);
+    const [isMobileLayout, setIsMobileLayout] = useState(() =>
+        getInitialReaderMobileLayout(),
+    );
     const [presentationMode, setPresentationMode] =
-        useState<ReaderPresentationMode>("paged");
+        useState<ReaderPresentationMode>(() => {
+            const mobileLayout = getInitialReaderMobileLayout();
+            if (mobileLayout) {
+                return mobilePreferredPresentationMode;
+            }
+            return readStoredPresentationMode(book?.filename) || "paged";
+        });
+    const [presentationModeReadyForBook, setPresentationModeReadyForBook] =
+        useState<string | null>(null);
     const [overlay, setOverlay] = useState<OverlayMode>(null);
     const [settingsTab, setSettingsTab] = useState<"text" | "lighting">("text");
     const [overflowOpen, setOverflowOpen] = useState(false);
@@ -885,12 +921,6 @@ export default function Reader({
         localStorage.setItem(SEARCH_STORAGE_KEY, JSON.stringify(recentQueries));
     }, [recentQueries]);
 
-    const bookExtension = String(book?.extension || "")
-        .toLowerCase()
-        .replace(/^\./, "");
-    const mobilePreferredPresentationMode: ReaderPresentationMode =
-        bookExtension === "pdf" ? "paged" : "scroll";
-
     useEffect(() => {
         if (typeof window === "undefined") return undefined;
         const mediaQuery = window.matchMedia("(max-width: 900px)");
@@ -916,24 +946,27 @@ export default function Reader({
     }, [book?.filename, bookExtension]);
 
     useEffect(() => {
-        if (!book?.filename) return;
+        if (!book?.filename) {
+            setPresentationModeReadyForBook(null);
+            return;
+        }
+        setPresentationModeReadyForBook((current) =>
+            current === book.filename ? current : null,
+        );
         modeHydratedRef.current = null;
         if (isMobileLayout) {
             setPresentationMode(mobilePreferredPresentationMode);
+            setPresentationModeReadyForBook(book.filename);
             return;
         }
-        try {
-            const raw = localStorage.getItem(
-                `${PRESENTATION_STORAGE_KEY}:${book.filename}`,
-            );
-            if (raw === "paged" || raw === "scroll") {
-                setPresentationMode(raw);
-                return;
-            }
-        } catch {
-            // Ignore local preference failures.
+        const storedMode = readStoredPresentationMode(book.filename);
+        if (storedMode) {
+            setPresentationMode(storedMode);
+            setPresentationModeReadyForBook(book.filename);
+            return;
         }
         setPresentationMode("paged");
+        setPresentationModeReadyForBook(book.filename);
     }, [book?.filename, isMobileLayout, mobilePreferredPresentationMode]);
 
     useEffect(() => {
@@ -945,6 +978,10 @@ export default function Reader({
             modeHydratedRef.current = book.filename;
             return;
         }
+        if (bookExtension === "epub") {
+            modeHydratedRef.current = book.filename;
+            return;
+        }
         if (persistedMode === "paged" || persistedMode === "scroll") {
             setPresentationMode(persistedMode);
             modeHydratedRef.current = book.filename;
@@ -953,7 +990,13 @@ export default function Reader({
         if (session) {
             modeHydratedRef.current = book.filename;
         }
-    }, [book?.filename, isMobileLayout, mobilePreferredPresentationMode, session]);
+    }, [
+        book?.filename,
+        bookExtension,
+        isMobileLayout,
+        mobilePreferredPresentationMode,
+        session,
+    ]);
 
     useEffect(() => {
         if (
@@ -1905,6 +1948,13 @@ export default function Reader({
         }
 
         if (ext === "epub" && !usesSectionReader) {
+            if (presentationModeReadyForBook !== book.filename) {
+                return (
+                    <div className="flex h-full items-center justify-center text-base text-slate-500">
+                        Loading EPUB...
+                    </div>
+                );
+            }
             return (
                 <PlayBooksEpubSurface
                     ref={surfaceRef}
