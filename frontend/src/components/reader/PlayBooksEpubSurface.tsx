@@ -434,7 +434,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 const scrollBodyMaxWidth = desktopLayout ? "760px" : "100%";
                 const scrollBodyPadding = desktopLayout
                     ? "28px 0 112px"
-                    : "16px 14px calc(84px + env(safe-area-inset-bottom))";
+                    : "16px 12px calc(84px + env(safe-area-inset-bottom))";
 
                 let styleTag = doc.getElementById("reader-play-books-style");
                 if (!styleTag) {
@@ -1261,6 +1261,28 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         const currentLocation = rendition.currentLocation?.();
                         if (currentLocation) {
                             syncRelocation(currentLocation);
+                            return;
+                        }
+                        if (desktopLayout) {
+                            const fallbackTarget =
+                                typeof lastKnownLocationRef.current ===
+                                    "string" &&
+                                lastKnownLocationRef.current.trim()
+                                    ? lastKnownLocationRef.current
+                                    : typeof lastKnownLocationRef.current ===
+                                        "number"
+                                      ? String(lastKnownLocationRef.current)
+                                      : toc[0]?.href || undefined;
+                            if (fallbackTarget) {
+                                await rendition.display(fallbackTarget);
+                            } else {
+                                await rendition.display();
+                            }
+                            const retriedLocation =
+                                rendition.currentLocation?.();
+                            if (retriedLocation) {
+                                syncRelocation(retriedLocation);
+                            }
                         }
                     })
                     .catch((error) => {
