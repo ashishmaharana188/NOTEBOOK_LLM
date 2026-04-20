@@ -78,6 +78,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const lastKnownLocationRef = useRef<string | number | null>(
             initialLocation,
         );
+        const desktopRecoveryTimeoutRef = useRef<number | null>(null);
         const onSelectionRef = useRef(onSelection);
         const onContextMenuRequestRef = useRef(onContextMenuRequest);
         const onTapZoneRequestRef = useRef(onTapZoneRequest);
@@ -114,7 +115,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const [tempHighlightReady, setTempHighlightReady] = useState(false);
         const pagedMode = presentationMode === "paged";
         const desktopLayout = platformLayout === "desktop";
-        const desktopSectionPaging = pagedMode && desktopLayout;
+        const desktopSectionPaging = false;
         const desktopFocusPreview =
             pagedMode && desktopLayout && showFocusPreview;
         const mobileScrollMode = !desktopLayout && !pagedMode;
@@ -168,6 +169,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 if (selectionFinalizeTimeoutRef.current) {
                     window.clearTimeout(selectionFinalizeTimeoutRef.current);
                 }
+                if (desktopRecoveryTimeoutRef.current) {
+                    window.clearTimeout(desktopRecoveryTimeoutRef.current);
+                }
             };
         }, []);
 
@@ -176,6 +180,39 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             window.clearTimeout(selectionFinalizeTimeoutRef.current);
             selectionFinalizeTimeoutRef.current = null;
         }, []);
+
+        const clearDesktopRecoveryTimeout = useCallback(() => {
+            if (!desktopRecoveryTimeoutRef.current) return;
+            window.clearTimeout(desktopRecoveryTimeoutRef.current);
+            desktopRecoveryTimeoutRef.current = null;
+        }, []);
+
+        const scheduleDesktopRecoveryDisplay = useCallback(() => {
+            if (!desktopLayout) return;
+            clearDesktopRecoveryTimeout();
+            desktopRecoveryTimeoutRef.current = window.setTimeout(() => {
+                desktopRecoveryTimeoutRef.current = null;
+                const rendition = renditionRef.current;
+                if (!rendition) return;
+                const currentLocation = rendition.currentLocation?.();
+                const renderedContents = rendition.getContents?.() || [];
+                if (currentLocation || renderedContents.length > 0) {
+                    return;
+                }
+                const fallbackTarget =
+                    typeof lastKnownLocationRef.current === "string" &&
+                    lastKnownLocationRef.current.trim()
+                        ? lastKnownLocationRef.current
+                        : typeof lastKnownLocationRef.current === "number"
+                          ? String(lastKnownLocationRef.current)
+                          : toc[0]?.href || undefined;
+                if (fallbackTarget) {
+                    void rendition.display(fallbackTarget);
+                    return;
+                }
+                void rendition.display();
+            }, 1200);
+        }, [clearDesktopRecoveryTimeout, desktopLayout, toc]);
 
         const emitSelectionPayload = useCallback(
             (
@@ -840,7 +877,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             });
             rendition.resize(nextWidth, nextHeight);
             return true;
-        }, [desktopLayout, shouldObserveViewportResize]);
+        }, [shouldObserveViewportResize]);
 
         const configureRendition = useCallback(
             (rendition: any) => {
@@ -848,6 +885,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 window.requestAnimationFrame(() => {
                     resizeViewportRendition({ force: true });
                 });
+                scheduleDesktopRecoveryDisplay();
                 rendition.hooks.content.register((contents: any) => {
                     applyThemeToContents(contents);
                     const doc = contents?.document;
@@ -1246,7 +1284,10 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         });
                     }
                 });
-                rendition.on("relocated", syncRelocation);
+                rendition.on("relocated", (loc: any) => {
+                    clearDesktopRecoveryTimeout();
+                    syncRelocation(loc);
+                });
 
                 Promise.resolve(rendition.book?.ready)
                     .then(async () => {
@@ -1260,30 +1301,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         }
                         const currentLocation = rendition.currentLocation?.();
                         if (currentLocation) {
+                            clearDesktopRecoveryTimeout();
                             syncRelocation(currentLocation);
                             return;
                         }
-                        if (desktopLayout) {
-                            const fallbackTarget =
-                                typeof lastKnownLocationRef.current ===
-                                    "string" &&
-                                lastKnownLocationRef.current.trim()
-                                    ? lastKnownLocationRef.current
-                                    : typeof lastKnownLocationRef.current ===
-                                        "number"
-                                      ? String(lastKnownLocationRef.current)
-                                      : toc[0]?.href || undefined;
-                            if (fallbackTarget) {
-                                await rendition.display(fallbackTarget);
-                            } else {
-                                await rendition.display();
-                            }
-                            const retriedLocation =
-                                rendition.currentLocation?.();
-                            if (retriedLocation) {
-                                syncRelocation(retriedLocation);
-                            }
-                        }
+                        scheduleDesktopRecoveryDisplay();
                     })
                     .catch((error) => {
                         console.error(
@@ -1302,7 +1324,9 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 onSelection,
                 pagedMode,
                 platformLayout,
+                clearDesktopRecoveryTimeout,
                 resizeViewportRendition,
+                scheduleDesktopRecoveryDisplay,
                 shouldObserveViewportResize,
                 syncRelocation,
                 syncScrollPagingState,
@@ -1819,12 +1843,12 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const epubOptions = useMemo(
             () =>
                 ({
-                    flow: desktopSectionPaging || mobileScrollMode
+                    flow: mobileScrollMode
                         ? "scrolled-doc"
                         : pagedMode
                           ? "paginated"
                           : "scrolled",
-                    manager: desktopSectionPaging || mobileScrollMode
+                    manager: mobileScrollMode
                         ? "default"
                         : pagedMode
                           ? "default"
