@@ -78,9 +78,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const lastKnownLocationRef = useRef<string | number | null>(
             initialLocation,
         );
-        const lastAppliedDesktopInitialLocationRef = useRef<
-            string | number | null
-        >(null);
         const onSelectionRef = useRef(onSelection);
         const onContextMenuRequestRef = useRef(onContextMenuRequest);
         const onTapZoneRequestRef = useRef(onTapZoneRequest);
@@ -1842,35 +1839,6 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             : desktopLayout
               ? "840px"
               : "100%";
-        useEffect(() => {
-            if (!desktopLayout || !pagedMode) return;
-            const rendition = renditionRef.current;
-            if (!rendition?.display) return;
-            const target =
-                typeof initialLocation === "string" && initialLocation.trim()
-                    ? initialLocation
-                    : typeof initialLocation === "number"
-                      ? initialLocation
-                      : null;
-            if (target === null) {
-                lastAppliedDesktopInitialLocationRef.current = null;
-                return;
-            }
-            if (lastAppliedDesktopInitialLocationRef.current === target) {
-                return;
-            }
-            lastAppliedDesktopInitialLocationRef.current = target;
-            const fallbackTarget =
-                typeof toc[0]?.href === "string" && toc[0].href.trim()
-                    ? toc[0].href
-                    : null;
-            Promise.resolve(rendition.display(String(target))).catch(() => {
-                if (fallbackTarget && fallbackTarget !== String(target)) {
-                    return rendition.display(fallbackTarget);
-                }
-                return rendition.display();
-            });
-        }, [desktopLayout, initialLocation, pagedMode, toc]);
 
         const renderDesktopPeekShell = (side: "left" | "right") => {
             const visibleWidth = 136;
