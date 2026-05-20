@@ -91,7 +91,7 @@ class Hydrator:
 
 
 class APIHydrator:
-    """The Resilient Engine that talks to APIs to fetch missing metadata."""
+ 
 
     def __init__(self):
         self.db_path = DB_PATH
@@ -125,7 +125,7 @@ class APIHydrator:
                     }
             elif resp.status_code == 429:
                 logger.error(
-                    f"🛑 Google Rate Limit (429)! Tripping Circuit Breaker. Switching to OpenLibrary."
+                    f"Google Rate Limit (429) Switching to OpenLibrary."
                 )
                 self.google_banned = True
 
@@ -200,7 +200,7 @@ class APIHydrator:
         starving_books = c.fetchall()
 
         if not starving_books:
-            logger.info("✅ No starving books found. Database is fully hydrated.")
+            logger.info("No starving books found. Database is fully hydrated.")
             conn.close()
             return
 
@@ -249,7 +249,7 @@ class APIHydrator:
         conn.commit()
         conn.close()
         logger.info(
-            f"🎉 Batch Hydration Complete! Enriched {updated_count} out of {total_books} books."
+            f"Batch Hydration Complete! Enriched {updated_count} out of {total_books} books."
         )
 
 
@@ -259,9 +259,9 @@ api_hydrator = APIHydrator()
 
 
 def hydrate_entire_library():
-    """Phase 1: Cleans filenames. Phase 2: Fetches API Metadata."""
+   
     if os.path.exists(LIBRARY_DIR):
-        logger.info(f"🌊 Standardizing filenames in {LIBRARY_DIR}...")
+        logger.info(f" Standardizing filenames in {LIBRARY_DIR}...")
         files = [
             f
             for f in os.listdir(LIBRARY_DIR)
