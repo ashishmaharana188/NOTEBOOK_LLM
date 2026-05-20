@@ -221,7 +221,7 @@ def start_ollama_service():
                 try:
                     time.sleep(2)
                     requests.get("http://localhost:11434")
-                    logger.info("🚀 Ollama Service started successfully.")
+                    logger.info(" Ollama Service started successfully.")
                     return True
                 except:
                     pass
@@ -236,7 +236,7 @@ def warm_up_model():
         "reasoning_profile", "qwen2.5:0.5b-instruct"
     )
     resolved_model = runtime_snapshot.get("resolved", {}).get("reasoning_model_tag")
-    logger.info(f"🔥 Warming up reasoning model ({reasoning_profile})...")
+    logger.info(f"Warming up reasoning model ({reasoning_profile})...")
     try:
         requests.post(
             "http://localhost:11434/api/generate",
@@ -248,18 +248,18 @@ def warm_up_model():
             },
             timeout=5,
         )
-        logger.info("✅ Model Loaded & Ready!")
+        logger.info("Model Loaded & Ready!")
     except Exception as e:
-        logger.warning(f"⚠️ Model warm-up failed: {e}")
+        logger.warning(f" Model warm-up failed: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global stance_engine, APP_LOOP
     try:
-        logger.info("✅ Stance Engine initialized (Placeholder).")
+        logger.info("Stance Engine initialized (Placeholder).")
     except Exception as e:
-        logger.error(f"⚠️ Could not load Stance Engine: {e}")
+        logger.error(f"Could not load Stance Engine: {e}")
 
     APP_LOOP = asyncio.get_running_loop()
 
@@ -1704,7 +1704,7 @@ async def search_v2_endpoint(query: str = "", limit: int = 25, subject: str = No
             else:
                 # Fallback to direct text search ONLY if the Recommender fails
                 logger.warning(
-                    "⚠️ Recommender yielded nothing. Falling back to direct API search."
+                    " Recommender yielded nothing. Falling back to direct API search."
                 )
                 tasks = [
                     asyncio.to_thread(
@@ -1726,7 +1726,7 @@ async def search_v2_endpoint(query: str = "", limit: int = 25, subject: str = No
 
         # --- FLOW 2: CONTEXTUAL DISCOVERY (NO TOPIC) ---
         else:
-            logger.info("🧠 No query. Analyzing Library for context...")
+            logger.info(" No query. Analyzing Library for context")
             lib_path = os.path.join(BASE_DIR, "data", "library.db")
             try:
                 conn = sqlite3.connect(lib_path)
@@ -1802,7 +1802,7 @@ async def search_v2_endpoint(query: str = "", limit: int = 25, subject: str = No
         random.shuffle(target_titles)
         target_titles = target_titles[:15]
 
-        logger.info(f"🎯 Resolving {len(target_titles)} recommended titles...")
+        logger.info(f" Resolving {len(target_titles)} recommended titles...")
 
         tasks = []
         for title in target_titles:
@@ -1844,9 +1844,9 @@ async def search_v2_endpoint(query: str = "", limit: int = 25, subject: str = No
 async def clean_local_endpoint(background_tasks: BackgroundTasks):
     async def task():
         try:
-            logger.info("🧹 Phase 1: Registering physical files...")
+            logger.info(" Phase 1: Registering physical files...")
             await asyncio.to_thread(refresh_library_files)
-            logger.info("✅ Local Library Clean Complete!")
+            logger.info(" Local Library Clean Complete!")
             await manager.broadcast(
                 {"status": "cleanup_complete", "result": "Local Cleaned"}
             )
@@ -2193,7 +2193,7 @@ def save_echo_endpoint(request: EchoSaveRequest):
             )
         if not cluster_id:
             cluster_id = f"cluster_{uuid.uuid4().hex[:8]}"
-            logger.info(f"🌱 Spawning new Thought Cluster: {cluster_id}")
+            logger.info(f" Spawning new Thought Cluster: {cluster_id}")
             # Save BOTH the string and the resolved hard ID to the database!
             graph_db.create_cluster(
                 cluster_id, request.book_id, library_id=resolved_library_id
@@ -2441,7 +2441,7 @@ def archive_items_group_endpoint(request: ArchiveGroupRequest):
                 item_ids=request.items, group_type=request.type
             )
             logging.info(
-                f"🗂️ Successfully archived {len(request.items)} root {request.type} items into {archive_id}"
+                f" Successfully archived {len(request.items)} root {request.type} items into {archive_id}"
             )
 
         return {
@@ -2515,7 +2515,7 @@ def unarchive_items_group_endpoint(request: UnarchiveGroupRequest):
                 archive_id=request.archive_id, group_type=request.type
             )
 
-        logging.info(f"📂 Successfully unarchived group: {request.archive_id}")
+        logging.info(f"Successfully unarchived group: {request.archive_id}")
         return {"status": "success"}
     except Exception as e:
         import logging
