@@ -26,7 +26,7 @@ def ingest_csvs():
     Extracts Genre, Year, and Rating data.
     """
     if not os.path.exists(DATA_DIR):
-        logger.warning(f"⚠️ Data directory not found: {DATA_DIR}")
+        logger.warning(f"Data directory not found: {DATA_DIR}")
         os.makedirs(DATA_DIR, exist_ok=True)
         return {
             "status": "error",
@@ -35,14 +35,14 @@ def ingest_csvs():
 
     csv_files = glob.glob(os.path.join(DATA_DIR, "*.csv"))
     if not csv_files:
-        logger.warning(f"⚠️ No CSV files found in {DATA_DIR}")
+        logger.warning(f" No CSV files found in {DATA_DIR}")
         return {"status": "empty", "message": "No CSV files found in data/crawler/"}
 
     count = 0
     try:
         for file_path in csv_files:
             filename = os.path.basename(file_path)
-            logger.info(f"📖 Processing CSV: {filename}...")
+            logger.info(f" Processing CSV: {filename}...")
 
             try:
                 df = pd.read_csv(file_path, engine="python", on_bad_lines="skip")
@@ -82,7 +82,7 @@ def ingest_csvs():
 
                 if not col_title:
                     logger.warning(
-                        f"⚠️ Skipping {filename}: Could not find Title column."
+                        f" Skipping {filename}: Could not find Title column."
                     )
                     continue
 
@@ -158,9 +158,9 @@ def ingest_csvs():
                     count += 1
 
             except Exception as e:
-                logger.error(f"❌ Error processing {filename}: {e}")
+                logger.error(f" Error processing {filename}: {e}")
 
-        logger.info(f"🎉 Sync Complete! Registered {count} books in Library DB.")
+        logger.info(f"Sync Complete! Registered {count} books in Library DB.")
         return {"status": "success", "count": count}
 
     except Exception as e:
