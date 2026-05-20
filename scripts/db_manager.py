@@ -52,7 +52,7 @@ class DBManager:
             return
         tbl = self.get_table(table_name)
         tbl.add(data)
-        logger.info(f"💾 Added {len(data)} records to {table_name}")
+        logger.info(f"Added {len(data)} records to {table_name}")
 
     def add(self, vectors, chunks, metadata_list, table_name="thoughts", write_batch_size=256):
         total = len(metadata_list)
@@ -252,7 +252,7 @@ class GraphDBManager:
         # MIGRATION: Add the deterministic Dual-Anchor library_id
         try:
             c.execute("ALTER TABLE echo_clusters ADD COLUMN library_id TEXT")
-            logger.info("⚙️ Migrated echo_clusters to include library_id Dual-Anchor.")
+            logger.info("Migrated echo_clusters to include library_id Dual-Anchor.")
         except sqlite3.OperationalError:
             pass
 
@@ -271,7 +271,7 @@ class GraphDBManager:
         c.execute("PRAGMA table_info(user_echoes)")
         columns = [row[1] for row in c.fetchall()]
         if "cluster_id" not in columns and len(columns) > 0:
-            logger.info("⚙️ Migrating user_echoes table to support Compound Echoes...")
+            logger.info("Migrating user_echoes table to support Compound Echoes...")
             c.execute("DROP TABLE user_echoes")
 
         # --- V2 USER ECHOES ---
