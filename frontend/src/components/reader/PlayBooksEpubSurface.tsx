@@ -371,7 +371,44 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             return getVisibleContentState()?.content || getRenderedContents()[0] || null;
         }, [getRenderedContents, getVisibleContentState]);
 
+        const getDesktopManagerScrollElement = useCallback(() => {
+            if (!desktopSectionPaging) return null;
+            const container = renditionRef.current?.manager?.container;
+            return container instanceof HTMLElement ? container : null;
+        }, [desktopSectionPaging]);
+
         const getScrollMetrics = useCallback(() => {
+            const managerScrollElement = getDesktopManagerScrollElement();
+            if (managerScrollElement) {
+                const clientHeight = Math.max(
+                    Number(managerScrollElement.clientHeight || 0),
+                    1,
+                );
+                const scrollTop = Math.max(
+                    0,
+                    Number(managerScrollElement.scrollTop || 0),
+                );
+                const scrollHeight = Math.max(
+                    Number(managerScrollElement.scrollHeight || clientHeight),
+                    clientHeight,
+                );
+                const totalVirtualPages = Math.max(
+                    1,
+                    Math.ceil(scrollHeight / clientHeight),
+                );
+                const currentVirtualPage = Math.min(
+                    totalVirtualPages,
+                    Math.max(1, Math.floor(scrollTop / clientHeight) + 1),
+                );
+                return {
+                    scrollingElement: managerScrollElement,
+                    clientHeight,
+                    scrollTop,
+                    scrollHeight,
+                    totalVirtualPages,
+                    currentVirtualPage,
+                };
+            }
             const activeContents = getActiveContents();
             const doc = activeContents?.document;
             const scrollingElement =
@@ -409,7 +446,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                 totalVirtualPages,
                 currentVirtualPage,
             };
-        }, [getActiveContents]);
+        }, [getActiveContents, getDesktopManagerScrollElement]);
 
         const getCurrentTocState = useCallback(() => {
             if (mobileScrollMode) {
@@ -1781,7 +1818,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (mobileScrollMode && stepSpineNavigation("prev")) {
                         return;
                     }
-                    if ((!pagedMode || !desktopLayout) && stepScrollPage("prev")) {
+                    if (
+                        ((!pagedMode || !desktopLayout) ||
+                            desktopSectionPaging) &&
+                        stepScrollPage("prev")
+                    ) {
                         return;
                     }
                     if (desktopSectionPaging) {
@@ -1798,7 +1839,11 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     if (mobileScrollMode && stepSpineNavigation("next")) {
                         return;
                     }
-                    if ((!pagedMode || !desktopLayout) && stepScrollPage("next")) {
+                    if (
+                        ((!pagedMode || !desktopLayout) ||
+                            desktopSectionPaging) &&
+                        stepScrollPage("next")
+                    ) {
                         return;
                     }
                     if (desktopSectionPaging) {
