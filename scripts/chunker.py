@@ -67,7 +67,7 @@ def parse_metadata(filename):
 
         return title, author, year
     except Exception as e:
-        print(f"⚠️ Metadata Error ({filename}): {e}")
+        print(f"Metadata Error ({filename}): {e}")
         return "Unknown", "Unknown", "0000"
 
 
@@ -86,7 +86,7 @@ def create_sliding_window(text):
 
 
 def main():
-    print("✂️  Starting Deconstruction...")
+    print("Starting Deconstruction...")
     all_records = []
 
     files = [f for f in os.listdir(PROCESSED_DIR) if f.endswith(".txt")]
@@ -123,7 +123,7 @@ def main():
         json.dump(all_records, f, indent=4)
 
     print(
-        f"\n✅ DATABASE READY: {len(all_records)} total thoughts stored in {OUTPUT_FILE}"
+        f"\n DATABASE READY: {len(all_records)} total thoughts stored in {OUTPUT_FILE}"
     )
 
 

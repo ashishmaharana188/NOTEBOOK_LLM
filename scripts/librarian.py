@@ -42,9 +42,9 @@ def download_file_robustly(url, dest_path):
                 with open(dest_path, "wb") as f:
                     for chunk in r.iter_bytes(chunk_size=8192):
                         f.write(chunk)
-            print(f"✅ Download Complete: {os.path.basename(dest_path)}")
+            print(f"Download Complete: {os.path.basename(dest_path)}")
         except Exception as e:
-            print(f"❌ Download Error for {url}: {e}")
+            print(f"Download Error for {url}: {e}")
             if os.path.exists(dest_path):
                 os.remove(dest_path)  # Clean up partial files
             raise e
@@ -195,9 +195,7 @@ def search_gutenberg(query, filter_type="title", subject=None, limit=25):
 
 
 def download_book(book_id, title=None, preferred_format="epub"):
-    """
-    Downloads a book from Gutenberg with format selection (epub, pdf, txt) and fallbacks.
-    """
+
     if not title:
         title = f"Book_{book_id}"
 
@@ -216,7 +214,7 @@ def download_book(book_id, title=None, preferred_format="epub"):
     else:
         priorities = ["epub", "pdf", "txt"]
 
-    print(f"📚 Downloading {title} (ID: {book_id}). Format Priority: {priorities}")
+    print(f"Downloading {title} (ID: {book_id}). Format Priority: {priorities}")
 
     for fmt in priorities:
         try:
@@ -256,7 +254,7 @@ def download_book(book_id, title=None, preferred_format="epub"):
                 return filename
 
         except Exception as e:
-            print(f"⚠️ Format '{fmt}' failed for {book_id}. Trying next...")
+            print(f"Format '{fmt}' failed for {book_id}. Trying next...")
             continue
 
     raise Exception(f"Failed to download {book_id}")

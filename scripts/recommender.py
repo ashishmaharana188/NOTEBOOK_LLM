@@ -25,7 +25,7 @@ def get_user_taste_vector() -> Optional[np.ndarray]:
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("SELECT lid FROM library_inventory WHERE file_path IS NOT NULL")
-    # 🐛 THE FIX: Ensure IDs are strings
+
     owned_lids = [str(row["lid"]) for row in c.fetchall()]
     conn.close()
 
@@ -41,7 +41,7 @@ def get_user_taste_vector() -> Optional[np.ndarray]:
         vectors = []
 
         for lid in owned_lids:
-            # 🐛 THE FIX: Changed 'lid' to 'book_id' to match LanceDB schema
+       
             res = tbl.search().where(f"book_id = '{lid}'").limit(1).to_list()
             if res and "vector" in res[0]:
                 vectors.append(res[0]["vector"])
@@ -93,14 +93,14 @@ def get_recommendations(
         conn = sqlite3.connect(LIBRARY_DB_PATH)
         c = conn.cursor()
         c.execute("SELECT lid FROM library_inventory WHERE file_path IS NOT NULL")
-        # 🐛 THE FIX: Stringify IDs to match LanceDB
+     
         owned_ids = {str(r[0]) for r in c.fetchall()}
         conn.close()
 
         # 3. Perform Vector Search
         search_limit = max(500, len(owned_ids) * 2)
 
-        # Ensure query_vec is a standard list for LanceDB
+       
         if isinstance(query_vec, np.ndarray):
             query_vec = query_vec.tolist()
 
@@ -108,7 +108,7 @@ def get_recommendations(
 
         filtered_results = []
         for r in search_res:
-            # 🐛 THE FIX: Check 'book_id' instead of 'lid'
+        
             if str(r.get("book_id", "")) not in owned_ids:
                 filtered_results.append(r)
                 if len(filtered_results) >= limit:

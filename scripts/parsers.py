@@ -8,18 +8,14 @@ from ebooklib import epub
 
 
 def clean_text(text):
-    """
-    Cleans raw extraction mess.
-    """
+
     text = re.sub(r"(\w+)-\s*\n\s*(\w+)", r"\1\2", text)
     text = re.sub(r"\n\s*\n", "\n\n", text)
     return text.strip()
 
 
 def extract_pdf_data(file_path):
-    """
-    Returns: { 'text': str, 'toc': list }
-    """
+
     try:
         doc = fitz.open(file_path)
 
@@ -61,9 +57,7 @@ def extract_pdf_data(file_path):
 
 
 def extract_epub_data(file_path):
-    """
-    Returns: { 'text': str, 'toc': list }
-    """
+
     try:
         book = epub.read_epub(file_path)
 
@@ -82,7 +76,7 @@ def extract_epub_data(file_path):
             full_text += cleaned + "\n\n"
             current_offset = len(full_text)
 
-        # 2. Process Native ToC (NCX)
+        # 2. Process Native ToC
         def process_toc_items(items, level=1):
             result = []
             for item in items:
@@ -117,13 +111,11 @@ def extract_txt_data(file_path):
 
 
 def read_any_file_metadata(file_path):
-    """
-    Unified entry point. Returns dict with 'text' and 'toc'.
-    """
+
     _, ext = os.path.splitext(file_path)
     ext = ext.lower()
 
-    print(f"📖 Parsing: {os.path.basename(file_path)} ({ext})")
+    print(f"Parsing: {os.path.basename(file_path)} ({ext})")
 
     if ext == ".pdf":
         return extract_pdf_data(file_path)

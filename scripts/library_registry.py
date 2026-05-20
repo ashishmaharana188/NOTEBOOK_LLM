@@ -14,11 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_deterministic_id(title: str, author: str) -> str:
-    """
-    Generates an indestructible MD5 hash based on immutable book traits.
-    If you delete a book and re-ingest it years later, it will generate the EXACT SAME ID,
-    ensuring all nodes, echoes, and connections instantly self-heal.
-    """
+
     clean_title = (
         str(title).lower().strip().replace(" ", "").replace("_", "").replace("-", "")
     )
@@ -33,7 +29,7 @@ class LibraryRegistry:
         self._init_db()
 
     def _init_db(self):
-        """Initializes the centralized library database."""
+    
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
@@ -103,17 +99,17 @@ class LibraryRegistry:
         row = c.fetchone()
 
         if row:
-            # --- SMART MERGE (Self-Healing) ---
+         
             current_data = dict(row)
             update_cols = []
             params = []
 
-            # RULE A: File Path
+        
             if meta.get("file_path") and not current_data.get("file_path"):
                 update_cols.append("file_path = ?")
                 params.append(meta["file_path"])
 
-            # RULE B: Ratings
+          
             new_rating = meta.get("rating", 0.0)
             current_rating = current_data.get("rating") or 0.0
             if new_rating > 0:
@@ -124,7 +120,7 @@ class LibraryRegistry:
                         update_cols.append("rating_count = ?")
                         params.append(meta["rating_count"])
 
-            # RULE C: Description (Trust the richer text)
+          
             new_desc = meta.get("description", "")
             curr_desc = current_data.get("description") or ""
             if new_desc and (
@@ -137,26 +133,26 @@ class LibraryRegistry:
                     (new_desc, lid),
                 )
 
-            # RULE D: Year
+         
             if meta.get("year") and not current_data.get("year"):
                 update_cols.append("year = ?")
                 params.append(meta["year"])
 
-            # RULE E: Group Tag (Genre)
+        
             new_tag = meta.get("group_tag", "")
             curr_tag = current_data.get("group_tag") or ""
             if new_tag and (not curr_tag or new_source == "crawler"):
                 update_cols.append("group_tag = ?")
                 params.append(new_tag)
 
-            # RULE F: URL
+          
             new_url = meta.get("url", "")
             curr_url = current_data.get("url") or ""
             if new_url and not curr_url:
                 update_cols.append("url = ?")
                 params.append(new_url)
 
-            # Execute Update
+          
             if update_cols:
                 update_cols.append("updated_at = ?")
                 params.append(datetime.now())
@@ -168,7 +164,7 @@ class LibraryRegistry:
             logger.info(f"🔄 Smart Merged existing book: {title} [{lid}]")
 
         else:
-            # --- INSERT NEW ---
+          
             c.execute(
                 """
                 INSERT INTO library_inventory 
@@ -192,12 +188,12 @@ class LibraryRegistry:
                 ),
             )
 
-            # Sync to FTS
+          
             c.execute(
                 "INSERT INTO library_fts (lid, title, author, description) VALUES (?, ?, ?, ?)",
                 (lid, title, author, meta.get("description", "")),
             )
-            logger.info(f"✅ Registered new book: {title} [{lid}]")
+            logger.info(f"Registered new book: {title} [{lid}]")
 
         conn.commit()
         conn.close()
@@ -248,6 +244,6 @@ def search_books(self, query, limit=50, group_tag=None):
     return [dict(r) for r in rows]
 
 
-# Apply monkeypatch for search_books to match existing structure
+
 LibraryRegistry.search_books = search_books
 registry = LibraryRegistry()

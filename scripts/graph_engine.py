@@ -10,10 +10,7 @@ LIBRARY_DB_PATH = os.path.join(BASE_DIR, "data", "library.db")
 
 
 def get_core_graph():
-    """
-    Builds the 5-Layer Arc Reactor Payload.
-    Uses strict Deterministic ID mapping to perfectly route Layer 3 -> Layer 1 without fuzzy string matching.
-    """
+ 
     nodes = []
     edges = []
     node_ids = set()
@@ -160,8 +157,6 @@ def get_core_graph():
     try:
         gc = graph_db.conn.cursor()
 
-        # 1. Fetch Parent Clusters (The Workspace Anchors)
-        # Notice we are now fetching the Dual-Anchor fields!
         gc.execute("SELECT cluster_id, book_id, library_id FROM echo_clusters")
         for r in gc.fetchall():
             cid = r["cluster_id"]
@@ -185,8 +180,7 @@ def get_core_graph():
             target_book = resolve_library_anchor(library_id, fallback_string)
             cluster_catalyst[cid] = target_book
 
-        # 2. Fetch Unique Child Echoes & Route Cross-Pollination
-        # --- V2: We no longer fetch linked_note_id from user_echoes! ---
+  
         gc.execute("PRAGMA table_info(user_echoes)")
         columns = [col[1] for col in gc.fetchall()]
         has_title = "title" in columns
@@ -278,12 +272,11 @@ def get_core_graph():
                     "weight": 1.0,
                 }
             )
-            # --- V2: Legacy cross-link drawing from the echo side has been safely removed. ---
-
+ 
     except Exception as e:
         logger.error(f"Failed to load Echoes/Clusters: {e}")
 
-    # --- LAYER 4 & 5: OUTER RINGS (Stacks, Note Groups & Notes) ---
+
     try:
         gc = graph_db.conn.cursor()
 
@@ -374,7 +367,7 @@ def get_core_graph():
     except Exception as e:
         logger.error(f"Failed to load Notes/Groups/Stacks: {e}")
 
-    # --- CUSTOM USER NODES & RELATIONAL EDGES ---
+
     try:
         custom_nodes = graph_db.get_all_user_nodes()
         for cn in custom_nodes:

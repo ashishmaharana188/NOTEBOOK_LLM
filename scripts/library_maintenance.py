@@ -16,15 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def refresh_library_files():
-    """
-    Aggressively cleans the library:
-    1. Scans data/library/
-    2. Hydrates metadata (Clean Title/Author)
-    3. Renames files on disk
-    4. Registers/Updates the Central Registry
-    """
+
     if not os.path.exists(LIBRARY_DIR):
-        logger.error(f"❌ Library directory not found: {LIBRARY_DIR}")
+        logger.error(f"Library directory not found: {LIBRARY_DIR}")
         return {"status": "error", "message": "Library directory missing"}
 
     files = [
@@ -32,7 +26,7 @@ def refresh_library_files():
         for f in os.listdir(LIBRARY_DIR)
         if f.lower().endswith((".epub", ".pdf", ".txt", ".md"))
     ]
-    logger.info(f"🧹 Starting Aggressive Refresh on {len(files)} files...")
+    logger.info(f"Starting Aggressive Refresh on {len(files)} files...")
 
     processed_count = 0
     errors = 0
@@ -66,10 +60,10 @@ def refresh_library_files():
             processed_count += 1
 
         except Exception as e:
-            logger.error(f"❌ Failed to process {filename}: {e}")
+            logger.error(f"Failed to process {filename}: {e}")
             errors += 1
 
-    logger.info(f"✨ Refresh Complete. Processed: {processed_count}, Errors: {errors}")
+    logger.info(f"Refresh Complete. Processed: {processed_count}, Errors: {errors}")
     return {"status": "success", "processed": processed_count, "errors": errors}
 
 

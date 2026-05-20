@@ -19,7 +19,7 @@ from scripts.log_sanitizer import (
 
 try:
     import psutil
-except Exception:  # pragma: no cover - optional dependency fallback
+except Exception: 
     psutil = None
 
 logger = logging.getLogger(__name__)
