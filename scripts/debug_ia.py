@@ -21,12 +21,12 @@ def debug_search(query):
 
     try:
         resp = requests.get(base_url, params=params)
-        print(f"✅ Status Code: {resp.status_code}")
+        print(f" Status Code: {resp.status_code}")
 
         data = resp.json()
         docs = data.get("response", {}).get("docs", [])
 
-        print(f"\n📦 FOUND {len(docs)} RESULTS:")
+        print(f"\n FOUND {len(docs)} RESULTS:")
         for i, doc in enumerate(docs):
             print(f"\n--- Result {i+1} ---")
             print(f"ID:       {doc.get('identifier')}")
@@ -36,7 +36,7 @@ def debug_search(query):
             print(f"Date:     {doc.get('date')}")
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f" Error: {e}")
 
 
 if __name__ == "__main__":
