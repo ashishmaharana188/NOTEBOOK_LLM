@@ -88,6 +88,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
         const boundContextDocsRef = useRef(new WeakSet<Document>());
         const boundSelectionDocsRef = useRef(new WeakSet<Document>());
         const boundMobileTapDocsRef = useRef(new WeakSet<Document>());
+        const boundDesktopWheelDocsRef = useRef(new WeakSet<Document>());
         const boundScrollTargetsRef = useRef(new WeakSet<EventTarget>());
         const selectionFinalizeTimeoutRef = useRef<number | null>(null);
         const selectionInProgressRef = useRef(false);
@@ -434,12 +435,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                     currentHref ||
                     "",
             );
-            const tocIndex = toc.findIndex(
-                (item) =>
-                    item.href &&
-                    liveHref &&
-                    liveHref.startsWith(item.href.replace(/#.*$/, "")),
-            );
+            const tocIndex = getMatchedTocState(liveHref).tocIndex;
             return {
                 tocIndex,
                 prevItem:
@@ -453,6 +449,7 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
             };
         }, [
             currentHref,
+            getMatchedTocState,
             getSafeCurrentLocation,
             getVisibleContentState,
             mobileScrollMode,
@@ -1051,6 +1048,38 @@ export default forwardRef<ReaderSurfaceHandle, PlayBooksEpubSurfaceProps>(
                         };
                         boundContextDocsRef.current.add(doc);
                         doc.addEventListener("contextmenu", handleContextMenu);
+                    }
+                    if (
+                        desktopSectionPaging &&
+                        doc &&
+                        !boundDesktopWheelDocsRef.current.has(doc)
+                    ) {
+                        boundDesktopWheelDocsRef.current.add(doc);
+                        doc.addEventListener(
+                            "wheel",
+                            (event: WheelEvent) => {
+                                const metrics = getScrollMetrics();
+                                if (!metrics) return;
+                                const maxScrollTop = Math.max(
+                                    0,
+                                    metrics.scrollHeight - metrics.clientHeight,
+                                );
+                                if (maxScrollTop <= 0) return;
+                                const nextTop = Math.max(
+                                    0,
+                                    Math.min(
+                                        maxScrollTop,
+                                        metrics.scrollTop + event.deltaY,
+                                    ),
+                                );
+                                if (Math.abs(nextTop - metrics.scrollTop) < 1) {
+                                    return;
+                                }
+                                event.preventDefault();
+                                metrics.scrollingElement.scrollTop = nextTop;
+                            },
+                            { passive: false },
+                        );
                     }
                     if (doc && !boundSelectionDocsRef.current.has(doc)) {
                         boundSelectionDocsRef.current.add(doc);
