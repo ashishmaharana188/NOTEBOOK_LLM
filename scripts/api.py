@@ -207,10 +207,10 @@ def _translate_with_public_google(
 def start_ollama_service():
     try:
         requests.get("http://localhost:11434")
-        logger.info("✅ Ollama Service is already running.")
+        logger.info(" Ollama Service is already running.")
         return True
     except:
-        logger.warning("⚠️ Ollama not detected. Attempting to start service...")
+        logger.warning(" Ollama not detected. Attempting to start service...")
         try:
             subprocess.Popen(
                 ["ollama", "serve"],
